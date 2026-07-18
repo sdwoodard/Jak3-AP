@@ -1,14 +1,33 @@
 # OpenGOAL bridge
 
-`archipelago.gc` is a narrow patch loaded after Jak 3's `game-task` and `task-control` objects. It:
+`archipelago.gc` is the in-game half of the Jak 3 Archipelago client. It is
+loaded after Jak 3's `task-control` object and:
 
-- records completion for native story task IDs 6–71;
-- binds state to hashes of the Archipelago slot and seed so another save cannot leak checks;
-- accepts idempotent mission unlocks using the Archipelago receive index;
-- grants progressive guns, ammo capacity, Dark/Light powers, armor, the Jetboard, and vehicles through native feature bits;
-- starts only missions whose unlock has been received; and
-- exports a small state snapshot for the Python client.
+- records checks for native story and activity task IDs;
+- binds runtime state to the current Archipelago slot and seed;
+- grants mission unlocks and progressive equipment idempotently;
+- displays new-item notifications in the Jak 3 HUD; and
+- starts only missions that the Python client reports as logically available.
 
-Add this source file to the mod's project after `game-task.gc` and `task-control.gc`. The client expects the state snapshot in its working directory, or at the path specified by `JAK3_AP_STATE`.
+## Install into OpenGOAL
 
-The supplied source writes `jak3-ap-state.tmp`. A production mod package should use OpenGOAL's platform file rename helper to publish that closed file as `jak3-ap-state.txt`; alternatively point `JAK3_AP_STATE` at the `.tmp` file. This prevents the client from parsing a partially-written snapshot.
+From the `Jak3-AP` repository in PowerShell:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-opengoal-bridge.ps1 -OpenGoalRepository ..\jak-project
+```
+
+The installer copies the source to
+`goal_src/jak3/pc/features/archipelago.gc` and adds `archipelago.o` immediately
+after `task-control.o` in `goal_src/jak3/dgos/game.gd`. It is safe to run again
+after updating this repository.
+
+Every newly opened Jak 3 `goalc` process must run `(mi)` successfully to load
+the complete Jak 3 compiler environment and rebuild `GAME.CGO`. Keep that
+compiler and the Debug game running, but do not manually issue `(lt)` or `(ml
+...)`. The Python client's `/repl connect` sends both commands through nREPL;
+that connection must own the target reply channel for synchronization.
+
+The Python client assigns an absolute state-snapshot path during its bridge
+handshake. `JAK3_AP_STATE` may override that location, but is normally not
+needed.

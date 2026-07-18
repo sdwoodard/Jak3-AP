@@ -12,6 +12,7 @@ import asyncio
 import logging
 import os
 import struct
+import tempfile
 import zlib
 from collections import Counter, deque
 from pathlib import Path
@@ -38,7 +39,9 @@ from .data import (
 )
 
 
-logger = logging.getLogger("Jak3Client")
+# Use CommonClient's logger so command and bridge status messages are visible
+# in both the text console and the Archipelago GUI log pane.
+logger = logging.getLogger("Client")
 ITEM_ID_TO_TASK = {
     ITEM_NAME_TO_ID[mission.item_name]: mission.task_id
     for mission in MISSIONS
@@ -68,21 +71,48 @@ class OpenGoalRepl:
         if self.connected:
             return
         self.reader, self.writer = await asyncio.open_connection(self.host, self.port)
-        welcome = (await self.reader.read(1024)).decode(errors="replace")
+        try:
+            welcome_data = await asyncio.wait_for(self.reader.read(1024), timeout=10.0)
+        except asyncio.TimeoutError as exc:
+            await self.close()
+            raise ConnectionError("Timed out waiting for the OpenGOAL nREPL greeting") from exc
+        welcome = welcome_data.decode(errors="replace")
         if "nREPL" not in welcome:
             await self.close()
             raise ConnectionError(f"Unexpected OpenGOAL nREPL greeting: {welcome!r}")
-        await self.send_form("(lt)")
-        logger.info("Connected to the Jak 3 OpenGOAL nREPL.")
+        logger.info("Connected to the Jak 3 OpenGOAL nREPL socket.")
+        attach_response = await self.send_form("(lt)", timeout=30.0)
+        if "nREPL" not in attach_response:
+            raise ConnectionError(
+                "OpenGOAL did not attach to the game. Start a fresh goalc, run (mi), "
+                "and let /repl connect issue (lt): " + attach_response.strip()
+            )
+        logger.info("OpenGOAL attached to the Jak 3 game target.")
 
-    async def send_form(self, form: str) -> str:
+    async def send_form(self, form: str, timeout: float = 10.0) -> str:
         if not self.connected or self.reader is None or self.writer is None:
             raise ConnectionError("OpenGOAL nREPL is not connected")
-        packet = struct.pack("<II", len(form.encode("utf-8")), 10) + form.encode("utf-8")
+        encoded = form.encode("utf-8")
+        eval_packet = struct.pack("<II", len(encoded), 10) + encoded
+        ping_packet = struct.pack("<II", 0, 0)
         async with self.lock:
-            self.writer.write(packet)
+            # This OpenGOAL nREPL intentionally sends no evaluation result.
+            # A following PING is processed only after EVAL returns because the
+            # server handles both serially; its greeting is our completion barrier.
+            self.writer.write(eval_packet + ping_packet)
             await self.writer.drain()
-            return (await self.reader.read(4096)).decode(errors="replace")
+            try:
+                response = await asyncio.wait_for(self.reader.read(4096), timeout=timeout)
+            except asyncio.TimeoutError as exc:
+                raise ConnectionError(
+                    f"OpenGOAL did not acknowledge this command within {timeout:g} seconds: {form}"
+                ) from exc
+            decoded = response.decode(errors="replace")
+            if "nREPL" not in decoded:
+                raise ConnectionError(
+                    f"Unexpected OpenGOAL completion-barrier response for {form}: {decoded!r}"
+                )
+            return decoded
 
     async def close(self) -> None:
         if self.writer:
@@ -98,23 +128,62 @@ class Jak3CommandProcessor(ClientCommandProcessor):
     def _cmd_repl(self, action: str = "status") -> None:
         """Connect to OpenGOAL (`/repl connect`) or show bridge status."""
         if action == "connect":
+            self.output("Connecting to the Jak 3 OpenGOAL compiler on 127.0.0.1:8181...")
             asyncio.create_task(self.ctx.connect_repl())
         else:
-            logger.info("OpenGOAL nREPL: %s", "connected" if self.ctx.repl.connected else "disconnected")
+            server_status = "connected" if self.ctx.server else "disconnected"
+            repl_status = "connected" if self.ctx.repl.connected else "disconnected"
+            bridge_status = "ready" if self.ctx.bridge_ready else "not bound"
+            self.output(f"Archipelago server: {server_status}")
+            self.output(f"OpenGOAL nREPL: {repl_status}")
+            self.output(f"Jak 3 bridge: {bridge_status}")
+            self.output(f"Slot: {self.ctx.auth or 'not authenticated'}")
+            self.output(f"State file: {self.ctx.state_path}")
 
     def _cmd_missions(self) -> None:
         """List mission and challenge task IDs currently unlocked for this slot."""
         unlocked = self.ctx.unlocked_tasks()
+        if not unlocked:
+            self.output("No missions are currently playable. Check /repl status and your received items.")
+            return
+        self.output(f"Playable Jak 3 missions ({len(unlocked)}):")
         for task_id in sorted(unlocked):
-            logger.info("%3d  %s", task_id, CHECK_BY_TASK[task_id].name)
+            self.output(f"{task_id:3d}  {CHECK_BY_TASK[task_id].name}")
+
+    def _cmd_game(self, action: str = "status") -> None:
+        """Boot gameplay: `/game start`, `/game title`, or `/game sync`."""
+        action = action.casefold()
+        if action not in {"start", "title", "sync"}:
+            state = "ready" if self.ctx.bridge_ready else "not ready"
+            self.output(
+                f"Jak 3 AP game startup is {state}. Use /game start for a new game, "
+                "/game title to load a save, or /game sync after loading it."
+            )
+            return
+        if not self.ctx.bridge_ready:
+            self.output("The Jak 3 bridge is not ready. Connect to the room, then run /repl connect.")
+            return
+        if action == "start":
+            self.output("Starting a fresh Jak 3 Archipelago game...")
+            asyncio.create_task(self.ctx.start_game())
+        elif action == "title":
+            self.output("Opening the normal Jak 3 title screen...")
+            asyncio.create_task(self.ctx.open_title())
+        else:
+            self.output("Reapplying this slot's received AP inventory...")
+            asyncio.create_task(self.ctx.sync_items())
 
     def _cmd_play(self, *mission: str) -> None:
         """Start an unlocked mission by native task ID or a unique part of its name."""
+        if not self.ctx.bridge_ready:
+            self.output("The Jak 3 bridge is not ready. Connect to the room, then run /repl connect.")
+            return
         query = " ".join(mission).strip()
         task_id = self.ctx.resolve_task(query)
         if task_id is None:
-            logger.warning("Mission must be an unlocked task ID or a unique name fragment.")
+            self.output("Mission must be a task ID or unique name shown by /missions.")
             return
+        self.output(f"Starting task {task_id}: {CHECK_BY_TASK[task_id].name}")
         asyncio.create_task(self.ctx.play_task(task_id))
 
 
@@ -126,7 +195,13 @@ class Jak3Context(CommonContext):
     def __init__(self, server_address: str | None, password: str | None) -> None:
         super().__init__(server_address, password)
         self.repl = OpenGoalRepl()
-        self.state_path = Path(os.environ.get("JAK3_AP_STATE", "jak3-ap-state.tmp"))
+        configured_state = os.environ.get("JAK3_AP_STATE")
+        if configured_state:
+            self.state_path = Path(configured_state).expanduser().resolve()
+        else:
+            self.state_path = (
+                Path(tempfile.gettempdir()) / f"jak3-ap-{os.getpid()}.tmp"
+            ).resolve()
         self.slot_data: dict = {}
         self.room_seed = ""
         self.sent_item_index = 0
@@ -134,7 +209,7 @@ class Jak3Context(CommonContext):
         self.bridge_ready = False
         self.bound_game: tuple[int, int] | None = None
         self.received_history_ready = False
-        self.pending_notifications: deque[str] = deque()
+        self.pending_notifications: deque[tuple[int, str]] = deque()
 
     async def server_auth(self, password_requested: bool = False) -> None:
         if password_requested and not self.password:
@@ -156,9 +231,12 @@ class Jak3Context(CommonContext):
             # this hook. The first packet is connection history/replay; later
             # packets are genuinely new receipts and receive HUD notices.
             if self.received_history_ready:
-                for item in args.get("items", ()):
+                start_index = int(args.get("index", len(self.items_received)))
+                for offset, item in enumerate(args.get("items", ())):
                     name = ITEM_ID_TO_NAME.get(int(item[0]), "Unknown Item")
-                    self.pending_notifications.append(f"Received: {name}"[:96])
+                    self.pending_notifications.append(
+                        (start_index + offset, f"Received: {name}"[:96])
+                    )
             else:
                 self.received_history_ready = True
         self.watcher_event.set()
@@ -166,12 +244,24 @@ class Jak3Context(CommonContext):
     async def connect_repl(self) -> None:
         try:
             await self.repl.connect()
+            await self.repl.send_form(
+                '(ml "goal_src/jak3/pc/features/archipelago.gc")', timeout=60.0
+            )
             await self.repl.send_form("(ap-init!)")
             self.sent_item_index = 0
             self.bridge_ready = False
             await self.setup_bridge()
+            if not self.auth or not self.room_seed:
+                logger.warning(
+                    "OpenGOAL is connected, but the client is not authenticated to an "
+                    "Archipelago room. Connect to the room, then run /repl connect again."
+                )
+            elif self.bridge_ready:
+                logger.info("Jak 3 bridge is ready for slot %s.", self.auth)
             self.watcher_event.set()
         except (ConnectionError, OSError) as exc:
+            await self.repl.close()
+            self.bridge_ready = False
             logger.error("Could not connect to OpenGOAL: %s", exc)
 
     async def setup_bridge(self) -> None:
@@ -180,7 +270,14 @@ class Jak3Context(CommonContext):
         slot_key = zlib.crc32(self.auth.encode("utf-8")) & 0x7FFF_FFFF
         seed_key = zlib.crc32(self.room_seed.encode("utf-8")) & 0x7FFF_FFFF
         try:
+            state_path = _goal_path_literal(str(self.state_path))
+            await self.repl.send_form(f"(ap-set-state-path! {state_path})")
             await self.repl.send_form(f"(ap-setup! {slot_key} {seed_key})")
+            if parse_binding(self.state_path) != (slot_key, seed_key):
+                raise ConnectionError(
+                    "OpenGOAL finished setup, but the bridge state file did not confirm "
+                    "the current slot and seed. Check the goalc window for a compilation error."
+                )
             game_key = (slot_key, seed_key)
             if self.bound_game != game_key:
                 self.completed_tasks.clear()
@@ -188,6 +285,7 @@ class Jak3Context(CommonContext):
                 self.finished_game = False
             self.bound_game = game_key
             self.bridge_ready = True
+            logger.info("Bound the Jak 3 bridge to the current Archipelago slot and seed.")
             self.watcher_event.set()
         except (ConnectionError, OSError) as exc:
             self.bridge_ready = False
@@ -234,11 +332,42 @@ class Jak3Context(CommonContext):
             logger.warning("That mission is not unlocked.")
             return
         try:
-            response = await self.repl.send_form(f"(ap-play-task! (the-as game-task {task_id}))")
-            if "OK!" not in response:
-                logger.warning("OpenGOAL did not acknowledge the mission command: %s", response.strip())
+            await self.repl.send_form(f"(ap-play-task! (the-as game-task {task_id}))")
+            logger.info("OpenGOAL finished dispatching Jak 3 task %d.", task_id)
         except ConnectionError as exc:
             logger.error("%s; run /repl connect first.", exc)
+
+    async def start_game(self) -> None:
+        """Leave the Debug spawn and perform Jak 3's normal New Game transition."""
+        try:
+            await self.repl.send_form("(ap-start-game!)", timeout=30.0)
+            # The GOAL initializer intentionally resets this index so the
+            # watcher reapplies all previously received inventory safely.
+            self.sent_item_index = 0
+            logger.info(
+                "Jak 3 New Game initialization dispatched. The intro may take a moment to load."
+            )
+            self.watcher_event.set()
+        except ConnectionError as exc:
+            logger.error("Could not start normal Jak 3 gameplay: %s", exc)
+
+    async def open_title(self) -> None:
+        """Open Jak 3's normal title UI so an existing AP save can be loaded."""
+        try:
+            await self.repl.send_form("(ap-open-title!)", timeout=30.0)
+            logger.info("Jak 3 title initialization dispatched. Select the save for this AP slot.")
+        except ConnectionError as exc:
+            logger.error("Could not open the Jak 3 title screen: %s", exc)
+
+    async def sync_items(self) -> None:
+        """Reapply authoritative AP inventory after a vanilla save load."""
+        try:
+            await self.repl.send_form("(ap-resync-items!)")
+            self.sent_item_index = 0
+            self.watcher_event.set()
+            logger.info("Received AP inventory is being reapplied.")
+        except ConnectionError as exc:
+            logger.error("Could not resynchronize AP inventory: %s", exc)
 
 
 def parse_state(path: Path) -> tuple[int, set[int]]:
@@ -256,6 +385,35 @@ def parse_state(path: Path) -> tuple[int, set[int]]:
         elif key == "completed":
             completed.update(int(value) for value in values.split() if value.isdigit())
     return received_index, completed & set(CHECK_BY_TASK)
+
+
+def parse_binding(path: Path) -> tuple[int, int] | None:
+    """Return the slot/seed keys confirmed by a bridge snapshot."""
+    values: dict[str, int] = {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (FileNotFoundError, OSError, UnicodeError):
+        return None
+    for line in lines:
+        key, _, value = line.partition(" ")
+        if key in {"slot", "seed"} and value.isdigit():
+            values[key] = int(value)
+    if "slot" in values and "seed" in values:
+        return values["slot"], values["seed"]
+    return None
+
+
+def parse_notification_index(path: Path) -> int:
+    """Return the latest HUD notification index acknowledged by the bridge."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (FileNotFoundError, OSError, UnicodeError):
+        return -1
+    for line in lines:
+        key, _, value = line.partition(" ")
+        if key == "notification" and value.lstrip("-").isdigit():
+            return int(value)
+    return -1
 
 
 async def sync_items(ctx: Jak3Context, game_received_index: int) -> None:
@@ -281,13 +439,10 @@ async def sync_items(ctx: Jak3Context, game_received_index: int) -> None:
             # idempotent receive index.
             form = f"(ap-receive-filler! -1 {index})"
         try:
-            response = await ctx.repl.send_form(form)
+            await ctx.repl.send_form(form)
         except (ConnectionError, OSError) as exc:
             logger.warning("OpenGOAL item sync paused: %s", exc)
             await ctx.repl.close()
-            return
-        if "OK!" not in response:
-            logger.error("OpenGOAL rejected item index %d; sync paused: %s", index, response.strip())
             return
         ctx.sent_item_index += 1
 
@@ -298,18 +453,25 @@ def _goal_string_literal(value: str) -> str:
     return '"' + safe.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-async def sync_notification(ctx: Jak3Context) -> None:
+def _goal_path_literal(value: str) -> str:
+    """Encode an absolute shared-state path as a GOAL string literal."""
+    if not value or len(value) > 500 or any(ord(character) < 32 for character in value):
+        raise ValueError("JAK3_AP_STATE must be a non-empty path of at most 500 characters")
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+async def sync_notification(ctx: Jak3Context, acknowledged_index: int) -> None:
     """Show the next new receipt only when the game HUD can own the alert."""
     if not ctx.pending_notifications or not ctx.repl.connected or not ctx.bridge_ready:
         return
+    while ctx.pending_notifications and ctx.pending_notifications[0][0] <= acknowledged_index:
+        ctx.pending_notifications.popleft()
+    if not ctx.pending_notifications:
+        return
     try:
-        ready = await ctx.repl.send_form("(ap-notification-ready?)")
-        if "AP-NOTIFY-READY" not in ready:
-            return
-        message = _goal_string_literal(ctx.pending_notifications[0])
-        response = await ctx.repl.send_form(f"(ap-show-notification! {message})")
-        if "AP-NOTIFY-QUEUED" in response and "OK!" in response:
-            ctx.pending_notifications.popleft()
+        item_index, text = ctx.pending_notifications[0]
+        message = _goal_string_literal(text)
+        await ctx.repl.send_form(f"(ap-try-notification! {message} {item_index})")
     except (ConnectionError, OSError) as exc:
         logger.warning("OpenGOAL notification sync paused: %s", exc)
         await ctx.repl.close()
@@ -340,7 +502,7 @@ async def game_watcher(ctx: Jak3Context) -> None:
                 ctx.finished_game = True
 
         await sync_items(ctx, game_received_index)
-        await sync_notification(ctx)
+        await sync_notification(ctx, parse_notification_index(ctx.state_path))
         try:
             await asyncio.wait_for(ctx.watcher_event.wait(), timeout=0.5)
             ctx.watcher_event.clear()

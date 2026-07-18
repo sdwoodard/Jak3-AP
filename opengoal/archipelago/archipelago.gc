@@ -12,21 +12,38 @@
    (slot-key int32)
    (seed-key int32)
    (received-index int32)
-   (completed (array uint8))
-   (unlocked (array uint8))))
+   (completed (pointer uint8))
+   (unlocked (pointer uint8))))
 
-(define *ap-state*
-  (new 'global 'ap-state
-    :version AP-PROTOCOL-VERSION
-    :slot-key 0
-    :seed-key 0
-    :received-index 0
-    :completed (new 'global 'array 'uint8 AP-TASK-COUNT)
-    :unlocked (new 'global 'array 'uint8 AP-TASK-COUNT)))
+(define *ap-state* (new 'global 'ap-state))
+(set! (-> *ap-state* version) AP-PROTOCOL-VERSION)
+(set! (-> *ap-state* slot-key) 0)
+(set! (-> *ap-state* seed-key) 0)
+(set! (-> *ap-state* received-index) 0)
+(set! (-> *ap-state* completed) (new 'global 'array 'uint8 AP-TASK-COUNT))
+(set! (-> *ap-state* unlocked) (new 'global 'array 'uint8 AP-TASK-COUNT))
 
 (define *ap-notification-busy* #f)
-(define *ap-notification-start-time* (the-as time-frame 0))
+(define *ap-notification-start-time* (the-as int64 0))
 (define *ap-notification-text* (new 'global 'string 128 (the-as string #f)))
+(define *ap-state-path* (new 'global 'string 512 "jak3-ap-state.tmp"))
+(define *ap-notification-index* -1)
+(define-extern ap-export-state! (function none))
+
+(defun ap-set-state-path! ((source string))
+  ;; The client and game are separate processes and normally have different
+  ;; working directories. Let the client provide one shared absolute path.
+  (let ((src (-> source data))
+        (dst (-> *ap-state-path* data))
+        (count 0))
+    (while (and (< count 511) (nonzero? (-> src 0)))
+      (set! (-> dst 0) (-> src 0))
+      (set! src (&-> src 1))
+      (set! dst (&-> dst 1))
+      (+! count 1))
+    (set! (-> dst 0) (the-as uint 0)))
+  (ap-export-state!)
+  0)
 
 (defun ap-copy-notification! ((source string))
   ;; copy-string<-string has no bounds check. Keep this boundary safe even if
@@ -100,25 +117,36 @@
           (set! *ap-notification-busy* #f)
           #f))))
 
+(defun ap-try-notification! ((message string) (index int))
+  ;; nREPL evaluations have no result channel in current OpenGOAL. Persist an
+  ;; acknowledgement only after the HUD accepted the notice, so the client can
+  ;; safely retry through titles and loading screens without duplicates.
+  (when (<= index *ap-notification-index*)
+    (return #t))
+  (when (ap-show-notification! message)
+    (set! *ap-notification-index* index)
+    (ap-export-state!)
+    (return #t))
+  #f)
+
 (defun ap-valid-task? ((task game-task))
   (and (>= task (the-as game-task AP-FIRST-TASK))
        (<= task (the-as game-task AP-LAST-TASK))))
 
 (defun ap-export-state! ()
-  (let ((file (new 'stack 'file-stream "jak3-ap-state.tmp" 'write)))
+  (let ((file (new 'stack 'file-stream *ap-state-path* 'write)))
     (format file "version ~D~%" (-> *ap-state* version))
     (format file "slot ~D~%" (-> *ap-state* slot-key))
     (format file "seed ~D~%" (-> *ap-state* seed-key))
     (format file "received ~D~%" (-> *ap-state* received-index))
+    (format file "notification ~D~%" *ap-notification-index*)
     (format file "completed")
     (dotimes (task AP-TASK-COUNT)
       (when (nonzero? (-> *ap-state* completed task))
         (format file " ~D" task)))
     (format file "~%")
     (file-stream-close file))
-  ;; The client reads this temporary name by default. A packaged mod may rename
-  ;; it after close and point JAK3_AP_STATE at that published path.
-  0)
+  (none))
 
 (defun ap-init! ()
   (set! (-> *ap-state* unlocked AP-FIRST-TASK) 1)
@@ -134,6 +162,7 @@
       (set! (-> *ap-state* completed task) 0)
       (set! (-> *ap-state* unlocked task) 0))
     (set! (-> *ap-state* received-index) 0)
+    (set! *ap-notification-index* -1)
     (set! (-> *ap-state* slot-key) slot-key)
     (set! (-> *ap-state* seed-key) seed-key)
     (set! (-> *ap-state* unlocked AP-FIRST-TASK) 1)
@@ -252,9 +281,57 @@
   (format #t "Received AP trap ~D for ~D seconds.~%" trap duration)
   (ap-receive-filler! -1 index))
 
+(defun ap-start-game! ()
+  ;; A Debug launch attaches the compiler to a lightweight test scene; it has
+  ;; not performed the title screen's New Game transition. Mirror Jak 3's
+  ;; progress-intro-start path so the normal player, controller, HUD, saves,
+  ;; and mission systems are initialized without enabling debug inventory.
+  (set! *debug-segment* #f)
+  (set! *cheat-mode* #f)
+  (set! (-> *game-info* mode) 'play)
+  (initialize! *game-info*
+               'game
+               (the-as game-save #f)
+               "intro-start"
+               (the-as resetter-spec #f))
+  (set-master-mode 'game)
+  ;; initialize! restores a fresh vanilla inventory. Ask the client watcher to
+  ;; replay this slot's complete received-item stream on its next pass.
+  (set! (-> *ap-state* received-index) 0)
+  (ap-export-state!)
+  0)
+
+(defun ap-open-title! ()
+  ;; Resume path for later sessions: boot the normal title UI and let the
+  ;; player select the dedicated save created by this AP slot.
+  (set! *debug-segment* #f)
+  (set! *cheat-mode* #f)
+  (set! (-> *game-info* mode) 'play)
+  (initialize! *game-info*
+               'game
+               (the-as game-save #f)
+               "title-restart"
+               (the-as resetter-spec #f))
+  (set-master-mode 'game)
+  0)
+
+(defun ap-resync-items! ()
+  ;; Loading a vanilla save may replace feature/vehicle fields. Reset only the
+  ;; receive cursor so the Python client reapplies this slot's authoritative
+  ;; AP inventory; checks and mission unlocks remain untouched.
+  (set! (-> *ap-state* received-index) 0)
+  (ap-export-state!)
+  0)
+
 (defun ap-play-task! ((task game-task))
   (if (and (ap-valid-task? task) (nonzero? (-> *ap-state* unlocked task)))
-      (play-task task 'debug #f)
+      (let ((continue-name (play-task task 'debug #f)))
+        ;; Some tasks open their node in the current level, while others return
+        ;; a named continue that the caller must load. Handle both native forms.
+        (when continue-name
+          (start 'play
+                 (get-continue-by-name *game-info* (the-as string continue-name))))
+        (set-master-mode 'game))
       (format #t "AP mission ~D is locked.~%" task)))
 
 ;; This is the vanilla function with one idempotent notification added before
