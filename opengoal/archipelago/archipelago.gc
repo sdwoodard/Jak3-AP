@@ -1,0 +1,278 @@
+;; Jak 3 Archipelago bridge.
+;; Load after game-task and task-control. Native game-task IDs are the protocol.
+(in-package goal)
+
+(defconstant AP-PROTOCOL-VERSION 1)
+(defconstant AP-FIRST-TASK 6)
+(defconstant AP-LAST-TASK 137)
+(defconstant AP-TASK-COUNT 138)
+
+(deftype ap-state (basic)
+  ((version int32)
+   (slot-key int32)
+   (seed-key int32)
+   (received-index int32)
+   (completed (array uint8))
+   (unlocked (array uint8))))
+
+(define *ap-state*
+  (new 'global 'ap-state
+    :version AP-PROTOCOL-VERSION
+    :slot-key 0
+    :seed-key 0
+    :received-index 0
+    :completed (new 'global 'array 'uint8 AP-TASK-COUNT)
+    :unlocked (new 'global 'array 'uint8 AP-TASK-COUNT)))
+
+(define *ap-notification-busy* #f)
+(define *ap-notification-start-time* (the-as time-frame 0))
+(define *ap-notification-text* (new 'global 'string 128 (the-as string #f)))
+
+(defun ap-copy-notification! ((source string))
+  ;; copy-string<-string has no bounds check. Keep this boundary safe even if
+  ;; ap-show-notification! is invoked manually rather than through the client.
+  (let ((src (-> source data))
+        (dst (-> *ap-notification-text* data))
+        (count 0))
+    (while (and (< count 127) (nonzero? (-> src 0)))
+      (set! (-> dst 0) (-> src 0))
+      (set! src (&-> src 1))
+      (set! dst (&-> dst 1))
+      (+! count 1))
+    (set! (-> dst 0) (the-as uint 0)))
+  0)
+
+(defun ap-notification-ready? ()
+  ;; Do not create HUD processes while the title/loading state owns the draw
+  ;; pipeline. The Python client retains notices until this marker is returned.
+  ;; A display-pool teardown should not permanently wedge the queue if it
+  ;; kills an alert process before its cleanup executes.
+  (when (and *ap-notification-busy*
+             (time-elapsed? *ap-notification-start-time* (seconds 5)))
+    (set! *ap-notification-busy* #f))
+  (if (and *target*
+           (not (= (level-status? *level* 'title #f) 'active))
+           (not *ap-notification-busy*))
+      (begin
+        (format #t "AP-NOTIFY-READY~%")
+        #t)
+      #f))
+
+(defun ap-show-notification! ((message string))
+  (when (not (ap-notification-ready?))
+    (return #f))
+  ;; The nREPL input buffer is not owned by the spawned process. The client
+  ;; bounds text to 96 bytes, and readiness serialization makes this reusable
+  ;; 128-byte copy safe from concurrent writers.
+  (ap-copy-notification! message)
+  (set! *ap-notification-busy* #t)
+  (set! *ap-notification-start-time* (current-time))
+  (let ((worker
+          (process-spawn-function
+            process
+            (lambda :behavior process
+              ((text string))
+              (let ((started (current-time)))
+                (while (not (time-elapsed? started (seconds 3)))
+                  (when (not (= (level-status? *level* 'title #f) 'active))
+                    (let ((font
+                            (new 'stack 'font-context
+                              *font-default-matrix*
+                              0
+                              28
+                              0.0
+                              (font-color orange)
+                              (font-flags middle shadow kerning large))))
+                      (set-scale! font 0.55)
+                      (set-height! font 52)
+                      (print-game-text text font #f 44 (bucket-id hud-draw-hud-alpha))))
+                  (suspend)))
+              (set! *ap-notification-busy* #f)
+              (none))
+            *ap-notification-text*
+            :name "ap-item-notification"
+            :to *display-pool*)))
+    (if worker
+        (begin
+          (format #t "AP-NOTIFY-QUEUED~%")
+          #t)
+        (begin
+          (set! *ap-notification-busy* #f)
+          #f))))
+
+(defun ap-valid-task? ((task game-task))
+  (and (>= task (the-as game-task AP-FIRST-TASK))
+       (<= task (the-as game-task AP-LAST-TASK))))
+
+(defun ap-export-state! ()
+  (let ((file (new 'stack 'file-stream "jak3-ap-state.tmp" 'write)))
+    (format file "version ~D~%" (-> *ap-state* version))
+    (format file "slot ~D~%" (-> *ap-state* slot-key))
+    (format file "seed ~D~%" (-> *ap-state* seed-key))
+    (format file "received ~D~%" (-> *ap-state* received-index))
+    (format file "completed")
+    (dotimes (task AP-TASK-COUNT)
+      (when (nonzero? (-> *ap-state* completed task))
+        (format file " ~D" task)))
+    (format file "~%")
+    (file-stream-close file))
+  ;; The client reads this temporary name by default. A packaged mod may rename
+  ;; it after close and point JAK3_AP_STATE at that published path.
+  0)
+
+(defun ap-init! ()
+  (set! (-> *ap-state* unlocked AP-FIRST-TASK) 1)
+  (ap-export-state!)
+  (format #t "Jak 3 Archipelago protocol ~D ready.~%" AP-PROTOCOL-VERSION)
+  0)
+
+(defun ap-setup! ((slot-key int) (seed-key int))
+  ;; Never carry task checks or received-item indices into another slot/seed.
+  (when (or (!= slot-key (-> *ap-state* slot-key))
+            (!= seed-key (-> *ap-state* seed-key)))
+    (dotimes (task AP-TASK-COUNT)
+      (set! (-> *ap-state* completed task) 0)
+      (set! (-> *ap-state* unlocked task) 0))
+    (set! (-> *ap-state* received-index) 0)
+    (set! (-> *ap-state* slot-key) slot-key)
+    (set! (-> *ap-state* seed-key) seed-key)
+    (set! (-> *ap-state* unlocked AP-FIRST-TASK) 1)
+    (dotimes (task 65)
+      (set! (-> *ap-state* unlocked (+ task 73)) 1)))
+  (ap-export-state!))
+
+(defun ap-receive-mission! ((task game-task) (index int))
+  (when (ap-valid-task? task)
+    (set! (-> *ap-state* unlocked task) 1))
+  (when (>= index (-> *ap-state* received-index))
+    (set! (-> *ap-state* received-index) (+ index 1)))
+  (ap-export-state!))
+
+(defun ap-receive-filler! ((kind int) (index int))
+  ;; Consumables are intentionally never used by reachability logic. If Jak is
+  ;; active, turn local filler into a real pickup; foreign filler is kind -1.
+  (when (and (>= index (-> *ap-state* received-index)) *target*)
+    (case kind
+      ((0) (send-event *target* 'get-pickup (pickup-type health) 50.0))
+      ((1) (send-event *target* 'get-pickup (pickup-type ammo-red) 20.0))
+      ((2) (send-event *target* 'get-pickup (pickup-type ammo-yellow) 20.0))
+      ((3) (send-event *target* 'get-pickup (pickup-type ammo-blue) 20.0))
+      ((4) (send-event *target* 'get-pickup (pickup-type ammo-dark) 10.0))
+      ((5) (send-event *target* 'get-pickup (pickup-type eco-pill-light) 25.0))
+      ((6) (send-event *target* 'get-pickup (pickup-type eco-pill-dark) 25.0))))
+  (when (>= index (-> *ap-state* received-index))
+    (set! (-> *ap-state* received-index) (+ index 1)))
+  (ap-export-state!))
+
+(defun ap-receive-upgrade! ((kind int) (level int) (index int))
+  ;; Ignore replayed indices. New processes rebuild all features by replaying
+  ;; the receive stream from zero, while a live process applies each once.
+  (when (>= index (-> *ap-state* received-index))
+    (case kind
+      ((0)
+       (case level
+         ((1) (logior! (-> *game-info* features) (game-feature gun gun-red-1)))
+         ((2) (logior! (-> *game-info* features) (game-feature gun gun-red-1 gun-red-2)))
+         ((3) (logior! (-> *game-info* features) (game-feature gun gun-red-1 gun-red-2 gun-red-3)))))
+      ((1)
+       (case level
+         ((1) (logior! (-> *game-info* features) (game-feature gun gun-yellow-1)))
+         ((2) (logior! (-> *game-info* features) (game-feature gun gun-yellow-1 gun-yellow-2)))
+         ((3) (logior! (-> *game-info* features) (game-feature gun gun-yellow-1 gun-yellow-2 gun-yellow-3)))))
+      ((2)
+       (case level
+         ((1) (logior! (-> *game-info* features) (game-feature gun gun-blue-1)))
+         ((2) (logior! (-> *game-info* features) (game-feature gun gun-blue-1 gun-blue-2)))
+         ((3) (logior! (-> *game-info* features) (game-feature gun gun-blue-1 gun-blue-2 gun-blue-3)))))
+      ((3)
+       (case level
+         ((1) (logior! (-> *game-info* features) (game-feature gun gun-dark-1)))
+         ((2) (logior! (-> *game-info* features) (game-feature gun gun-dark-1 gun-dark-2)))
+         ((3) (logior! (-> *game-info* features) (game-feature gun gun-dark-1 gun-dark-2 gun-dark-3)))))
+      ((4)
+       (case level
+         ((1) (logior! (-> *game-info* features) (game-feature gun gun-upgrade-red-ammo-1)))
+         ((2) (logior! (-> *game-info* features)
+                       (game-feature gun gun-upgrade-red-ammo-1 gun-upgrade-red-ammo-2)))))
+      ((5)
+       (case level
+         ((1) (logior! (-> *game-info* features) (game-feature gun gun-upgrade-yellow-ammo-1)))
+         ((2) (logior! (-> *game-info* features)
+                       (game-feature gun gun-upgrade-yellow-ammo-1 gun-upgrade-yellow-ammo-2)))))
+      ((6)
+       (case level
+         ((1) (logior! (-> *game-info* features) (game-feature gun gun-upgrade-blue-ammo-1)))
+         ((2) (logior! (-> *game-info* features)
+                       (game-feature gun gun-upgrade-blue-ammo-1 gun-upgrade-blue-ammo-2)))))
+      ((7)
+       (case level
+         ((1) (logior! (-> *game-info* features) (game-feature gun gun-upgrade-dark-ammo-1)))
+         ((2) (logior! (-> *game-info* features)
+                       (game-feature gun gun-upgrade-dark-ammo-1 gun-upgrade-dark-ammo-2)))))
+      ((8) (logior! (-> *game-info* features) (game-feature board)))
+      ((9) (logior! (-> *game-info* vehicles) (game-vehicles v-turtle)))
+      ((10) (logior! (-> *game-info* vehicles) (game-vehicles v-snake)))
+      ((11) (logior! (-> *game-info* vehicles) (game-vehicles v-scorpion)))
+      ((12) (logior! (-> *game-info* vehicles) (game-vehicles v-toad)))
+      ((13) (logior! (-> *game-info* vehicles) (game-vehicles v-rhino)))
+      ((14)
+       (case level
+         ((1) (logior! (-> *game-info* features) (game-feature darkeco darkjak darkjak-bomb0)))
+         ((2) (logior! (-> *game-info* features)
+                       (game-feature darkeco darkjak darkjak-bomb0 darkjak-bomb1)))
+         ((3) (logior! (-> *game-info* features)
+                       (game-feature darkeco darkjak darkjak-bomb0 darkjak-bomb1
+                                     darkjak-smack darkjak-tracking)))
+         ((4) (logior! (-> *game-info* features)
+                       (game-feature darkeco darkjak darkjak-bomb0 darkjak-bomb1
+                                     darkjak-smack darkjak-tracking darkjak-invinc artifact-invis)))))
+      ((15)
+       (case level
+         ((1) (logior! (-> *game-info* features) (game-feature lighteco lightjak lightjak-regen)))
+         ((2) (logior! (-> *game-info* features)
+                       (game-feature lighteco lightjak lightjak-regen lightjak-freeze)))
+         ((3) (logior! (-> *game-info* features)
+                       (game-feature lighteco lightjak lightjak-regen lightjak-freeze
+                                     lightjak-shield)))
+         ((4) (logior! (-> *game-info* features)
+                       (game-feature lighteco lightjak lightjak-regen lightjak-freeze
+                                     lightjak-shield lightjak-swoop)))))
+      ((16)
+       (case level
+         ((1) (logior! (-> *game-info* features) (game-feature armor0)))
+         ((2) (logior! (-> *game-info* features) (game-feature armor0 armor1)))
+         ((3) (logior! (-> *game-info* features) (game-feature armor0 armor1 armor2)))
+         ((4) (logior! (-> *game-info* features) (game-feature armor0 armor1 armor2 armor3))))))
+    (set! (-> *ap-state* received-index) (+ index 1))
+    (ap-export-state!)))
+
+(defun ap-receive-trap! ((trap int) (duration int) (index int))
+  ;; Trap dispatch is intentionally centralized here. This initial bridge keeps
+  ;; gameplay-safe semantics while individual effects are wired to Jak 3 actors.
+  (format #t "Received AP trap ~D for ~D seconds.~%" trap duration)
+  (ap-receive-filler! -1 index))
+
+(defun ap-play-task! ((task game-task))
+  (if (and (ap-valid-task? task) (nonzero? (-> *ap-state* unlocked task)))
+      (play-task task 'debug #f)
+      (format #t "AP mission ~D is locked.~%" task)))
+
+;; This is the vanilla function with one idempotent notification added before
+;; the close-task node opens. Keeping the original control flow minimizes the
+;; patch surface and ensures every normal mission resolution is observed.
+(defun task-resolution-close! ((arg0 game-task))
+  (let ((v1-1 (-> *game-info* sub-task-list)))
+    (dotimes (a1-0 (-> v1-1 length))
+      (when (nonzero? a1-0)
+        (let ((a2-3 (-> v1-1 a1-0)))
+          (when (and (= (-> a2-3 task) arg0)
+                     (logtest? (-> a2-3 flags) (game-task-node-flag close-task)))
+            (when (ap-valid-task? arg0)
+              (set! (-> *ap-state* completed arg0) 1)
+              (ap-export-state!))
+            (open! a2-3 'event)
+            (return #t)))))
+    )
+  #f)
+
+(ap-init!)
