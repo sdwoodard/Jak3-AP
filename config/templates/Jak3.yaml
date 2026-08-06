@@ -1,0 +1,259 @@
+# Jak 3 Archipelago player-options template
+# Design version: 0.3
+#
+# CURRENT SUPPORT POLICY
+# - The values shown below are the only supported Jak 3 profile for initial testing.
+# - A YAML value marked [SUPPORTED DEFAULT] must remain at the shown value.
+#   Descriptions beneath it list the WIP alternatives; they are not supported yet.
+# - Other values are documented for forward compatibility but are WORKS IN PROGRESS
+#   (WIP) and are rejected by the current APWorld before generation begins.
+# - Player name, description, and the standard Archipelago placement-control lists
+#   at the end of the file may be customized normally.
+
+name: Player{number}                 # Customize this player/slot name.
+game: Jak 3                         # Must exactly match the APWorld game name.
+description: >-                     # Optional human-readable description.
+  Recommended full-accessibility Jak 3 seed with a tiered open mission board,
+  5-of-7 relic finale, selected finite sanity checks, and safe mission bootstrap.
+
+Jak 3:
+  # ---------------------------------------------------------------------------
+  # Common Archipelago options
+  # ---------------------------------------------------------------------------
+
+  progression_balancing: 65         # [SUPPORTED DEFAULT] 0-99. Moves ordinary progression toward earlier spheres.
+                                     # Relics and alternative ranged guns use skip-balancing.
+
+  accessibility: full               # [SUPPORTED DEFAULT] full: every enabled Jak 3 location must be reachable.
+                                     # items: only locations holding relevant items must be reachable.
+                                     # minimal: only beatability is required. Full is strongly recommended.
+
+  # ---------------------------------------------------------------------------
+  # Goal, mission order, and story progression
+  # ---------------------------------------------------------------------------
+
+  goal: complete_city_win           # [SUPPORTED DEFAULT] complete_city_win: finish task 72/city ending (recommended).
+                                     # defeat_final_boss: finish task 71.
+                                     # all_story_tasks: finish every enabled audited story task.
+                                     # relic_hunt: collect the relic threshold and complete the custom finale.
+
+  mission_order: tiered_open_board  # [SUPPORTED DEFAULT] vanilla: native global mission order.
+                                     # tiered_open_board: broad AP-authorized chapters (recommended).
+                                     # chapter_shuffle: shuffle audited chapter groups, keep order inside each.
+                                     # full_shuffle_experimental: individual mission permutation; not first release.
+
+  logic_difficulty: standard        # [SUPPORTED DEFAULT] casual: intended traversal plus combat-loadout assistance.
+                                     # standard: documented intended routes; recommended.
+                                     # expert: audited advanced movement alternatives only.
+
+  mission_equipment: bootstrap      # [SUPPORTED DEFAULT] bootstrap: temporarily supply exact scripted mission equipment,
+                                     # lesson abilities, and non-counting native story props.
+                                     # require_unlocks: require every exact permanent unlock; experimental.
+                                     # vanilla: allow native mission grants to persist; least randomized.
+
+  story_item_mode: simplified_authorizations # [SUPPORTED DEFAULT]
+                                     # simplified_authorizations: eight broad route items plus shadow
+                                     # native Seal/pass/artifact state for script presentation (recommended).
+                                     # canonical: native passes/War Amulets; experimental fine-grained logic.
+                                     # vanilla: native story gating, no shuffled route items.
+
+  finale_relic_requirement: 5       # [SUPPORTED DEFAULT] 0-7. Number of the seven native relics needed for the finale.
+                                     # Five gives route relevance without forcing every relic.
+
+  early_route_item: guaranteed_local # [SUPPORTED DEFAULT]
+                                     # guaranteed_local: place Spargus Field Orders locally in sphere zero
+                                     # for an immediately actionable route (recommended first release).
+                                     # Haven may substitute only if Jetboard is also already sphere-zero.
+                                     # sphere_zero: any route item in sphere zero, not necessarily local.
+                                     # none: no guarantee; may create a directionless opening.
+
+  early_ranged_gun: guaranteed_local # [SUPPORTED DEFAULT]
+                                     # guaranteed_local: local Blaster or Vulcan Fury in sphere zero.
+                                     # sphere_zero: sphere-zero ranged gun without local-placement guarantee.
+                                     # none: no guarantee; not recommended with reliable_ranged logic.
+
+  # ---------------------------------------------------------------------------
+  # Story and sanity location options
+  # ---------------------------------------------------------------------------
+
+  mission_completion_checks: story # [SUPPORTED DEFAULT] off: no story completion locations.
+                                     # story: 61 checks, source tasks 10-35 and 37-71 (recommended).
+                                     # include_prologue: also tasks 6-9 after durable AP flags exist.
+
+  vanilla_reward_checks: major      # [SUPPORTED DEFAULT] off: no native reward-moment checks.
+                                     # major: 38 stable major moments (recommended).
+                                     # all_stable: also 8 crystal-only moments, 46 total.
+
+  mission_milestone_checks: "off"   # [SUPPORTED DEFAULT] off: no sub-mission node checks (recommended first release).
+                                     # major: curated persistent whitelist.
+                                     # all_audited: every separately audited finite milestone.
+
+  side_mission_sanity: selected     # [SUPPORTED DEFAULT] off: no bonus-task checks.
+                                     # selected: 24 finite challenges, source IDs 114-137 (recommended).
+                                     # orb_hunts: 41 get-to/orb-hunt tasks, IDs 73-113; experimental.
+                                     # all: all 65 source bonus tasks; experimental.
+
+  sanity_costs: free                # [SUPPORTED DEFAULT] free: bypass kiosk costs and pre-open R&C courses when purchase
+                                     # sanity is off (recommended and logic-safe).
+                                     # vouchers: consume finite AP vouchers; future mode.
+                                     # vanilla: retain costs and allow repeatable gem farming/grind.
+
+  challenge_progression: safe       # [SUPPORTED DEFAULT] safe: EXCLUDES all gold/R&C medals, side IDs 127,129,130,
+                                     # 131,132,136, and experimental orb hunts from progression/useful.
+                                     # all: every enabled challenge may hold progression.
+                                     # none: all side/medal checks are EXCLUDED and hold filler/traps only.
+
+  medal_sanity: "off"               # [SUPPORTED DEFAULT] off: no medal checks (recommended).
+                                     # gold_only: 7 gold checks.
+                                     # silver_and_gold: 14 checks.
+                                     # all_explicit: 21 bronze/silver/gold checks.
+
+  precursor_orb_sanity: global_bundles # [SUPPORTED DEFAULT]
+                                     # off: no Precursor Orb checks.
+                                     # global_bundles: threshold checks at a fixed step (recommended).
+                                     # global_milestones: curated ten thresholds.
+                                     # regional_bundles: experimental region-attributed totals.
+                                     # individual_static: experimental stable-ID pickup checks.
+
+  precursor_orb_bundle_size: 25     # [SUPPORTED DEFAULT] 10-100. Creates thresholds up to the 600-orb maximum.
+                                     # Step 25 creates 24 locations.
+
+  precursor_orb_progression_cap: 300 # [SUPPORTED DEFAULT]
+                                     # 0-600. Orb thresholds above this are marked EXCLUDED.
+                                     # AP Orb Packs never count toward local-world orb thresholds.
+
+  skull_gem_sanity: "off"           # [SUPPORTED DEFAULT] off: recommended; enemy drops are repeatable.
+                                     # cumulative_milestones: finite local-earned-total thresholds.
+                                     # secret_purchases: finite first-time purchase checks.
+                                     # both: milestones plus purchases.
+                                     # individual_static: experimental non-respawning static gems only.
+
+  skull_gem_bundle_size: 25         # [SUPPORTED DEFAULT] 5-100. Step for cumulative Skull Gem milestone mode.
+                                     # AP Gem Packs never count toward local-world thresholds.
+
+  secret_purchase_sanity: "off"     # [SUPPORTED DEFAULT] off: recommended first release; free mode pre-opens R&C content
+                                     # without auto-checking a purchase location.
+                                     # milestones_free: first/third/sixth/all purchase milestones, no cost.
+                                     # individual_free: one check per audited purchase, no cost.
+                                     # individual_vanilla_costs: preserve native costs and grind.
+
+  allow_experimental_checks: false  # [SUPPORTED DEFAULT] false rejects unaudited individual/orb-hunt/milestone modes.
+                                     # Set true only when the APWorld and OpenGOAL client tables match.
+
+  # ---------------------------------------------------------------------------
+  # Item shuffle and logic options
+  # ---------------------------------------------------------------------------
+
+  gun_shuffle: individual_mods      # [SUPPORTED DEFAULT] vanilla: native gun rewards.
+                                     # base_and_upgrades: progressive color families.
+                                     # individual_mods: all 12 named mods shuffled (recommended).
+
+  gun_logic: reliable_ranged        # [SUPPORTED DEFAULT] none: guns are useful only; combat may be melee/bootstrapped.
+                                     # reliable_ranged: Blaster OR Vulcan Fury satisfies RANGED (recommended).
+                                     # color_specific_experimental: exact color/mod requirements.
+
+  ammo_upgrade_shuffle: true        # [SUPPORTED DEFAULT] true shuffles two ammo-capacity upgrades per color as useful items.
+
+  armor_shuffle: useful             # [SUPPORTED DEFAULT] vanilla: native armor rewards.
+                                     # useful: four Progressive Armor items, never logic (recommended).
+                                     # progression_experimental: allows armor rules; not recommended.
+
+  jetboard_shuffle: true            # [SUPPORTED DEFAULT] true puts the base Jetboard in the AP pool as progression.
+
+  jetboard_upgrade_shuffle: true    # [SUPPORTED DEFAULT] true shuffles Launch as progression and Zap as useful.
+                                     # false leaves both native after task 29. Board Trail is never an item.
+
+  invisibility_statues_shuffle: true # [SUPPORTED DEFAULT] true shuffles the Temple statue ability as progression.
+                                     # Task 27 temporarily supplies it after the lesson so the player can exit.
+                                     # false leaves the native post-task-27 event and removes the AP item.
+
+  light_power_shuffle: all          # [SUPPORTED DEFAULT] vanilla: native Light power rewards.
+                                     # key_powers: only Light Flight shuffled; other powers native/useful.
+                                     # all: Regen, Freeze, Shield, Flight shuffled (recommended).
+
+  dark_power_shuffle: all           # [SUPPORTED DEFAULT] vanilla: native Dark power rewards.
+                                     # key_powers: Dark Bomb and Dark Strike shuffled; Dark Blast native.
+                                     # all: Dark Bomb/Strike progression and Dark Blast useful (recommended).
+                                     # Secret cheats are controlled separately and excluded by default.
+                                     # Base Dark Jak/Dark Eco remain opening state.
+
+  vehicle_shuffle: progressive_licenses # [SUPPORTED DEFAULT]
+                                     # vanilla: native vehicle ownership.
+                                     # progressive_licenses: Basic, Jump, Combat capability stages (recommended).
+                                     # individual_experimental: each buggy is a separate item.
+
+  eco_crystal_shuffle: "off"        # [SUPPORTED DEFAULT] off: crystals excluded because they do nothing directly (recommended).
+                                     # useful_tokens: harmless collectible/useful tokens.
+                                     # relic_tokens: custom AP relic group; changes progression and finale logic.
+
+  secret_upgrade_shuffle: "off"     # [SUPPORTED DEFAULT] off: recommended first release; secret grant hooks are unaudited.
+                                     # useful: only audited weapon modifiers, vehicle toughness, and three
+                                     # secret vehicles become useful; cheats/debug/gallery entries stay out.
+
+  # ---------------------------------------------------------------------------
+  # Filler distribution
+  # ---------------------------------------------------------------------------
+
+  filler_item_weights:              # [SUPPORTED DEFAULT] Exact relative weights; zero disables a filler type.
+    "Precursor Orb Pack (5)": 20    # Spendable currency; never advances local orb sanity.
+    "Precursor Orb Pack (10)": 10
+    "Precursor Orb Pack (25)": 4
+    "Skull Gem Pack (1)": 12       # Spendable currency; never advances local gem sanity.
+    "Skull Gem Pack (3)": 6
+    "Skull Gem Pack (5)": 2
+    "Red Ammo Refill": 8
+    "Yellow Ammo Refill": 8
+    "Blue Ammo Refill": 8
+    "Dark Ammo Refill": 4
+    "Health Refill": 10
+    "Light Eco Refill": 6
+    "Dark Eco Refill": 6
+    "Vehicle Repair": 6
+    "Vehicle Turbo Refill": 4
+
+  # ---------------------------------------------------------------------------
+  # Traps and network-linked effects
+  # ---------------------------------------------------------------------------
+
+  trap_percentage: 0               # [SUPPORTED DEFAULT] 0-100. Percentage of remaining filler replaced by traps.
+                                     # Traps never replace progression/useful items. Default 0.
+
+  trap_duration: 20                # [SUPPORTED DEFAULT] 5-120 seconds for temporary traps.
+
+  trap_weights:                    # [SUPPORTED DEFAULT] Relative selection weights when trap_percentage > 0.
+    "Sandstorm Trap": 3           # Temporary visibility reduction.
+    "Low Gravity Trap": 2         # Temporary movement modifier.
+    "Gun Jam Trap": 1             # Temporarily prevents firing; queued in unsafe states.
+    "Eco Leak Trap": 1            # Slowly drains current eco, never permanent capacity.
+    "Vehicle Wobble Trap": 1      # Temporary steering perturbation; never unsafe ejection.
+
+  death_link: false                # [SUPPORTED DEFAULT] Share deaths through Archipelago. Off by default for long missions.
+
+  # ---------------------------------------------------------------------------
+  # Standard Archipelago placement controls (SUPPORTED; customize as needed)
+  # ---------------------------------------------------------------------------
+
+  start_inventory_from_pool: {}    # Remove listed counts from the pool and start with them.
+                                     # Example: {"Jetboard": 1}. Preferred over adding extra copies.
+
+  start_inventory: {}              # Add starting items without removing pool copies.
+                                     # Use sparingly; can create duplicate native-cap items.
+
+  local_items: []                  # Force listed Jak 3 items to remain in this player's world.
+
+  non_local_items: []              # Force listed items outside this player's world.
+                                     # Do not put early-guarantee items here unless guarantees are disabled.
+
+  start_hints: []                  # Item names automatically hinted at seed start.
+
+  start_location_hints: []         # Location names automatically hinted at seed start.
+
+  exclude_locations: []            # User-excluded locations hold filler/traps only.
+                                     # Rules remain unchanged and full accessibility still applies.
+
+  priority_locations: []           # Bias progression toward these reachable locations.
+
+  item_links: []                   # Standard Archipelago item-link definitions, if used by the group.
+
+  plando_items: []                 # Standard Archipelago planned item placements.
+                                     # Plando must obey access/item rules and stable location names.

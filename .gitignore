@@ -1,6 +1,11 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+build/
 dist/
 jak3-ap-state.tmp
 jak3-ap-state.txt
+*.log

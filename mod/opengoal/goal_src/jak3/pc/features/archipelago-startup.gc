@@ -1,0 +1,76 @@
+;; Minimal pre-(mi) Jak 3 Archipelago compilation warning.
+;;
+;; This file is intentionally separate from archipelago.gc. At initial nREPL
+;; attach, goalc has enough of the running game's type state to load a small
+;; display process, but not every file-stream overload used by the full bridge.
+(in-package goal)
+
+(define-extern *default-dead-pool* dead-pool)
+(define-extern *display-pool* process-tree)
+(define-extern *font-default-matrix* matrix)
+(define-extern kill-by-name (function string process-tree symbol))
+(define-extern set-to-run
+  (function cpu-thread function object object object object object object pointer))
+(define-extern print-game-text (function string font-context symbol int bucket-id float))
+
+;; suspend is normally supplied as a macro by gkernel-h.gc. The pre-build
+;; compiler imports type metadata rather than compiling the full kernel source,
+;; so keep this tiny equivalent local to the bootstrap overlay.
+(defmacro ap-bootstrap-suspend ()
+  `(rlet ((pp :reg r13 :reset-here #t))
+     (set! pp (-> (the process pp) top-thread))
+     ((-> (the cpu-thread pp) suspend-hook) (the cpu-thread 0))))
+
+(defmacro ap-bootstrap-spawn (func &rest args)
+  ;; process-spawn-function is defined later in the normal (mi) build. Keep the
+  ;; pre-compile source independent by expanding the same kernel operations.
+  (with-gensyms (worker)
+    `(let ((,worker
+             (the-as process
+               (get-process *default-dead-pool* process #x4000 1))))
+       (when ,worker
+         ((method-of-type process activate)
+          ,worker *display-pool* "ap-startup-wait" (the pointer #x70004000))
+         ((the (function _varargs_ object) set-to-run)
+          (-> ,worker main-thread) ,func ,@args)
+         (the (pointer process) (-> ,worker ppointer))))))
+
+(defun ap-bootstrap-hide-startup-wait! ()
+  ;; Safe when no overlay exists; also clears one left by a retried connection.
+  (kill-by-name "ap-startup-wait" *display-pool*)
+  0)
+
+(defun ap-bootstrap-show-startup-wait! ()
+  ;; Match Jak 1's compile cue: draw for 4.5 seconds of each 5-second cycle,
+  ;; leaving a short blank interval so the warning visibly flashes.
+  (ap-bootstrap-hide-startup-wait!)
+  (let ((message
+          (new 'global 'string 128
+            "JAK 3 ARCHIPELAGO IS COMPILING...~%PLEASE WAIT FOR THE TITLE MENU!")))
+    (let ((worker
+            (ap-bootstrap-spawn
+              (lambda :behavior process
+                ((text string))
+                (let ((frames 0))
+                  ;; The client removes this at the (mi) completion barrier.
+                  ;; Expire it if the compiler connection dies before cleanup.
+                  (while (< frames 54000)
+                    (when (< (mod frames 300) 270)
+                      (let ((font
+                              (new 'stack 'font-context
+                                *font-default-matrix*
+                                25
+                                150
+                                0.0
+                                (font-color default)
+                                (font-flags shadow kerning middle middle-vert large))))
+                        (set! (-> font width) (the float 452))
+                        (set! (-> font height) (the float 80))
+                        (print-game-text text font #f 128 (bucket-id hud-draw-hud-alpha))))
+                    (+! frames 1)
+                    (ap-bootstrap-suspend)))
+                (none))
+              message)))
+      (if worker
+          #t
+          #f))))

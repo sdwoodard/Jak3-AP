@@ -1,0 +1,62 @@
+name: Release APWorld
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v7
+
+      - name: Verify tag matches APWorld version
+        shell: pwsh
+        run: |
+          $tagVersion = $env:GITHUB_REF_NAME -replace '^v', ''
+          $manifest = Get-Content .\worlds\jak3\archipelago.json -Raw | ConvertFrom-Json
+          if ($tagVersion -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Release tags must use vMAJOR.MINOR.PATCH; got $env:GITHUB_REF_NAME"
+          }
+          if ($manifest.world_version -ne $tagVersion) {
+            throw "Tag $env:GITHUB_REF_NAME does not match world_version $($manifest.world_version)."
+          }
+
+      - name: Build self-contained APWorld
+        shell: pwsh
+        run: .\tools\build_apworld.ps1
+
+      - name: Write SHA-256 checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash .\dist\jak3.apworld -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content .\dist\jak3.apworld.sha256.txt "$hash  jak3.apworld" -NoNewline
+
+      - name: Create or update GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view $env:GITHUB_REF_NAME *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:GITHUB_REF_NAME `
+              .\dist\jak3.apworld `
+              .\dist\jak3.apworld.sha256.txt `
+              --clobber
+          } else {
+            gh release create $env:GITHUB_REF_NAME `
+              .\dist\jak3.apworld `
+              .\dist\jak3.apworld.sha256.txt `
+              --verify-tag `
+              --generate-notes `
+              --title "Jak 3 Archipelago $env:GITHUB_REF_NAME"
+          }
