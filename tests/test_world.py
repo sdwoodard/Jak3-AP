@@ -256,6 +256,7 @@ class Jak3WorldTest(WorldTestBase):
         self.assertEqual(
             SUPPORTED_RESOLVED_OPTIONS_HASH, slot_data["resolved_options_hash"]
         )
+        self.assertEqual(str(self.multiworld.seed_name), slot_data["seed_identifier"])
         self.assertEqual(72, slot_data["goal"]["native_task_id"])
 
 

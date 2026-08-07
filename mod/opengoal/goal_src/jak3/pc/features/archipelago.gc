@@ -4,7 +4,7 @@
 
 (defconstant AP-PROTOCOL-VERSION 2)
 (defconstant AP-GAME-INTEGRATION-VERSION 1)
-(defconstant AP-SLOT-DATA-VERSION 1)
+(defconstant AP-SLOT-DATA-VERSION 2)
 (defconstant AP-STATE-SCHEMA-VERSION 1)
 (defconstant AP-ITEM-TABLE-VERSION 2)
 (defconstant AP-LOCATION-TABLE-VERSION 2)

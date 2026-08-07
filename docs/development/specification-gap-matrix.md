@@ -86,7 +86,7 @@ notes must keep that distinction explicit.
 
 | Requirement | Current state | Status | Risk |
 | --- | --- | --- | --- |
-| AP inventory independent of native inventory | No active gameplay receipt path or durable AP ledger exists. | Missing | `R-006`, `R-007` |
+| AP inventory independent of native inventory | Schema 1 defines a Python-owned received-item journal/count ledger, but no item stream populates it and no native inventory is changed. | Storage contract / gameplay missing | `R-006`, `R-007` |
 | Exact 26 progression pool | Exact registry multiplicities and classifications are generated. | Implemented generator | `R-003` |
 | Exact 28 useful pool | Exact registry multiplicities and classifications are generated. | Implemented generator | `R-003` |
 | Route authorizations | All eight are present in the generated progression pool; receipt behavior and rules are absent. | Partial | `R-003`, `R-006` |
@@ -95,7 +95,7 @@ notes must keep that distinction explicit.
 | Jetboard Launch and Zap separation | Both distinct items are generated. Runtime application is absent. | Partial | `R-006` |
 | Dark/Light power dependency closure | Canonical named items and classifications are generated; runtime dependency behavior is absent. | Partial | `R-006` |
 | Progressive vehicle licenses | Canonical progressive license instances are generated. Runtime application is absent. | Partial | `R-006` |
-| AP currency versus local-earned counters | Currency packs participate in weighted filler generation; no AP balance or local-earned counter exists. | Partial | `R-014` |
+| AP currency versus local-earned counters | Currency packs participate in weighted filler generation and schema 1 reserves separate local-earned Orb/Gem counters; no runtime balance or earning hook exists. | Storage contract / runtime missing | `R-014` |
 | Filler weighting | All 93 filler items use one deterministic weighted draw in canonical order. | Implemented generator | `R-003` |
 | Trap default | Percentage zero prevents trap generation. | Implemented | — |
 | Trap effects when enabled | Future trap definitions remain public but unsupported options fail and generate zero traps. Runtime effects are deferred. | Missing/WIP | — |
@@ -118,8 +118,8 @@ notes must keep that distinction explicit.
 
 | Requirement | Current state | Status | Risk |
 | --- | --- | --- | --- |
-| Finite, monotonic, persistent checks | Task closure is observed in memory/transient file; server duplicate handling helps while online. | Partial | `R-007` |
-| Explicit stable public IDs | Literal first-release records, an independent full protocol-1 snapshot with exact retained-concept labels and permanent reservations, table versions, canonical serialization, and frozen item/location/mission hashes are automated. Runtime room/GOAL mismatch enforcement remains deferred. | Implemented contract / runtime pending | `R-012` |
+| Finite, monotonic, persistent checks | Schema 1 validates sorted explicit location-ID sets and an outbox, but no game hook records a check. | Storage contract / gameplay missing | `R-007` |
+| Explicit stable public IDs | Literal first-release records, permanent reservations, table versions/hashes, authenticated slot-data validation, and persistent-state ID rejection are automated. GOAL gameplay enforcement remains deferred. | Implemented Python contract / GOAL runtime pending | `R-012` |
 | Story task checks | Exactly 61 registry identities are generated; native task-close hooks remain absent. | Implemented generator / runtime missing | `R-007` |
 | Major reward checks | Exactly 38 audited registry identities are generated; reward hooks remain absent. | Implemented generator / runtime missing | `R-006` |
 | Selected side checks | Exactly the 24 tasks 114–137 are generated. | Implemented generator | `R-003` |
@@ -134,10 +134,10 @@ notes must keep that distinction explicit.
 
 | Requirement | Current state | Status | Risk |
 | --- | --- | --- | --- |
-| Persistent identity includes seed/team/slot/save/table version | Slot/state/table versions and hashes are frozen; no seed/team/slot/save binding or persistence exists. | Contract only | `R-007`, `R-012` |
-| Durable received-item ledger/index | Absent; the client requests no `ReceivedItems`. | Missing | `R-007` |
-| Durable location bitset | Absent; the client submits no locations. | Missing | `R-007` |
-| Durable pending-check outbox | None. | Missing | `R-007` |
+| Persistent identity includes seed/team/slot/save/table version | Schema 1 atomically persists and one-time binds the full identity/contract against opaque tested save descriptors. Live GOAL identity/freshness observation is deferred. | Automated storage engine / live binding pending | `R-007`, `R-012`, `R-019` |
+| Durable received-item ledger/index | Per-index `received`/`pending`/`applied` records, counts, and pending indices are schema-defined and round-trip tested; the client still requests no `ReceivedItems`. | Automated empty/storage model / gameplay missing | `R-007` |
+| Durable location bitset | Sorted explicit registry IDs are schema-defined and validated; no location hook populates them. | Automated storage model / gameplay missing | `R-007` |
+| Durable pending-check outbox | Schema-defined and relationship-validated; no location hook or network drain exists. | Automated storage model / gameplay missing | `R-007` |
 | Offline completion later sends exactly once | Not guaranteed. | Missing | `R-007` |
 | New-game reconstruction | Absent from the handshake milestone. | Missing | `R-011` |
 | Load-save reconstruction | Absent; protocol 2 has no `/game` command or inventory sync. | Missing | `R-006`, `R-011` |
@@ -150,10 +150,10 @@ notes must keep that distinction explicit.
 | --- | --- | --- | --- |
 | Client support log | Structured lifecycle, handshake, heartbeat, and exception events recorded. | Implemented | — |
 | Game/compiler support log | `gk`, `goalc`, client markers, and bridge events combined. | Implemented | `R-009` |
-| State snapshot on demand | `/diagnostics` records current bridge/client state and paths. | Implemented | — |
+| State snapshot on demand | `/diagnostics` distinguishes the temporary GOAL snapshot from the persistent root and records contract, binding, recovery, quarantine, and read-only status. | Implemented | — |
 | Received/sent HUD messages | Deliberately absent from protocol 2. | Missing | `R-011` |
 | Compile-wait text | Flashing overlay during compile path. | Implemented/Smoke verified | — |
-| Sufficient failure classification | Rich raw evidence exists; compiler-error detection and durable logic provenance remain incomplete. | Partial | `R-009`, `R-012` |
+| Sufficient failure classification | Typed persistence compatibility/binding/corruption/eligibility/lock/stale errors and client contract diagnostics exist; compiler-error detection and live save provenance remain incomplete. | Partial | `R-009`, `R-012`, `R-019` |
 
 ## Verification conflicts versus design corrections
 

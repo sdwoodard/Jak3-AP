@@ -17,15 +17,17 @@ static compatibility constants in the OpenGOAL bridge.
 | --- | ---: |
 | Protocol | 2 |
 | Game integration | 1 |
-| Slot data | 1 |
+| Slot data | 2 |
 | State schema | 1 |
 | Item table | 2 |
 | Location table | 2 |
 | Mission table | 1 |
 | Mission profiles | 1 |
 
-Protocol 2 remains handshake-only. State schema version 1 reserves the format
-identity needed by a later persistence milestone; no state is saved yet.
+Protocol 2 remains handshake-only. Slot-data version 2 adds the generated
+`multiworld.seed_name` as the mandatory opaque `seed_identifier`. State schema
+version 1 is active for the Python-owned persistent sidecar; it adds no
+gameplay transport or GOAL save behavior.
 
 ## Registry scope
 
@@ -78,13 +80,42 @@ Frozen table hashes:
 
 ## Slot-data shape
 
-`worlds/jak3/slot_data.py` is the schema authority. It includes protocol,
-integration, slot/state/table/profile versions; the three table hashes; the
-resolved-options hash and runtime-required resolved values; feature flags;
-task-72 goal and relic threshold; enabled location families; orb thresholds;
-selected/excluded challenge IDs; and trap duration.
+`worlds/jak3/slot_data.py` is the schema authority. It includes the opaque seed
+identifier; protocol, integration, slot/state/table/profile versions; the
+three table hashes; the resolved-options hash and runtime-required resolved
+values; feature flags; task-72 goal and relic threshold; enabled location
+families; orb thresholds; selected/excluded challenge IDs; and trap duration.
 
 Item/location name-to-ID mappings, legacy mission requirement tables, filler
 kinds, and equipment command maps are deliberately absent. Archipelago's data
 package supplies public names and IDs, while future runtime implementation will
 consume the versioned registry directly.
+
+On `Connected`, the Python client validates the complete contract and obtains
+team, slot, and canonical slot name from the authenticated packet. The
+`RoomInfo.seed_name` value is logged for diagnosis only and never binds state.
+
+## Persistent state shape
+
+`worlds/jak3/persistence.py` is the schema-1 authority. The payload includes
+all roadmap compatibility/binding fields, an instance UUID, and a monotonic
+revision. Unbound state has null seed/team/slot/name fields; every journal,
+explicit location-ID set, outbox, overlay, trap queue, counter, and goal flag
+starts empty, zero, or false.
+
+Received items are represented by explicit per-index records whose state is
+`received`, `pending`, or `applied`. The fields named `checked_location_bits`
+and `server_confirmed_location_bits` contain sorted, unique public location
+IDs; they are not declaration-order bit positions.
+
+The canonical payload is wrapped with its SHA-256. Unknown fields, invalid
+field relationships, unsupported public IDs, and incompatible contracts are
+rejected. Contract scalars and journal containers, records, indices, and count
+pairs require their exact declared types before serialization. Schema, format,
+version, and binding mismatches are preserved as read-only failures; malformed
+or checksum-invalid bytes enter the documented backup/quarantine flow.
+
+`StateSession.status` retains backup recovery when recovery and first binding
+occur in the same open operation. `StateSession.binding_performed` reports the
+binding as a separate fact, so diagnostics do not have to discard either
+event.

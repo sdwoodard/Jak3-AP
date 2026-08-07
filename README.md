@@ -6,10 +6,11 @@ records, and the future installer/release packaging.
 
 The repository is currently an **integration scaffold**, not a playable
 release. The active runtime is a harmless protocol-2 handshake that detects
-OpenGOAL, verifies the loaded source and versions, and exchanges ping/pong
-heartbeats. It intentionally does not process items, locations, rewards,
-saves, or missions. The retained 131-location generator is pre-release data
-characterization, not an active gameplay protocol or the design's Phase 1.
+OpenGOAL, verifies the loaded source, versions, and authenticated slot-data
+contract, and exchanges ping/pong heartbeats. A Python-owned schema-1 sidecar
+and binding engine is tested against opaque save descriptors, but live native
+identity/freshness observation is deferred to Milestone 7. The runtime still
+does not process items, locations, rewards, native saves, or missions.
 
 ## Repository layout
 

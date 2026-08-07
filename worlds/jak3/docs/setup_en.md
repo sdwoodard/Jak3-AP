@@ -26,9 +26,12 @@ recompiles, loads the bridge, and verifies protocol 2/game integration 1. The
 compile can take several minutes. A flashing message appears in the game while
 this is happening; wait until it disappears and `/repl status` reports ready.
 
-An Archipelago room connection is optional for this handshake milestone. Room
-state is reported to the game as client status but is not bound to a save and
-does not enable items or checks.
+An Archipelago room connection is optional for this handshake milestone. On a
+successful connection the client validates slot-data version 2, including the
+authenticated seed identifier, team, slot, canonical slot name, versions,
+hashes, options, and design contract. Live native-save identity/freshness
+observation is deferred to Milestone 7, so the client reports that binding is
+awaiting that descriptor and still enables no items or checks.
 
 Useful recovery commands in Jak 3 Client are:
 
@@ -36,8 +39,18 @@ Useful recovery commands in Jak 3 Client are:
 - `/repl status` — show transport, source, versions, session, and heartbeat.
 - `/repl connect` — retry compilation and bridge attachment.
 
-Protocol 2 does not start gameplay, bind or load a save, apply inventory,
-submit locations, report victory, modify missions, or show item messages.
+Protocol 2 does not start gameplay, bind a live save, apply inventory, submit
+locations, report victory, modify missions, or show item messages. The tested
+Python sidecar/binding engine is present but is not opened against live GOAL
+state yet.
+
+## AP state backups and save copies
+
+Schema-1 sidecars live under the platform user-data directory at
+`Archipelago/Jak3/state-v1`; `JAK3_AP_STATE_DIR` is an explicit portable/test
+override. Back up the native OpenGOAL save and this directory together while
+the Jak 3 client is closed. See [persistence_en.md](persistence_en.md) for the
+fresh-save, restore, copy, quarantine, and concurrent-writer policy.
 
 ## Troubleshooting
 

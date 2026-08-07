@@ -12,7 +12,8 @@ later gameplay work is not credited early.
 | 0–3 | Complete before revised roadmap | Historical implementation and protocol-2 evidence are retained in this directory. |
 | 4 — Consolidate normative sources and freeze the versioned data contract | **Complete** | Canonical in-repository sources, literal first-release registries, complete legacy ID retention/reservation, deterministic table/options hashes, versioned JSON-safe slot data, shared Python/GOAL constants, standalone tests, and push/PR CI are present and passing. |
 | 5 — Activate the exact default static APWorld pool | **Complete** | The active APWorld consumes the Milestone 4 registry and generates exactly 147 network locations, 26 progression instances, 28 useful instances, 93 weighted filler instances, zero traps, 65 hidden completion events, and one code-less Victory event. |
-| 6–26 | Not started | Deliberately outside this change. |
+| 6 — Add atomic persistent AP state and seed/save binding | **Complete** | Accepted Python-writer ADR, schema-1 atomic sidecar/binding engine, slot-data version 2 authenticated seed identity, recovery/quarantine/lock tests, and explicit Milestone 7 live-save deferral. |
+| 7–26 | Not started | Deliberately outside this change. |
 
 ## Milestone 4 completion evidence
 
@@ -68,17 +69,49 @@ later gameplay work is not credited early.
 - `tools/build_apworld.ps1` produced a validated 28-entry artifact with SHA-256
   `5e828817bfcf097bf4d72d4616e33e95a6e23ceee9047f12de350329b889d5ad`.
 
+## Milestone 6 completion evidence
+
+- [ADR-001](ADR-001-python-owned-ap-state.md) accepts Python as the sole
+  persistent writer and separates its atomic sidecar from GOAL's temporary
+  observation snapshot.
+- Schema 1 includes every roadmap field plus a state UUID and monotonic
+  revision. Fresh creation, one-time seed/team/slot/name/save binding,
+  explicit received-item states, sorted location IDs, save switching, clean
+  and unclean shutdown, and stale revision rejection are automated.
+- State uses the platform `Archipelago/Jak3/state-v1` data directory (or
+  `JAK3_AP_STATE_DIR`), SHA-256 native-identity filenames, canonical checksums,
+  same-directory temporary writes, retained atomic backup rotation, recovery,
+  collision-safe quarantine, and a root-wide nonblocking OS lock.
+- Compatibility and binding mismatches are read-only; tests cover every stored
+  protocol/integration/slot/schema/table/options/design field plus wrong seed,
+  team, slot, name, native slot, unsupported IDs, and corrupt backups.
+- Slot-data version 2 requires the generated seed identifier. `Connected`
+  validates the complete authenticated contract and canonical slot name;
+  `RoomInfo.seed_name` remains diagnostic-only. GOAL mirrors version 2 without
+  adding save or gameplay behavior.
+- The packaged APWorld suite passed **147 tests** from a disposable
+  Archipelago checkout with bytecode and pytest cache writes disabled.
+- Ruff lint and targeted formatting passed; mypy passed for all compatibility
+  modules including `persistence.py`.
+- `tools/verify_source_tables.ps1` passed all six source-audit groups, and both
+  Git-backed reference trees remained clean before and after verification.
+- `tools/build_apworld.ps1` produced a validated 30-entry artifact containing
+  `jak3/persistence.py`, with SHA-256
+  `a4c415999ce1b749d252840b1ebca7da53397a2fa97d83d942a083292bb3e827`.
+
 ## Explicitly deferred
 
 The active generator deliberately exposes one always-open, non-playable region
-until Milestone 12 supplies Standard reachability. Milestone 5 adds no early
-placement guarantees, received-item handling, location submission, persistence,
-mission hooks/dispatch, reward interception, native state mutation, or goal
-reporting. Runtime slot-data/table mismatch enforcement begins only when a
-later runtime milestone consumes the room contract.
+until Milestone 12 supplies Standard reachability. Milestone 6 adds storage and
+authenticated Python contract validation, but no early placement guarantees,
+received-item handling, location submission, mission hooks/dispatch, reward
+interception, native state mutation, or goal reporting. Live observation of a
+stable native identity and fresh/unprogressed status is deferred to Milestone
+7; production binding stays disabled until then.
 
 Open runtime risks remain recorded in [`../JAK3_AP_RISKS.md`](../JAK3_AP_RISKS.md),
 especially permissive generator logic (`R-003`), runtime goal reporting
 (`R-005`), gameplay persistence (`R-007`), mission/shadow behavior (`R-008`),
-runtime compatibility enforcement (`R-012`), early guarantees (`R-013`), and
-placement-control interactions (`R-018`).
+runtime compatibility enforcement (`R-012`), early guarantees (`R-013`),
+placement-control interactions (`R-018`), and live native-save provenance
+(`R-019`).

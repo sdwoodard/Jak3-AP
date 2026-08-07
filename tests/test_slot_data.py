@@ -30,6 +30,7 @@ from worlds.jak3.versions import (
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+TEST_SEED_IDENTIFIER = "AP_TEST_MILESTONE_6"
 GOAL_BRIDGE = (
     REPOSITORY_ROOT
     / "mod"
@@ -44,7 +45,10 @@ GOAL_BRIDGE = (
 
 class SlotDataContractTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.payload = build_slot_data(SUPPORTED_FIRST_RELEASE_OPTIONS)
+        self.payload = build_slot_data(
+            SUPPORTED_FIRST_RELEASE_OPTIONS,
+            seed_identifier=TEST_SEED_IDENTIFIER,
+        )
 
     def test_slot_data_has_only_the_versioned_first_release_shape(self) -> None:
         self.assertEqual(SLOT_DATA_KEYS, set(self.payload))
@@ -54,11 +58,18 @@ class SlotDataContractTest(unittest.TestCase):
         self.assertNotIn("filler", self.payload)
 
     def test_slot_data_is_deterministic_and_json_safe(self) -> None:
-        first = serialize_slot_data(SUPPORTED_FIRST_RELEASE_OPTIONS)
-        second = serialize_slot_data(SUPPORTED_FIRST_RELEASE_OPTIONS)
+        first = serialize_slot_data(
+            SUPPORTED_FIRST_RELEASE_OPTIONS,
+            seed_identifier=TEST_SEED_IDENTIFIER,
+        )
+        second = serialize_slot_data(
+            SUPPORTED_FIRST_RELEASE_OPTIONS,
+            seed_identifier=TEST_SEED_IDENTIFIER,
+        )
         self.assertEqual(first, second)
         self.assertEqual(self.payload, json.loads(first.decode("utf-8")))
         self.assertTrue(first.endswith(b"\n"))
+        self.assertEqual(TEST_SEED_IDENTIFIER, self.payload["seed_identifier"])
 
     def test_versions_hashes_and_goal_are_frozen(self) -> None:
         self.assertEqual(PROTOCOL_VERSION, self.payload["protocol_version"])
@@ -116,7 +127,34 @@ class SlotDataContractTest(unittest.TestCase):
 
         unsupported = replace(SUPPORTED_FIRST_RELEASE_OPTIONS, trap_duration=21)
         with self.assertRaisesRegex(ValueError, "resolved_options_hash"):
-            build_slot_data(unsupported)
+            build_slot_data(
+                unsupported,
+                seed_identifier=TEST_SEED_IDENTIFIER,
+            )
+
+        for seed_identifier in ("", "x" * 129, "bad\nseed"):
+            with self.subTest(seed_identifier=seed_identifier):
+                with self.assertRaisesRegex(ValueError, "seed_identifier"):
+                    build_slot_data(
+                        SUPPORTED_FIRST_RELEASE_OPTIONS,
+                        seed_identifier=seed_identifier,
+                    )
+
+    def test_json_boolean_integer_type_aliases_are_rejected(self) -> None:
+        changed = json.loads(json.dumps(self.payload))
+        changed["game_integration_version"] = True
+        with self.assertRaisesRegex(ValueError, "game_integration_version"):
+            validate_slot_data(changed)
+
+        changed = json.loads(json.dumps(self.payload))
+        changed["resolved_options"]["death_link"] = 0
+        with self.assertRaisesRegex(ValueError, "resolved option values"):
+            validate_slot_data(changed)
+
+        changed = json.loads(json.dumps(self.payload))
+        changed["features"]["traps"] = 0
+        with self.assertRaisesRegex(ValueError, "feature flags"):
+            validate_slot_data(changed)
 
     def test_goal_bridge_constants_match_python_contract(self) -> None:
         source = GOAL_BRIDGE.read_text(encoding="utf-8")

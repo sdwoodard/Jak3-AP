@@ -195,7 +195,10 @@ class Jak3World(World):
         set_rules(self, self.resolved_options)
 
     def fill_slot_data(self) -> dict:
-        return build_slot_data(self.resolved_options)
+        return build_slot_data(
+            self.resolved_options,
+            seed_identifier=str(self.multiworld.seed_name),
+        )
 
     def get_filler_item_name(self) -> str:
         return self._weighted_filler_names(1)[0]

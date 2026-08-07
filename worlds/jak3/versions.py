@@ -8,11 +8,12 @@ protocol-1 scaffold remains frozen separately at table version 1.
 DESIGN_VERSION = "0.3"
 
 # Protocol 2 remains the handshake-only boundary established before gameplay
-# delivery.  Milestone 4 adds data compatibility metadata, not gameplay I/O.
+# delivery. Milestone 6 activates Python persistence and authenticated slot
+# validation without adding gameplay I/O.
 PROTOCOL_VERSION = 2
 GAME_INTEGRATION_VERSION = 1
 
-SLOT_DATA_VERSION = 1
+SLOT_DATA_VERSION = 2
 STATE_SCHEMA_VERSION = 1
 ITEM_TABLE_VERSION = 2
 LOCATION_TABLE_VERSION = 2

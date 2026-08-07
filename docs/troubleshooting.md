@@ -21,6 +21,8 @@ The client log covers the Archipelago and mod side of the session:
 - nREPL connection attempts, commands, completion barriers, and failures;
 - AP connection state, room seed/slot identity when available, and the
   temporary handshake session;
+- the persistent sidecar root and contract-validation, binding, recovery,
+  quarantine, and read-only failure status;
 - protocol and game-integration versions, connection-ready state, heartbeats,
   the last command/result, and the bridge status message; and
 - an on-demand handshake snapshot plus uncaught background-task tracebacks.
@@ -71,12 +73,15 @@ attachments are preferable.
   heartbeat.
 - Stale or partial state: look for a missing frame marker, revision mismatch,
   or reconnect message. The client rejects incomplete snapshot writes.
+- Persistent state failure: distinguish the temporary bridge path from the
+  persistent root. Do not edit a rejected sidecar. Preserve the primary,
+  `.bak`, and every `.corrupt.*` or `.interrupted.*` file with the logs.
 - Crashes or hangs: use the final OpenGOAL lines, recorded process exit code,
   and any traceback in the client log.
 
 This milestone intentionally has no item delivery, location checks, mission
-changes, rewards, save binding, or victory reporting. Their absence in the
-logs is expected.
+changes, rewards, live native-save binding, or victory reporting. Their
+absence in the logs is expected.
 
 OpenGOAL also maintains its own rotating native logs beneath the active
 project. The matched pair should be requested first; native logs are only a

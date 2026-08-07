@@ -50,8 +50,10 @@ jobs:
             worlds/jak3/legacy_ids.py `
             worlds/jak3/registry.py `
             worlds/jak3/slot_data.py `
+            worlds/jak3/persistence.py `
             tests/test_registry.py `
             tests/test_slot_data.py `
+            tests/test_persistence.py `
             tests/test_ci.py
 
       - name: Type check compatibility modules
@@ -65,6 +67,7 @@ jobs:
           worlds/jak3/legacy_ids.py
           worlds/jak3/registry.py
           worlds/jak3/slot_data.py
+          worlds/jak3/persistence.py
 
       - name: Build APWorld package
         shell: pwsh

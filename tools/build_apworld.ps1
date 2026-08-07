@@ -119,6 +119,7 @@ try {
         throw "Packaged APWorld is missing jak3/archipelago.json."
     }
     $requiredEntries = @(
+        "jak3/persistence.py",
         "jak3/agents/launcher.py",
         "jak3/agents/diagnostics.py",
         "jak3/agents/protocol.py",

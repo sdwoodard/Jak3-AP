@@ -22,6 +22,8 @@ class ContinuousIntegrationWorkflowTest(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertIn(command, source)
         self.assertTrue(re.search(r"AP_TEST_WORLDS\s*=\s*\"jak3\"", source))
+        self.assertGreaterEqual(source.count("worlds/jak3/persistence.py"), 2)
+        self.assertIn("tests/test_persistence.py", source)
 
 
 if __name__ == "__main__":

@@ -1,8 +1,9 @@
 """Archipelago client and lifecycle supervisor for the Jak 3 handshake bridge.
 
-Protocol 2 intentionally verifies only process attachment, source compatibility,
-session status, and a harmless ping/pong. It does not process received items,
-submit locations, report a goal, or modify missions or saves.
+Protocol 2 verifies process attachment, source compatibility, session status,
+a harmless ping/pong, and the authenticated slot-data contract. It does not
+open live native-save state, process received items, submit locations, report a
+goal, or modify missions or saves.
 """
 
 from __future__ import annotations
@@ -38,6 +39,11 @@ from .agents.protocol import (
 )
 from .agents.repl_client import OpenGoalRepl
 from .game_id import GAME_NAME
+from .persistence import (
+    AuthenticatedSlot,
+    StateCompatibilityError,
+    default_state_root,
+)
 from .registry import ITEM_TABLE_HASH, LOCATION_TABLE_HASH, MISSION_TABLE_HASH
 from .versions import (
     ITEM_TABLE_VERSION,
@@ -113,7 +119,29 @@ class Jak3CommandProcessor(ClientCommandProcessor):
             self.output(f"Session: {self.ctx.diagnostics.session_id}")
         if self.ctx.last_bridge_error:
             self.output(f"Last bridge error: {self.ctx.last_bridge_error}")
-        self.output(f"State file: {self.ctx.state_path}")
+        self.output(f"Temporary bridge snapshot: {self.ctx.state_path}")
+        self.output(f"Persistent state root: {self.ctx.persistence_root}")
+        self.output(
+            f"Persistence contract validation: {self.ctx.persistence_contract_status}"
+        )
+        if self.ctx.authenticated_slot is not None:
+            binding = self.ctx.authenticated_slot
+            self.output(
+                "Authenticated state contract: "
+                f"seed={binding.seed_identifier} team={binding.team} "
+                f"slot={binding.slot} name={binding.slot_name}"
+            )
+            self.output(f"Native save binding: {self.ctx.persistence_binding_status}")
+        elif self.ctx.slot_contract_error:
+            self.output(f"Authenticated state contract: rejected ({self.ctx.slot_contract_error})")
+        else:
+            self.output("Authenticated state contract: unavailable")
+        self.output(f"Recovery: {self.ctx.persistence_recovery_status}")
+        self.output(f"Quarantine: {self.ctx.persistence_quarantine_status}")
+        if self.ctx.persistence_read_only_failure:
+            self.output(
+                f"Persistence read-only failure: {self.ctx.persistence_read_only_failure}"
+            )
 
     def _cmd_diagnostics(self) -> None:
         """Record current state and show the two files needed for troubleshooting."""
@@ -149,7 +177,15 @@ class Jak3Context(CommonContext):
             self.state_path = (
                 Path(tempfile.gettempdir()) / f"jak3-ap-{diagnostics.session_id}.tmp"
             ).resolve()
+        self.persistence_root = default_state_root()
         self.room_seed = ""
+        self.authenticated_slot: AuthenticatedSlot | None = None
+        self.slot_contract_error = ""
+        self.persistence_contract_status = "not authenticated"
+        self.persistence_binding_status = "not attempted"
+        self.persistence_recovery_status = "not attempted"
+        self.persistence_quarantine_status = "not attempted"
+        self.persistence_read_only_failure = ""
         self.protocol: BridgeProtocol | None = None
         self.game_attached = False
         self.source_loaded = False
@@ -187,14 +223,47 @@ class Jak3Context(CommonContext):
     def on_package(self, cmd: str, args: dict) -> None:
         if cmd == "RoomInfo":
             self.room_seed = args.get("seed_name", "")
+            self.authenticated_slot = None
+            self.slot_contract_error = ""
+            self.persistence_contract_status = "awaiting Connected slot data"
+            self.persistence_binding_status = "not attempted"
+            self.persistence_read_only_failure = ""
             logger.info(
-                "Received RoomInfo seed_name=%r; handshake remains save/room independent.",
+                "Received diagnostic RoomInfo seed_name=%r; binding uses authenticated slot data.",
                 self.room_seed,
             )
         elif cmd == "Connected":
+            try:
+                slot_name = self.slot_info[args["slot"]].name
+                self.authenticated_slot = AuthenticatedSlot.from_connected_packet(
+                    args["slot_data"],
+                    team=args["team"],
+                    slot=args["slot"],
+                    slot_name=slot_name,
+                )
+            except (AttributeError, KeyError, TypeError, StateCompatibilityError) as exc:
+                self.authenticated_slot = None
+                self.slot_contract_error = str(exc)
+                self.persistence_contract_status = "rejected"
+                self.persistence_binding_status = "refused read-only"
+                self.persistence_read_only_failure = str(exc)
+                logger.error(
+                    "Authenticated Jak 3 slot data is incompatible; persistence binding "
+                    "is disabled: %s",
+                    exc,
+                )
+                return
+            self.slot_contract_error = ""
+            self.persistence_contract_status = "validated"
+            self.persistence_binding_status = "awaiting Milestone 7 native save identity"
+            self.persistence_read_only_failure = ""
             logger.info(
-                "Authenticated slot=%r; protocol 2 does not bind room or save state.",
-                self.auth,
+                "Authenticated state contract seed=%r team=%d slot=%d name=%r; "
+                "native save binding awaits the Milestone 7 save descriptor.",
+                self.authenticated_slot.seed_identifier,
+                self.authenticated_slot.team,
+                self.authenticated_slot.slot,
+                self.authenticated_slot.slot_name,
             )
 
     def _write_diagnostic_snapshot(self, reason: str) -> None:
@@ -222,6 +291,23 @@ class Jak3Context(CommonContext):
             "mission_table_hash": MISSION_TABLE_HASH,
             "session_id": self.diagnostics.session_id,
             "state_path": str(self.state_path),
+            "persistence_root": str(self.persistence_root),
+            "persistence_contract_status": self.persistence_contract_status,
+            "persistence_binding_status": self.persistence_binding_status,
+            "persistence_recovery_status": self.persistence_recovery_status,
+            "persistence_quarantine_status": self.persistence_quarantine_status,
+            "persistence_read_only_failure": self.persistence_read_only_failure,
+            "slot_contract": (
+                None
+                if self.authenticated_slot is None
+                else {
+                    "seed_identifier": self.authenticated_slot.seed_identifier,
+                    "team": self.authenticated_slot.team,
+                    "slot": self.authenticated_slot.slot,
+                    "slot_name": self.authenticated_slot.slot_name,
+                }
+            ),
+            "slot_contract_error": self.slot_contract_error,
             "bridge_state": asdict(snapshot) if snapshot is not None else None,
             "last_bridge_error": self.last_bridge_error,
             "client_log": str(self.diagnostics.client_log),
@@ -455,7 +541,8 @@ async def main() -> None:
     diagnostics = DiagnosticSession.create()
     diagnostics.initialize()
     ctx = Jak3Context(None, None, diagnostics)
-    logger.info("Temporary protocol state path=%s.", ctx.state_path)
+    logger.info("Temporary bridge snapshot path=%s.", ctx.state_path)
+    logger.info("Persistent AP state root=%s.", ctx.persistence_root)
     logger.info("Use /repl status or /diagnostics to inspect the handshake.")
     ctx.server_task = asyncio.create_task(server_loop(ctx), name="server loop")
     supervisor = create_logged_task(protocol_supervisor(ctx), "Jak3 protocol supervisor")

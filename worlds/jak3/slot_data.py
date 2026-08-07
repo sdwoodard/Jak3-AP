@@ -71,6 +71,7 @@ RUNTIME_OPTION_FIELDS = (
 
 SLOT_DATA_KEYS = frozenset(
     {
+        "seed_identifier",
         "protocol_version",
         "game_integration_version",
         "slot_data_version",
@@ -119,7 +120,43 @@ def _runtime_options(resolved: ResolvedJak3Options) -> dict[str, Any]:
     return {name: getattr(resolved, name) for name in RUNTIME_OPTION_FIELDS}
 
 
-def build_slot_data(resolved: ResolvedJak3Options) -> dict[str, Any]:
+def _validate_seed_identifier(seed_identifier: object) -> str:
+    if not isinstance(seed_identifier, str):
+        raise ValueError("Jak 3 slot data `seed_identifier` must be a string.")
+    if not seed_identifier or len(seed_identifier) > 128:
+        raise ValueError(
+            "Jak 3 slot data `seed_identifier` must contain 1-128 characters."
+        )
+    if any(
+        ord(character) < 32 or ord(character) == 127 for character in seed_identifier
+    ):
+        raise ValueError(
+            "Jak 3 slot data `seed_identifier` must not contain control characters."
+        )
+    return seed_identifier
+
+
+def _exact_json_match(found: Any, expected: Any) -> bool:
+    """Return whether two JSON values have identical values and concrete types."""
+
+    if type(found) is not type(expected):
+        return False
+    if isinstance(expected, dict):
+        return found.keys() == expected.keys() and all(
+            _exact_json_match(found[key], expected_value)
+            for key, expected_value in expected.items()
+        )
+    if isinstance(expected, list):
+        return len(found) == len(expected) and all(
+            _exact_json_match(found_value, expected_value)
+            for found_value, expected_value in zip(found, expected)
+        )
+    return found == expected
+
+
+def build_slot_data(
+    resolved: ResolvedJak3Options, *, seed_identifier: str
+) -> dict[str, Any]:
     """Build the deterministic JSON-safe first-release slot-data payload."""
 
     side_task_ids = sorted(
@@ -139,6 +176,7 @@ def build_slot_data(resolved: ResolvedJak3Options) -> dict[str, Any]:
     )
 
     payload = {
+        "seed_identifier": _validate_seed_identifier(seed_identifier),
         "protocol_version": PROTOCOL_VERSION,
         "game_integration_version": GAME_INTEGRATION_VERSION,
         "slot_data_version": SLOT_DATA_VERSION,
@@ -208,6 +246,8 @@ def validate_slot_data(payload: dict[str, Any]) -> None:
             f"Invalid Jak 3 slot-data keys: missing={missing}, unknown={unknown}"
         )
 
+    _validate_seed_identifier(payload["seed_identifier"])
+
     expected = {
         "protocol_version": PROTOCOL_VERSION,
         "game_integration_version": GAME_INTEGRATION_VERSION,
@@ -224,7 +264,7 @@ def validate_slot_data(payload: dict[str, Any]) -> None:
         "design_version": DESIGN_VERSION,
     }
     for key, expected_value in expected.items():
-        if payload[key] != expected_value:
+        if not _exact_json_match(payload[key], expected_value):
             raise ValueError(
                 f"Incompatible Jak 3 slot data `{key}`: "
                 f"expected {expected_value!r}, found {payload[key]!r}."
@@ -232,15 +272,23 @@ def validate_slot_data(payload: dict[str, Any]) -> None:
 
     if set(payload["resolved_options"]) != set(RUNTIME_OPTION_FIELDS):
         raise ValueError("Jak 3 slot data has an incompatible resolved-options shape.")
-    if payload["resolved_options"] != _runtime_options(SUPPORTED_FIRST_RELEASE_OPTIONS):
+    if not _exact_json_match(
+        payload["resolved_options"],
+        _runtime_options(SUPPORTED_FIRST_RELEASE_OPTIONS),
+    ):
         raise ValueError("Jak 3 slot data has unsupported resolved option values.")
-    if payload["goal"] != {
-        "mode": "complete_city_win",
-        "native_task_id": 72,
-        "finale_relic_requirement": 5,
-    }:
+    if not _exact_json_match(
+        payload["goal"],
+        {
+            "mode": "complete_city_win",
+            "native_task_id": 72,
+            "finale_relic_requirement": 5,
+        },
+    ):
         raise ValueError("Jak 3 slot data has an unsupported goal contract.")
-    if payload["trap_duration"] != payload["resolved_options"]["trap_duration"]:
+    if not _exact_json_match(
+        payload["trap_duration"], payload["resolved_options"]["trap_duration"]
+    ):
         raise ValueError(
             "Jak 3 slot data trap duration disagrees with resolved options."
         )
@@ -258,30 +306,43 @@ def validate_slot_data(payload: dict[str, Any]) -> None:
         "death_link": False,
         "experimental_checks": False,
     }
-    if payload["features"] != expected_features:
+    if not _exact_json_match(payload["features"], expected_features):
         raise ValueError("Jak 3 slot data has incompatible feature flags.")
-    if payload["enabled_location_families"] != [
-        "major_reward",
-        "precursor_orb_threshold",
-        "selected_side_challenge",
-        "story_completion",
-    ]:
+    if not _exact_json_match(
+        payload["enabled_location_families"],
+        [
+            "major_reward",
+            "precursor_orb_threshold",
+            "selected_side_challenge",
+            "story_completion",
+        ],
+    ):
         raise ValueError("Jak 3 slot data has incompatible location families.")
-    if payload["orb_thresholds"] != {
-        "mode": "global_bundles",
-        "bundle_size": 25,
-        "maximum": 600,
-        "progression_cap": 300,
-        "enabled_thresholds": list(range(25, 601, 25)),
-    }:
+    if not _exact_json_match(
+        payload["orb_thresholds"],
+        {
+            "mode": "global_bundles",
+            "bundle_size": 25,
+            "maximum": 600,
+            "progression_cap": 300,
+            "enabled_thresholds": list(range(25, 601, 25)),
+        },
+    ):
         raise ValueError("Jak 3 slot data has an incompatible orb-threshold contract.")
-    if payload["challenge_policy"] != {
-        "mode": "safe",
-        "selected_task_ids": list(range(114, 138)),
-        "excluded_task_ids": [127, 129, 130, 131, 132, 136],
-    }:
+    if not _exact_json_match(
+        payload["challenge_policy"],
+        {
+            "mode": "safe",
+            "selected_task_ids": list(range(114, 138)),
+            "excluded_task_ids": [127, 129, 130, 131, 132, 136],
+        },
+    ):
         raise ValueError("Jak 3 slot data has an incompatible challenge policy.")
 
 
-def serialize_slot_data(resolved: ResolvedJak3Options) -> bytes:
-    return canonical_json_bytes(build_slot_data(resolved))
+def serialize_slot_data(
+    resolved: ResolvedJak3Options, *, seed_identifier: str
+) -> bytes:
+    return canonical_json_bytes(
+        build_slot_data(resolved, seed_identifier=seed_identifier)
+    )

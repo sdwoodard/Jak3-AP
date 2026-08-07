@@ -37,6 +37,7 @@ class PackagedWorldRegistrationTest(unittest.TestCase):
             {
                 "jak3/__init__.py",
                 "jak3/client.py",
+                "jak3/persistence.py",
                 "jak3/agents/launcher.py",
                 "jak3/agents/protocol.py",
                 "jak3/assets/opengoal/archipelago.gc",

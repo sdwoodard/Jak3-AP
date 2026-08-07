@@ -100,7 +100,7 @@ Owners are deliberately role-based until maintainers assign people.
   and Archipelago goal reporting/reconnect resend.
 - Current evidence: Milestone 5 generates task 71 as a network location and
   task 72 City Win only as a locked code-less Victory event. Its event item is
-  the completion condition, and slot-data version 1 names task 72 plus the
+  the completion condition, and slot-data version 2 names task 72 plus the
   five-relic threshold. The permissive scaffold makes the event immediately
   reachable; runtime goal reporting remains absent until Milestone 23.
 - Mitigation: Keep the immediate event labeled non-playable and avoid release
@@ -133,11 +133,15 @@ Owners are deliberately role-based until maintainers assign people.
   crash, client restart, packet gap, or save switch can lose unsent checks or
   create ambiguous receipt state.
 - Current evidence: Protocol 1's positional receipt/check paths are retired.
-  Protocol 2 provides only temporary session/heartbeat state and explicitly
-  requests no `ReceivedItems`; it has no durable item ledger, location bitset,
-  pending outbox, or packet-gap handling.
-- Mitigation: Treat the server list as authoritative, but persist a versioned
-  seed/team/slot/save ledger and monotonic outbox before gameplay acceptance.
+  Milestone 6 adds a checksummed schema-1 sidecar with one-time binding,
+  per-index item states, explicit location IDs, pending outbox, atomic backup,
+  quarantine, revision checks, and writer locking. These paths are automated
+  only against opaque test save descriptors. Protocol 2 still requests no
+  `ReceivedItems`, has no game check transport, and cannot observe a live
+  native identity/freshness descriptor.
+- Mitigation: Keep the Milestone 6 sidecar authoritative and add idempotent
+  game/client acknowledgement and packet-gap handling before gameplay
+  acceptance.
 - Exit criteria: Duplicate, gap, reconnect, offline completion, both process
   restarts, new game, load, and goal-resend scenarios pass without lost or
   duplicated state.
@@ -222,13 +226,16 @@ Owners are deliberately role-based until maintainers assign people.
   are present. Duplicate IDs/names, declaration reordering, reservation reuse,
   retained-concept mutation, scaffold/snapshot parity, task 36, task 72, task
   88, deterministic JSON, standalone defaults, and Python/GOAL constant parity
-  are covered by tests. The client diagnostics and GOAL source carry the same
-  versions and table hashes. Protocol 2 intentionally remains handshake-only
-  and does not yet validate room slot data.
+  are covered by tests. Slot-data version 2 exports the generated seed
+  identifier. On `Connected`, Python validates the complete authenticated
+  contract and canonical slot identity; schema-1 state rejects every recorded
+  version/hash/options/design or binding mismatch read-only. GOAL mirrors the
+  version bump but intentionally remains handshake-only and consumes no room
+  gameplay contract.
 - Mitigation: Keep `legacy_ids.py` as the immutable protocol-1 compatibility
   input; use only `registry.py`, `versions.py`, and `slot_data.py` for future
-  state or compatibility work. Add runtime slot-data/table mismatch rejection
-  when the runtime state/transport milestone begins consuming a room contract.
+  state or compatibility work. Retain Python's read-only rejection and add the
+  audited GOAL/live-save compatibility boundary before gameplay begins.
 - Exit criteria: Approve the final design registry and retired-ID policy,
   export its schema version and deterministic hashes, reject mismatches in the
   client/game handshake, and pass compatibility tests.
@@ -344,6 +351,27 @@ Owners are deliberately role-based until maintainers assign people.
 - Exit criteria: Generation tests reject pool overcounts and local/non-local
   conflicts, account correctly for precollected items, and prove the local
   route and RANGED guarantees under every supported placement-control case.
+
+### R-019 — Live native-save identity and freshness are not yet observable
+
+- Severity/status: **High / Open**
+- Owner: Client and OpenGOAL persistence maintainers
+- Risk: The atomic sidecar can bind safely only if native save identity, slot,
+  and fresh/unprogressed eligibility come from an audited live source. Guessing
+  or deriving an unstable identity could bind the wrong save, allow a copied
+  slot, or strand valid AP state.
+- Current evidence: Milestone 6 implements and tests the lifecycle policy with
+  an opaque `NativeSaveDescriptor`. OpenGOAL source confirms four native save
+  slots, but no live bridge observation or freshness proof is implemented.
+  Production binding therefore remains disabled and diagnostics report that
+  the Milestone 7 descriptor is awaited.
+- Mitigation: Keep all live binding disabled until Milestone 7 audits and
+  exports a stable native identity plus an explicit unprogressed attestation.
+  Preserve slot-copy rejection and never infer freshness from a missing
+  sidecar alone.
+- Exit criteria: The real bridge supplies stable identity/slot/freshness across
+  clean and crashed restarts; new, progressed, copied, deleted, restored, and
+  switched native saves pass the documented policy without inventory changes.
 
 ## Risk update rules
 

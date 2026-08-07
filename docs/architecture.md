@@ -29,6 +29,28 @@ tree. In protocol 2 the GOAL bridge owns only a temporary handshake state,
 version/session validation, ping/pong, status export, and protocol logging. It
 has no task, item, location, reward, save, mission, or gameplay HUD hooks.
 
+## Persistent AP state
+
+[ADR-001](development/ADR-001-python-owned-ap-state.md) makes the Python Jak 3
+client the sole persistent writer. State is selected by a SHA-256 digest of an
+opaque native-save identity and stored under the platform user-data path
+`Archipelago/Jak3/state-v1` (or the explicit `JAK3_AP_STATE_DIR` override).
+The root is protected by one nonblocking operating-system writer lock.
+
+The temporary GOAL snapshot and persistent sidecar are separate channels.
+GOAL never writes the sidecar. This lets a later bridge retain game-side
+progress while the AP server is offline, provided the Python client remains
+running to commit acknowledgements. Playing AP content with the client closed
+is unsupported for the first release.
+
+Schema-1 writes use a checksummed canonical JSON envelope, same-directory
+temporary file, file flush/`fsync`, atomic backup refresh from the last valid
+primary, and atomic primary replacement. Corrupt primaries are quarantined
+only after a compatible backup has been validated; compatibility and binding
+mismatches never trigger rollback or mutation. Milestone 6 tests this engine
+against opaque save descriptors. Live GOAL observation of identity and
+freshness is deferred to Milestone 7.
+
 ## Tools and packaging
 
 `tools/build_apworld.ps1` stages `worlds/jak3` and injects the versioned GOAL
