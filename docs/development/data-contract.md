@@ -1,11 +1,12 @@
 # First-release data and slot-data contract
 
-Milestone 4 freezes design version 0.3 identities without activating gameplay
-delivery or the complete 147-location generator. The authoritative executable
-records are in `worlds/jak3/registry.py`; `worlds/jak3/data.py` remains an
-isolated protocol-1 scaffold. The published protocol-1 identities are copied
-literally into `worlds/jak3/legacy_ids.py`, so compatibility does not depend on
-the scaffold continuing to contain those rows.
+Milestone 4 froze the design version 0.3 identities, and Milestone 5 activates
+those records as the complete 147-location static generator. The authoritative
+executable records are in `worlds/jak3/registry.py`; `worlds/jak3/data.py`
+remains only as an isolated protocol-1 compatibility input. The published
+protocol-1 identities are copied literally into `worlds/jak3/legacy_ids.py`,
+so compatibility does not depend on the legacy table continuing to contain
+those rows.
 
 ## Versions
 

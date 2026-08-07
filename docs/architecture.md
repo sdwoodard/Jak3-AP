@@ -63,7 +63,9 @@ dependencies.
 The design-default world contains 147 addressed locations: 61 story task
 completions, 38 major reward moments, 24 selected side tasks, and 24 global
 25-orb thresholds. Task 72 is a locked Victory event and does not hold a random
-item. The current generator still contains the retired 131-location scaffold,
-while the runtime is handshake-only. A later explicitly scoped milestone must
-replace the tables and add durable gameplay protocol behavior as one reviewed
-unit.
+item. The active generator consumes the versioned first-release registry and
+creates the exact 26 progression, 28 useful, and 93 weighted filler instances.
+Its single always-open region and immediately reachable event locations are
+explicitly non-playable Milestone 5 scaffolding; Standard reachability remains
+Milestone 12 work. The runtime remains handshake-only and does not submit these
+locations or apply these items.

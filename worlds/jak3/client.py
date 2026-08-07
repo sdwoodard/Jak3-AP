@@ -37,7 +37,7 @@ from .agents.protocol import (
     read_snapshot,
 )
 from .agents.repl_client import OpenGoalRepl
-from .data import GAME_NAME
+from .game_id import GAME_NAME
 from .registry import ITEM_TABLE_HASH, LOCATION_TABLE_HASH, MISSION_TABLE_HASH
 from .versions import (
     ITEM_TABLE_VERSION,

@@ -23,6 +23,9 @@ reachability require runtime acceptance even when their tables have unit tests.
 
 | Evidence | Result | Scope and limit |
 | --- | --- | --- |
+| Milestone 5 Python/APWorld suite | 108 tests passed on 2026-08-07 from the packaged APWorld installed in a disposable Archipelago copy, with bytecode and pytest cache writes disabled. | Covers the exact static pool, registry multiplicities/classifications, all location families/events, exclusions, fixed-seed filler output, hashes, options, slot data, package imports, and archive contents; no Standard logic or gameplay runtime behavior. |
+| Milestone 5 APWorld artifact | Built successfully with 28 entries; SHA-256 `5E828817BFCF097BF4D72D4616E33E95A6E23CEEE9047F12DE350329B889D5AD`. | Local artifact evidence; release reproducibility and runtime installation remain later milestones. |
+| Milestone 5 static checks | Ruff lint/targeted format, mypy compatibility-module checks, and all six source-table audit groups passed. | Static/source evidence only. |
 | Milestone 4 Python/APWorld suite | 110 tests passed on 2026-08-07 from the packaged APWorld installed in a disposable Archipelago copy, with bytecode writes disabled. | Covers legacy compatibility, canonical YAML, first-release registries, hashes, slot data, package imports, CI triggers, and retained scaffold generation; no gameplay runtime behavior. |
 | Milestone 4 APWorld artifact | Built successfully with 27 entries; SHA-256 `3B7A33A876F4F054FBADEEF42C24AAD146D3E7AA9F10794F96444E2148F28534`. | Local artifact evidence; release reproducibility and runtime installation remain later milestones. |
 | Milestone 4 static checks | Ruff lint/targeted format and mypy compatibility-module checks passed. | Static evidence only. |
@@ -95,21 +98,21 @@ committed artifacts.
 
 Protocol 2 is the active runtime. It deliberately does not process items,
 checks, goals, saves, rewards, or missions. The following table characterizes
-the retained generator and retired protocol-1 history; it is not active runtime
-acceptance.
+the active static generator and retired protocol-1 history; it is not active
+runtime acceptance.
 
-## Retained scaffold generator and retired protocol matrix
+## Static generator and retired protocol matrix
 
 | Behavior | Source | Automated | Runtime acceptance | Current conclusion |
 | --- | :---: | :---: | :---: | --- |
 | Explicit legacy table counts/IDs | Yes | Duplicate, explicit-record, determinism, and fingerprint tests passed | N/A | Automated for current registry |
-| First-release registry and reservations | Yes | 26/28 item instances, 147 locations, duplicate/reorder/hash, independent frozen legacy snapshot, exact retained-concept mutation rejection, full retention/reservation, task 36/72/88, profile identifiers, and exclusions pass | N/A | Automated compatibility contract; generator activation deferred |
+| First-release registry and reservations | Yes | 26/28 item instances, 147 locations, duplicate/reorder/hash, independent frozen legacy snapshot, exact retained-concept mutation rejection, full retention/reservation, task 36/72/88, profile identifiers, and exclusions pass | N/A | Automated compatibility contract and active generator |
 | Versioned first-release slot data | Yes | Deterministic JSON, fixed schema/versions/hashes/options, no redundant mappings, and Python/GOAL parity pass | N/A | Automated compatibility contract; runtime room validation deferred |
 | Default option resolution/pinning | Yes | Exact normative/shipped YAML resolution, all 41 governed defaults, every non-default field, deterministic normalization, and raw-access boundary tested | N/A | Automated |
-| Standard placement-control interactions | Partial | Core ownership is preserved; one start-inventory-from-pool boundary case is tested | N/A | Target-pool overcount, locality conflict, and early-guarantee cases remain deferred under `R-018` |
-| 131-location pool balance/composition | Yes | Generation and exact-composition tests passed | N/A | Automated for current scaffold |
-| Fixed-seed determinism | Yes | Seeds 0, 1, and 743000000 reproduced identical pools, locations, slot data, and early item | N/A | Automated narrow sample |
-| Simple scaffold reachability | Yes | Empty-state, all-state, and restrictive-fill tests passed | No | Automated only |
+| Standard placement-control interactions | Partial | Core ownership is preserved; one start-inventory-from-pool boundary case is tested | N/A | Active-pool overcount, locality conflict, and early-guarantee cases remain deferred under `R-018` |
+| 147-location pool balance/composition | Yes | Exact 147/26/28/93/0 generation, registry multiplicities/classifications, and pool-to-unfilled-location balance pass | N/A | Automated for Milestone 5 |
+| Fixed-seed determinism | Yes | Seeds 0, 1, and 743000000 reproduce identical complete generation snapshots; seed 0 freezes the exact 93-item weighted filler output | N/A | Automated narrow sample |
+| Permissive scaffold reachability | Yes | Empty-state reachability of every network location and all code-less events passes | No | Automated temporary scaffold only; not Standard logic evidence |
 | Scaffold receipt mapping | Historical source only | Retired from client/bridge | Historical only | Disabled by protocol 2 |
 | Scaffold task completion mapping | Historical source only | Retired from client/bridge | Historical only | Disabled by protocol 2 |
 | Snapshot parsing/binding | Historical | Protocol-1 tests replaced | Protocol-1 startup smoke only | Retired |
@@ -117,25 +120,26 @@ acceptance.
 | Duplicate/reconnect replay | Historical | Superseded by harmless ping tests | No gameplay runtime | Retired |
 | Offline location outbox | No | No | No | Missing |
 | Save/reload reconstruction | Partial | No | No | Unverified/incomplete |
-| Goal status | Task 71 logic exists | Legacy task-71 reachability and slot-data tests passed | No | Automated characterization; conflicts with spec |
+| Goal status | Task 72 code-less event and event-item completion condition exist | Event identity, no network code/pool slot, and task-71 network location are tested | No | Generator correct; Standard finale logic and runtime reporting deferred |
 
 ## Normative first-release generation acceptance
 
-None of the following release gates currently pass because the 147-location
-default has not been implemented.
+Milestone 5 passes the static-data gates below. Standard reachability,
+beatability, self-lock analysis, and early guarantees remain Milestone 12 work;
+the permissive scaffold must not be used as evidence for those gates.
 
 | Gate | Required evidence | Status |
 | --- | --- | --- |
-| Exact pool balance | 147 unfilled locations = 26 progression + 28 useful + 93 filler before traps. | Not implemented |
-| Progression classification | Every item referenced by any default access-rule branch is progression. | Not implemented |
-| All-state reachability | Every one of 147 enabled locations is reachable in `get_all_state()`. | Not implemented |
-| Beatability | Task-72 Victory is reachable under the default. | Not implemented |
-| No self-lock | Every reward/lesson/mission item is placeable without requiring itself. | Not implemented |
+| Exact pool balance | 147 unfilled locations = 26 progression + 28 useful + 93 filler before traps. | Automated; passed for Milestone 5. |
+| Progression classification | Every item referenced by any default access-rule branch is progression. | Static registry classifications are automated; access-rule coverage awaits Milestone 12. |
+| All-state reachability | Every one of 147 enabled locations is reachable in `get_all_state()`. | Trivially automated for the permissive scaffold; Standard evidence awaits Milestone 12. |
+| Beatability | Task-72 Victory is reachable under the default. | Event plumbing is automated but immediate; Standard finale evidence awaits Milestone 12. |
+| No self-lock | Every reward/lesson/mission item is placeable without requiring itself. | Not meaningful until Standard rules exist; deferred to Milestone 12. |
 | Stable IDs | Explicit registry with retired-ID protection and deterministic hashes. | Automated for the first-release contract; runtime mismatch enforcement pending. |
-| Exclusion safety | Orb thresholds >300 and side tasks 127/129/130/131/132/136 reject progression/useful placements. | Not implemented |
+| Exclusion safety | Orb thresholds >300 and side tasks 127/129/130/131/132/136 reject progression/useful placements. | Automated; all exact 18 exclusions pass. |
 | Early route guarantee | Local Spargus Field Orders is immediately actionable. | Not implemented |
 | Early ranged guarantee | Local Blaster or Vulcan Fury is in sphere zero. | Not implemented |
-| Deterministic slot data | Versioned schema and table hashes are stable across identical generation. | Automated contract; complete generator activation awaits Milestone 5. |
+| Deterministic slot data | Versioned schema and table hashes are stable across identical generation. | Automated contract; active generation leaves the frozen schema and hashes unchanged. |
 | Fuzzing | 10,000 default seeds with sphere/branch/drought/relic/challenge metrics. | Not run |
 
 The minimum all-state assertion remains:
@@ -155,9 +159,9 @@ native cap, and receipt during cutscene, vehicle use, death, loading, and
 mission restart. Also record immediate save/reload, full replay from index zero,
 and native reward reconstruction followed by AP reconciliation.
 
-Current status: **not started for the normative item table**. The retained scaffold
-bridge has additive receipt handlers, but that is not sufficient evidence for
-the specified named items, ledger, caps, or safe-state behavior.
+Current status: **static table generation complete; runtime acceptance not
+started**. The active protocol has no gameplay receipt handlers, durable ledger,
+caps, or safe-state behavior.
 
 ## Normative location acceptance
 
@@ -170,8 +174,8 @@ For each of 147 network locations, verify:
 - save/load retains completion; and
 - permanent reward suppression does not block task closure.
 
-Current status: **not started**. Task closure has a scaffold observation hook;
-reward and orb checks and durable persistence do not exist.
+Current status: **all identities generated; runtime acceptance not started**.
+Protocol 2 has no task/reward/orb check submission or durable persistence.
 
 ## Normative bootstrap acceptance
 

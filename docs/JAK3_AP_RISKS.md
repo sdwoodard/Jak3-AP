@@ -56,59 +56,55 @@ Owners are deliberately role-based until maintainers assign people.
 - Exit criteria: **Passed for the Milestone 4 baseline.** The implementation
   began from the documented clean commit; this entry remains for history.
 
-### R-003 — Retained scaffold conflicts with the default design
+### R-003 — Permissive scaffold is not Standard logic
 
 - Severity/status: **Critical / Open**
 - Owner: APWorld and logic maintainers
-- Risk: The existing 131-location, per-mission-key model can be mistaken for
-  implementation of the accepted 147-location default. Its checks, item pool,
-  classifications, route graph, side-task selection, and filler semantics all
-  differ materially.
+- Risk: The exact first-release pool is exposed in one always-open region. It
+  can be mistaken for playable Standard logic even though it has no mission,
+  item, route, finale, or early-guarantee rules.
 - Current evidence: See
   [`development/specification-gap-matrix.md`](development/specification-gap-matrix.md).
-  The exact normative YAML now resolves to an immutable, validated 41-field
-  design profile, and tests prevent downstream world code from reading raw
-  option objects. Milestone 4 now freezes separate first-release registries for
-  26 progression instances, 28 useful instances, and all 147 target locations,
-  but the accepted values still feed the retained scaffold generator until
-  Milestone 5.
-- Mitigation: Label the older implementation as a disposable protocol
-  scaffold—not the design's Phase 1—and keep protocol 2 handshake-only so the
-  legacy item/check runtime cannot be mistaken for accepted behavior. Pin all
-  non-default options, and do not call accepted defaults implemented merely
-  because their schema values parse.
-- Exit criteria: Exact 147-location and 147-item arithmetic, tiered board,
-  default predicates/exclusions, deterministic data, and full generation tests
-  pass.
+  Milestone 5 activates the frozen registry with exactly 147 network locations,
+  26 progression instances, 28 useful instances, 93 weighted filler instances,
+  and the required default exclusions. Generation tests pass, but every
+  location and the Victory event are deliberately immediate-access scaffolding.
+- Mitigation: Keep the scaffold clearly labeled non-playable and keep protocol
+  2 handshake-only until Milestone 12 replaces the region and rules with the
+  audited Standard mission graph and access predicates.
+- Exit criteria: Tiered board, default predicates, early guarantees, all-state
+  reachability, beatability, and full Standard generation tests pass.
 
 ### R-004 — Task 36 lacks a durable completion source
 
-- Severity/status: **High / Open**
+- Severity/status: **High / Closed**
 - Owner: OpenGOAL integration maintainer
-- Risk: The retained scaffold creates a network location for task 36, but the audited source
-  has no `close-task` node for it. The normal bridge hook therefore cannot
-  complete that location.
+- Risk: The retired scaffold created a network location for task 36, but the
+  audited source has no `close-task` node for it. The normal bridge hook
+  therefore could not complete that location.
 - Current evidence: Source-table audit identifies task 36 as the only story
-  omission from `close-task` coverage. The first-release registry excludes it
-  and permanently reserves legacy location ID `743001036`. The active legacy
-  generator still creates it until Milestone 5.
-- Mitigation: Remove it from the default location set. Do not add it to another
-  preset without a new finite, durable AP completion flag and runtime proof.
-- Exit criteria: Default generation excludes task 36; any future enabled form
-  passes exactly-once, replay, offline, and save/load tests.
+  omission from `close-task` coverage. Milestone 5 excludes it from active
+  generation, permanently reserves legacy location ID `743001036`, and tests
+  assert that neither its name nor code appears in the default world.
+- Mitigation: Do not add it to another preset without a new finite, durable AP
+  completion flag and runtime proof.
+- Exit criteria: **Passed for the default.** Any future enabled form must still
+  pass exactly-once, replay, offline, and save/load tests.
 
-### R-005 — Goal mismatch: task 71 versus task 72
+### R-005 — Task-72 Standard finale and goal reporting are absent
 
 - Severity/status: **Critical / Open**
 - Owner: Logic and client maintainers
-- Risk: Current slot data/client reports victory on final-boss task 71. The
-  specification requires task 71 as a network check followed by locked task 72
-  City Win as the non-networked Victory event.
-- Current evidence: `rules.py` retains task-71 scaffold generation behavior.
-  The first-release registry represents task 72 as a code-less Victory event,
-  and slot-data version 1 names task 72 plus the five-relic threshold. Goal
-  reporting remains absent as required before Milestone 23.
-- Mitigation: Keep the mismatch prominently documented and avoid release seeds.
+- Risk: Generator correctness can be mistaken for end-to-end victory support.
+  The runtime still lacks task-72 completion detection, persistent goal state,
+  and Archipelago goal reporting/reconnect resend.
+- Current evidence: Milestone 5 generates task 71 as a network location and
+  task 72 City Win only as a locked code-less Victory event. Its event item is
+  the completion condition, and slot-data version 1 names task 72 plus the
+  five-relic threshold. The permissive scaffold makes the event immediately
+  reachable; runtime goal reporting remains absent until Milestone 23.
+- Mitigation: Keep the immediate event labeled non-playable and avoid release
+  seeds until Standard finale logic and runtime goal reporting are accepted.
 - Exit criteria: Generator, client, bridge, tests, and reconnect goal resend all
   use task 72 under `complete_city_win`.
 
@@ -241,12 +237,12 @@ Owners are deliberately role-based until maintainers assign people.
 
 - Severity/status: **High / Open**
 - Owner: Generator/logic maintainer
-- Risk: The current forced task-12 key does not satisfy either required early
-  guarantee. A Haven-first alternative is unsafe without Jetboard, and lack of
-  local ranged access can stall later Standard branches.
+- Risk: The active static-pool scaffold intentionally implements neither
+  required early guarantee. A Haven-first alternative is unsafe without
+  Jetboard, and lack of local ranged access can stall later Standard branches.
 - Current evidence: The specification requires local Spargus Field Orders and
-  a local Blaster/Vulcan Fury in sphere zero. Current `generate_early()` forces
-  only one mission key.
+  a local Blaster/Vulcan Fury in sphere zero. Milestone 5 removed the obsolete
+  task-12 guarantee and leaves `local_early_items` empty by design.
 - Mitigation: Retain the conservative Spargus-first rule until a Haven snapshot
   and actionable Jetboard placement are proven.
 - Exit criteria: Default generation and 10,000-seed metrics prove one local,
@@ -260,8 +256,10 @@ Owners are deliberately role-based until maintainers assign people.
 - Risk: AP-delivered Orb/Gem Packs must be spendable but must never advance
   local-world orb/gem check counters. Native kiosk/purchase costs can otherwise
   create grind locks or false checks.
-- Current evidence: The retained scaffold has neither currency packs nor local-earned
-  counters; free side/purchase cost hooks and 24 orb thresholds are absent.
+- Current evidence: Milestone 5 generates the canonical currency-pack filler
+  definitions and all 24 orb-threshold locations, with thresholds 325–600
+  placement-excluded. Runtime balances, locally earned counters, and free
+  side/purchase cost hooks remain absent.
 - Mitigation: Maintain separate monotonic local-earned totals and AP balance;
   default costs are free and thresholds above 300 are placement-excluded.
 - Exit criteria: Receipt, spending, native earning, replay, save/load, all 600
@@ -337,11 +335,12 @@ Owners are deliberately role-based until maintainers assign people.
   local early route or reliable-ranged guarantees.
 - Current evidence: The resolved profile covers all 41 design-governed values;
   a test confirms that standard placement controls do not alter that profile.
-  The retained scaffold has neither the specified target pool nor the two
-  design early guarantees, so their cross-validation cannot yet be accepted.
+  Milestone 5 generates the exact target pool but intentionally omits the two
+  design early guarantees, so placement-control cross-validation cannot yet be
+  accepted.
 - Mitigation: Keep Archipelago core authoritative for generic placement data.
-  When the 147-item target pool and early prefill are implemented, derive a
-  checked placement snapshot after mandatory pool selection and before fill.
+  In Milestone 12, derive a checked placement snapshot after mandatory pool
+  selection and before the early prefill.
 - Exit criteria: Generation tests reject pool overcounts and local/non-local
   conflicts, account correctly for precollected items, and prove the local
   route and RANGED guarantees under every supported placement-control case.

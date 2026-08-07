@@ -1,29 +1,40 @@
 from __future__ import annotations
 
-from BaseClasses import Entrance, ItemClassification, Tutorial
+from BaseClasses import ItemClassification, Tutorial
 from Options import OptionGroup
 from worlds.AutoWorld import WebWorld, World
 from worlds.LauncherComponents import Component, Type, components, icon_paths, launch_subprocess
 
 from . import options
-from .data import (
-    ACTIVITIES,
-    EQUIPMENT,
-    EQUIPMENT_BY_NAME,
-    FILLERS,
-    GAME_NAME,
-    ITEM_NAME_TO_ID,
-    LOCATION_NAME_TO_ID,
-    LOGIC_ITEM_NAMES,
-    MISSION_BY_ID,
-    MISSIONS,
-    STARTING_MISSION_ID,
-    TRAPS,
+from .game_id import GAME_NAME
+from .registry import (
+    FILLER_ITEMS,
+    FIRST_RELEASE_ITEM_NAME_TO_ID,
+    FIRST_RELEASE_ITEMS,
+    FIRST_RELEASE_LOCATION_NAME_TO_ID,
+    FIRST_RELEASE_LOCATIONS,
+    MAJOR_REWARD_LOCATIONS,
+    ORB_THRESHOLD_LOCATIONS,
+    PROGRESSION_ITEMS,
+    SELECTED_SIDE_LOCATIONS,
+    STORY_COMPLETION_LOCATIONS,
+    TRAP_ITEMS,
+    USEFUL_ITEMS,
 )
 from .items import Jak3Item
 from .regions import create_regions
 from .rules import set_rules
 from .slot_data import build_slot_data
+
+
+_ITEM_RECORD_BY_NAME = {record.name: record for record in FIRST_RELEASE_ITEMS}
+_CLASSIFICATION_BY_REGISTRY_VALUE = {
+    "progression": ItemClassification.progression,
+    "progression_skip_balancing": ItemClassification.progression_skip_balancing,
+    "useful": ItemClassification.useful,
+    "filler": ItemClassification.filler,
+    "trap": ItemClassification.trap,
+}
 
 
 def launch_client() -> None:
@@ -106,7 +117,7 @@ class Jak3WebWorld(WebWorld):
 
 
 class Jak3World(World):
-    """Mission unlock randomizer for Jak 3 running through OpenGOAL."""
+    """Default-only Jak 3 static pool with permissive pre-logic scaffolding."""
 
     game = GAME_NAME
     required_client_version = (0, 6, 7)
@@ -114,103 +125,83 @@ class Jak3World(World):
     options: options.Jak3Options
     web = Jak3WebWorld()
 
-    item_name_to_id = ITEM_NAME_TO_ID
-    location_name_to_id = LOCATION_NAME_TO_ID
+    item_name_to_id = FIRST_RELEASE_ITEM_NAME_TO_ID
+    location_name_to_id = FIRST_RELEASE_LOCATION_NAME_TO_ID
     item_name_groups = {
-        "Mission Unlocks": {
-            mission.item_name for mission in MISSIONS if mission.task_id != STARTING_MISSION_ID
+        "Progression": {record.name for record in PROGRESSION_ITEMS},
+        "Useful": {record.name for record in USEFUL_ITEMS},
+        "Filler": {record.name for record in FILLER_ITEMS},
+        "Traps": {record.name for record in TRAP_ITEMS},
+        "Route Authorizations": {
+            record.name
+            for record in PROGRESSION_ITEMS
+            if record.family == "route_authorization"
         },
-        "Filler": set(FILLERS),
-        "Traps": set(TRAPS),
-        "Equipment": set(EQUIPMENT_BY_NAME),
-        **{
-            group: {equipment.name for equipment in EQUIPMENT if equipment.group == group}
-            for group in {equipment.group for equipment in EQUIPMENT}
+        "Finale Relics": {
+            record.name
+            for record in PROGRESSION_ITEMS
+            if record.family == "finale_relic"
         },
     }
     location_name_groups = {
-        "Missions": {mission.location_name for mission in MISSIONS},
-        "Challenges": {activity.location_name for activity in ACTIVITIES},
-        **{
-            area: {mission.location_name for mission in MISSIONS if mission.area == area}
-            for area in {mission.area for mission in MISSIONS}
+        "Story Completions": {record.name for record in STORY_COMPLETION_LOCATIONS},
+        "Major Rewards": {record.name for record in MAJOR_REWARD_LOCATIONS},
+        "Selected Side Challenges": {
+            record.name for record in SELECTED_SIDE_LOCATIONS
+        },
+        "Precursor Orb Thresholds": {
+            record.name for record in ORB_THRESHOLD_LOCATIONS
         },
     }
 
-    mission_entrances: dict[int, Entrance]
-    activity_entrances: dict[int, Entrance]
-    goal_entrance: Entrance
     resolved_options: options.ResolvedJak3Options
 
     def generate_early(self) -> None:
         self.resolved_options = options.resolve_options(self.options)
-        self.mission_entrances = {}
-        self.activity_entrances = {}
-        # The retained protocol scaffold has a single opening check. This
-        # task-12 key is characterized for compatibility; it is not the
-        # design's Spargus Field Orders sphere-zero guarantee.
-        self.multiworld.local_early_items[self.player][MISSION_BY_ID[12].item_name] = 1
 
     def create_regions(self) -> None:
         create_regions(self, self.resolved_options)
 
     def create_item(self, name: str) -> Jak3Item:
-        if name in self.item_name_groups["Mission Unlocks"]:
-            classification = ItemClassification.progression
-        elif name in LOGIC_ITEM_NAMES:
-            classification = ItemClassification.progression
-        elif name in self.item_name_groups["Equipment"]:
-            classification = ItemClassification.useful
-        elif name in self.item_name_groups["Traps"]:
-            classification = ItemClassification.trap
-        else:
-            classification = ItemClassification.filler
-        return Jak3Item(name, classification, self.item_name_to_id[name], self.player)
+        record = _ITEM_RECORD_BY_NAME[name]
+        classification = _CLASSIFICATION_BY_REGISTRY_VALUE[record.classification]
+        return Jak3Item(name, classification, record.code, self.player)
 
     def create_event(self, name: str) -> Jak3Item:
         return Jak3Item(name, ItemClassification.progression, None, self.player)
 
     def create_items(self) -> None:
-        # The intro task is always available. Complete native side-task coverage
-        # leaves consumable filler slots after unlocks and equipment are placed.
-        unlocks = [
-            self.create_item(mission.item_name)
-            for mission in MISSIONS
-            if mission.task_id != STARTING_MISSION_ID
+        pool = [
+            self.create_item(record.name)
+            for record in PROGRESSION_ITEMS + USEFUL_ITEMS
+            for _ in range(record.pool_count)
         ]
-        unlocks.extend(
-            self.create_item(equipment.name)
-            for equipment in EQUIPMENT
-            for _ in range(equipment.copies)
+        filler_count = len(FIRST_RELEASE_LOCATIONS) - len(pool)
+        if filler_count != 93:
+            raise RuntimeError(
+                "The frozen Jak 3 default must have exactly 93 filler slots; "
+                f"computed {filler_count}."
+            )
+        pool.extend(
+            self.create_item(name) for name in self._weighted_filler_names(filler_count)
         )
-        location_count = len(MISSIONS) + len(ACTIVITIES)
-        filler_count = location_count - len(unlocks)
-        trap_count = round(filler_count * self.resolved_options.trap_percentage / 100)
-        trap_names, trap_weights = zip(*self.resolved_options.trap_weights)
-        if not any(trap_weights):
-            trap_count = 0
-
-        for _ in range(trap_count):
-            unlocks.append(self.create_item(self.random.choices(trap_names, weights=trap_weights, k=1)[0]))
-        for _ in range(filler_count - trap_count):
-            unlocks.append(self.create_item(self.random.choice(FILLERS)))
-        self.multiworld.itempool += unlocks
+        if len(pool) != len(FIRST_RELEASE_LOCATIONS):
+            raise RuntimeError(
+                "Jak 3 item pool does not balance its network locations."
+            )
+        self.multiworld.itempool += pool
 
     def set_rules(self) -> None:
         set_rules(self, self.resolved_options)
 
     def fill_slot_data(self) -> dict:
-        # Freeze the first-release compatibility envelope while the retained
-        # 131-location generator remains isolated until Milestone 5.
         return build_slot_data(self.resolved_options)
 
     def get_filler_item_name(self) -> str:
-        return self.random.choice(FILLERS)
+        return self._weighted_filler_names(1)[0]
 
-
-# Keep a direct lookup importable by the client without rebuilding it.
-MISSION_ITEM_ID_TO_TASK = {
-    mission.item_id: mission.task_id
-    for mission in MISSIONS
-    if mission.item_id is not None
-}
+    def _weighted_filler_names(self, count: int) -> list[str]:
+        configured_weights = dict(self.resolved_options.filler_item_weights)
+        names = [record.name for record in FILLER_ITEMS]
+        weights = [configured_weights[name] for name in names]
+        return self.random.choices(names, weights=weights, k=count)

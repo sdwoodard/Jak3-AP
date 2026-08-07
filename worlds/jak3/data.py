@@ -1,18 +1,18 @@
-"""Static data for the current, pre-design-default Jak 3 scaffold.
+"""Legacy protocol-1 compatibility data for tests and reservation audits.
 
 Native task IDs remain the boundary shared by the APWorld, client, and
 OpenGOAL mod.  Archipelago network IDs are deliberately literal fields: the
 design requires explicit, versioned IDs that cannot change when a source tuple
-is reordered.  These protocol-1 values are retained for compatibility and are
-not an endorsement of the scaffold as the final 147-location registry.
+is reordered.  Active generation uses ``registry.py``; these protocol-1 values
+remain only as compatibility-test input.
 """
 
 import hashlib
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from .game_id import GAME_NAME as GAME_NAME
 
-GAME_NAME = "Jak 3"
 BASE_ID = 743_000_000
 LEGACY_ID_TABLE_VERSION = 1
 

@@ -7,7 +7,7 @@ from zipfile import ZipFile
 from worlds import AutoWorldRegister
 from worlds.LauncherComponents import Type, components, icon_paths
 from worlds.jak3 import Jak3World, launch_client
-from worlds.jak3.data import GAME_NAME
+from worlds.jak3.game_id import GAME_NAME
 
 
 class PackagedWorldRegistrationTest(unittest.TestCase):

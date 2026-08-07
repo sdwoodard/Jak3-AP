@@ -106,6 +106,8 @@ is statically provable; those require runtime acceptance tests.
    pair, compiler and bridge events are present, and `/diagnostics` flushes a
    parseable state snapshot.
 
-The checked-in generator retains the old 131-location scaffold, but protocol 2
-does not drive it. Do not publish an installer or call a seed playable until
-the 147-location default and the acceptance matrix in the design document pass.
+The checked-in generator now creates the exact versioned 147-location static
+pool. Its regions and events are deliberately always reachable until Milestone
+12 supplies Standard logic, and protocol 2 still does not drive gameplay. Do
+not publish an installer or call a seed playable until the remaining generator
+and runtime acceptance matrix passes.

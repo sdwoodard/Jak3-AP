@@ -11,7 +11,8 @@ later gameplay work is not credited early.
 | --- | --- | --- |
 | 0–3 | Complete before revised roadmap | Historical implementation and protocol-2 evidence are retained in this directory. |
 | 4 — Consolidate normative sources and freeze the versioned data contract | **Complete** | Canonical in-repository sources, literal first-release registries, complete legacy ID retention/reservation, deterministic table/options hashes, versioned JSON-safe slot data, shared Python/GOAL constants, standalone tests, and push/PR CI are present and passing. |
-| 5–26 | Not started | Deliberately outside this change. |
+| 5 — Activate the exact default static APWorld pool | **Complete** | The active APWorld consumes the Milestone 4 registry and generates exactly 147 network locations, 26 progression instances, 28 useful instances, 93 weighted filler instances, zero traps, 65 hidden completion events, and one code-less Victory event. |
+| 6–26 | Not started | Deliberately outside this change. |
 
 ## Milestone 4 completion evidence
 
@@ -42,17 +43,42 @@ later gameplay work is not credited early.
 - `tools/build_apworld.ps1` produced a validated 27-entry artifact with SHA-256
   `3b7a33a876f4f054fbadeef42c24aad146d3e7aa9f10794f96444e2148f28534`.
 
+## Milestone 5 completion evidence
+
+- Active public item and location maps are the frozen first-release registry;
+  the legacy per-mission unlock and 131-location tables remain compatibility
+  inputs only.
+- The pool contains the exact registry multiplicities and classifications,
+  with all 93 filler instances selected by one deterministic weighted draw
+  from the canonical YAML weights. No legacy mission unlock or trap is
+  generated.
+- All four location families are active. Task 36 is absent, task 72 exists only
+  as locked code-less Victory, and 65 separate mission-completion events use no
+  network addresses.
+- The six documented side challenges and 12 orb thresholds above 300 are
+  enabled but `EXCLUDED`; automated fill rules reject progression/useful items
+  at all 18.
+- The fixed Milestone 4 table versions, hashes, slot-data schema, retained IDs,
+  and reserved IDs are unchanged.
+- `tools/verify_source_tables.ps1` passed all six source-audit groups.
+- The packaged APWorld test suite passed **108 tests** from a disposable
+  Archipelago checkout with bytecode and pytest cache writes disabled.
+- Ruff lint/targeted formatting and the existing mypy compatibility-module
+  checks passed.
+- `tools/build_apworld.ps1` produced a validated 28-entry artifact with SHA-256
+  `5e828817bfcf097bf4d72d4616e33e95a6e23ceee9047f12de350329b889d5ad`.
+
 ## Explicitly deferred
 
-The active generator remains the isolated 131-location scaffold until
-Milestone 5. This milestone adds no received-item handling, location
-submission, persistence, mission hooks/dispatch, reward interception,
-reachability rules, native state mutation, or goal reporting. Runtime
-slot-data/table mismatch enforcement begins only when a later runtime milestone
-consumes the room contract.
+The active generator deliberately exposes one always-open, non-playable region
+until Milestone 12 supplies Standard reachability. Milestone 5 adds no early
+placement guarantees, received-item handling, location submission, persistence,
+mission hooks/dispatch, reward interception, native state mutation, or goal
+reporting. Runtime slot-data/table mismatch enforcement begins only when a
+later runtime milestone consumes the room contract.
 
 Open runtime risks remain recorded in [`../JAK3_AP_RISKS.md`](../JAK3_AP_RISKS.md),
-especially the inactive target generator (`R-003`), task-36 scaffold conflict
-(`R-004`), task-71 scaffold goal (`R-005`), gameplay persistence (`R-007`),
-mission/shadow behavior (`R-008`), and runtime compatibility enforcement
-(`R-012`).
+especially permissive generator logic (`R-003`), runtime goal reporting
+(`R-005`), gameplay persistence (`R-007`), mission/shadow behavior (`R-008`),
+runtime compatibility enforcement (`R-012`), early guarantees (`R-013`), and
+placement-control interactions (`R-018`).

@@ -2,7 +2,7 @@
 
 from BaseClasses import Item
 
-from .data import GAME_NAME
+from .game_id import GAME_NAME
 
 
 class Jak3Item(Item):
