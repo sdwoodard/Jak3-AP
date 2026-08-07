@@ -1,5 +1,6 @@
 # Jak 3 Archipelago Progression, Logic, Checks, and Player-Options Design
 
+**Canonical repository path:** `docs/design/progression-and-logic.md`
 **Target:** OpenGOAL Jak 3 + Archipelago
 **Document status:** implementation specification, design version 0.3
 **Primary default:** tiered open mission board, simplified route authorizations, capability shuffle, `5 of 7` relic finale, finite sanity checks, and `accessibility: full`
@@ -11,6 +12,10 @@ This document is intended to be sufficiently explicit for a human developer or a
 3. **Location checks** — finite, monotonic accomplishments that may send an Archipelago item exactly once, regardless of mission replay or source-state resets.
 
 The conclusions below are based primarily on OpenGOAL's decompiled Jak 3 task/reward/save sources, then cross-checked against detailed walkthroughs and item guides for intended-path requirements. Source code is authoritative for identifiers, persistence, and reward hooks; walkthrough evidence is used for human-playable route requirements; conservative implementation rules resolve remaining uncertainty.
+
+For the default-only beta, `allow_experimental_checks: true` remains rejected.
+Experimental names stay documented for future audited versions; the flag does
+not opt the current generator into partially implemented tables.
 
 ---
 

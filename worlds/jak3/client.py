@@ -38,6 +38,14 @@ from .agents.protocol import (
 )
 from .agents.repl_client import OpenGoalRepl
 from .data import GAME_NAME
+from .registry import ITEM_TABLE_HASH, LOCATION_TABLE_HASH, MISSION_TABLE_HASH
+from .versions import (
+    ITEM_TABLE_VERSION,
+    LOCATION_TABLE_VERSION,
+    MISSION_TABLE_VERSION,
+    SLOT_DATA_VERSION,
+    STATE_SCHEMA_VERSION,
+)
 
 
 logger = logging.getLogger("Client")
@@ -82,6 +90,11 @@ class Jak3CommandProcessor(ClientCommandProcessor):
         self.output(f"AP source loaded: {'yes' if self.ctx.source_loaded else 'no'}")
         self.output(f"Handshake ready: {'yes' if self.ctx.bridge_ready else 'no'}")
         self.output(f"Expected protocol/integration: {PROTOCOL_VERSION}/{GAME_INTEGRATION_VERSION}")
+        self.output(
+            "Data contract: "
+            f"slot={SLOT_DATA_VERSION} state={STATE_SCHEMA_VERSION} "
+            f"tables={ITEM_TABLE_VERSION}/{LOCATION_TABLE_VERSION}/{MISSION_TABLE_VERSION}"
+        )
         if snapshot is not None:
             self.output(
                 "Game protocol/integration: "
@@ -199,6 +212,14 @@ class Jak3Context(CommonContext):
             "client_status": self.client_status.name,
             "expected_protocol_version": PROTOCOL_VERSION,
             "expected_game_integration_version": GAME_INTEGRATION_VERSION,
+            "slot_data_version": SLOT_DATA_VERSION,
+            "state_schema_version": STATE_SCHEMA_VERSION,
+            "item_table_version": ITEM_TABLE_VERSION,
+            "location_table_version": LOCATION_TABLE_VERSION,
+            "mission_table_version": MISSION_TABLE_VERSION,
+            "item_table_hash": ITEM_TABLE_HASH,
+            "location_table_hash": LOCATION_TABLE_HASH,
+            "mission_table_hash": MISSION_TABLE_HASH,
             "session_id": self.diagnostics.session_id,
             "state_path": str(self.state_path),
             "bridge_state": asdict(snapshot) if snapshot is not None else None,

@@ -11,8 +11,9 @@ from worlds.jak3 import options
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-WORKSPACE_SPEC = REPOSITORY_ROOT.parent / "docs" / "specification" / "default_player_options.yaml"
 SHIPPED_TEMPLATE = REPOSITORY_ROOT / "config" / "templates" / "Jak3.yaml"
+CANONICAL_DESIGN = REPOSITORY_ROOT / "docs" / "design" / "progression-and-logic.md"
+REPOSITORY_INSTRUCTIONS = REPOSITORY_ROOT / "AGENTS.md"
 
 PROFILE_FIELDS = tuple(field.name for field in fields(options.ResolvedJak3Options))
 
@@ -94,13 +95,10 @@ class OptionSchemaTest(unittest.TestCase):
         self.assertEqual(set(options.Jak3Options.type_hints), set(yaml_options))
         self.assertEqual(51, len(yaml_options))
 
-    def test_normative_and_shipped_world_profiles_match(self) -> None:
-        if not WORKSPACE_SPEC.is_file():
-            self.skipTest("workspace specification is not present in this standalone checkout")
-        self.assertEqual(
-            load_yaml(WORKSPACE_SPEC)["Jak 3"],
-            load_yaml(SHIPPED_TEMPLATE)["Jak 3"],
-        )
+    def test_canonical_sources_are_present_in_a_standalone_checkout(self) -> None:
+        self.assertTrue(REPOSITORY_INSTRUCTIONS.is_file())
+        self.assertTrue(CANONICAL_DESIGN.is_file())
+        self.assertTrue(SHIPPED_TEMPLATE.is_file())
 
     def test_schema_defaults_resolve_to_the_design_profile(self) -> None:
         self.assertEqual(
@@ -119,15 +117,6 @@ class OptionSchemaTest(unittest.TestCase):
 
 
 class OptionResolutionTest(unittest.TestCase):
-    def test_exact_supplied_default_yaml_resolves_successfully(self) -> None:
-        if not WORKSPACE_SPEC.is_file():
-            self.skipTest("workspace specification is not present in this standalone checkout")
-        rolled = roll_settings(load_yaml(WORKSPACE_SPEC))
-        self.assertEqual(
-            options.SUPPORTED_FIRST_RELEASE_OPTIONS,
-            options.resolve_options(rolled),
-        )
-
     def test_shipped_default_yaml_resolves_successfully(self) -> None:
         rolled = roll_settings(load_yaml(SHIPPED_TEMPLATE))
         self.assertEqual(
@@ -149,6 +138,18 @@ class OptionResolutionTest(unittest.TestCase):
         self.assertEqual(0, resolved.trap_percentage)
         self.assertFalse(resolved.death_link)
         self.assertFalse(resolved.allow_experimental_checks)
+
+    def test_yaml_comments_preserve_overlay_and_shadow_state_separation(self) -> None:
+        text = SHIPPED_TEMPLATE.read_text(encoding="utf-8")
+        mission_block = text.split("mission_equipment:", 1)[1].split("story_item_mode:", 1)[0]
+        story_block = text.split("story_item_mode:", 1)[1].split("finale_relic_requirement:", 1)[0]
+        experimental_block = text.split("allow_experimental_checks:", 1)[1].split(
+            "gun_shuffle:", 1
+        )[0]
+        self.assertNotIn("shadow", mission_block.casefold())
+        self.assertIn("lesson abilities", mission_block)
+        self.assertIn("shadow-story subsystem", story_block)
+        self.assertIn("true remains rejected", experimental_block)
 
     def test_every_other_governed_value_fails_early(self) -> None:
         self.assertEqual(set(PROFILE_FIELDS), set(UNSUPPORTED_VALUES))

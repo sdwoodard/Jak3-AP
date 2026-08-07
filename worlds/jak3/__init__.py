@@ -8,17 +8,14 @@ from worlds.LauncherComponents import Component, Type, components, icon_paths, l
 from . import options
 from .data import (
     ACTIVITIES,
-    ACTIVITY_REQUIREMENTS,
     EQUIPMENT,
     EQUIPMENT_BY_NAME,
-    FILLER_KIND_BY_NAME,
     FILLERS,
     GAME_NAME,
     ITEM_NAME_TO_ID,
     LOCATION_NAME_TO_ID,
     LOGIC_ITEM_NAMES,
     MISSION_BY_ID,
-    MISSION_REQUIREMENTS,
     MISSIONS,
     STARTING_MISSION_ID,
     TRAPS,
@@ -26,6 +23,7 @@ from .data import (
 from .items import Jak3Item
 from .regions import create_regions
 from .rules import set_rules
+from .slot_data import build_slot_data
 
 
 def launch_client() -> None:
@@ -202,38 +200,9 @@ class Jak3World(World):
         set_rules(self, self.resolved_options)
 
     def fill_slot_data(self) -> dict:
-        return {
-            "goal": self.resolved_options.goal_protocol_value,
-            # Compatibility fields consumed by the pre-design-default
-            # protocol scaffold. They disappear when the task-72 design goal
-            # is implemented in its own milestone.
-            "completion_condition": 0,
-            "specific_mission": 71,
-            "mission_count": 66,
-            "trap_duration": self.resolved_options.trap_duration,
-            "starting_task": STARTING_MISSION_ID,
-            "task_ids": {
-                mission.item_name: mission.task_id
-                for mission in MISSIONS
-                if mission.task_id != STARTING_MISSION_ID
-            },
-            "activity_unlock_counts": {
-                str(activity.task_id): activity.unlock_count for activity in ACTIVITIES
-            },
-            "mission_requirements": {
-                str(task_id): {name: count for name, count in requirements}
-                for task_id, requirements in MISSION_REQUIREMENTS.items()
-            },
-            "activity_requirements": {
-                str(task_id): {name: count for name, count in requirements}
-                for task_id, requirements in ACTIVITY_REQUIREMENTS.items()
-            },
-            "equipment": {
-                equipment.name: {"kind": equipment.kind, "copies": equipment.copies}
-                for equipment in EQUIPMENT
-            },
-            "filler": FILLER_KIND_BY_NAME,
-        }
+        # Freeze the first-release compatibility envelope while the retained
+        # 131-location generator remains isolated until Milestone 5.
+        return build_slot_data(self.resolved_options)
 
     def get_filler_item_name(self) -> str:
         return self.random.choice(FILLERS)

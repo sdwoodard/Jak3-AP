@@ -9,11 +9,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Awaitable, Callable, Protocol
 
-
-# Protocol 1 is the retired 131-location gameplay scaffold. Protocol 2 is a
-# deliberately handshake-only compatibility boundary.
-PROTOCOL_VERSION = 2
-GAME_INTEGRATION_VERSION = 1
+from ..versions import GAME_INTEGRATION_VERSION, PROTOCOL_VERSION
 
 PING_INTERVAL_SECONDS = 1.0
 COMMAND_TIMEOUT_SECONDS = 3.0

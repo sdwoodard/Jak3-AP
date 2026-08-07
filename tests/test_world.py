@@ -15,6 +15,8 @@ from worlds.jak3.data import (
     TRAPS,
 )
 from worlds.jak3.options import SUPPORTED_FIRST_RELEASE_OPTIONS
+from worlds.jak3.registry import ITEM_TABLE_HASH, LOCATION_TABLE_HASH, MISSION_TABLE_HASH
+from worlds.jak3.slot_data import SLOT_DATA_KEYS, SUPPORTED_RESOLVED_OPTIONS_HASH
 
 
 class Jak3WorldTest(WorldTestBase):
@@ -108,32 +110,14 @@ class Jak3WorldTest(WorldTestBase):
             self.collect(self.get_items_by_name(name)[:count])
         self.assertTrue(self.can_reach_location("Victory"))
 
-    def test_current_slot_data_contract_is_stable(self) -> None:
+    def test_first_release_slot_data_contract_is_stable(self) -> None:
         slot_data = self.world.fill_slot_data()
-        self.assertEqual(
-            {
-                "goal",
-                "completion_condition",
-                "specific_mission",
-                "mission_count",
-                "trap_duration",
-                "starting_task",
-                "task_ids",
-                "activity_unlock_counts",
-                "mission_requirements",
-                "activity_requirements",
-                "equipment",
-                "filler",
-            },
-            set(slot_data),
-        )
-        self.assertEqual(0, slot_data["goal"])
-        self.assertEqual(0, slot_data["completion_condition"])
-        self.assertEqual(71, slot_data["specific_mission"])
-        self.assertEqual(66, slot_data["mission_count"])
-        self.assertEqual(6, slot_data["starting_task"])
-        self.assertEqual(65, len(slot_data["task_ids"]))
-        self.assertEqual(65, len(slot_data["activity_unlock_counts"]))
+        self.assertEqual(SLOT_DATA_KEYS, set(slot_data))
+        self.assertEqual(ITEM_TABLE_HASH, slot_data["item_table_hash"])
+        self.assertEqual(LOCATION_TABLE_HASH, slot_data["location_table_hash"])
+        self.assertEqual(MISSION_TABLE_HASH, slot_data["mission_table_hash"])
+        self.assertEqual(SUPPORTED_RESOLVED_OPTIONS_HASH, slot_data["resolved_options_hash"])
+        self.assertEqual(72, slot_data["goal"]["native_task_id"])
 
 
 class Jak3FixedSeedGenerationTest(WorldTestBase):

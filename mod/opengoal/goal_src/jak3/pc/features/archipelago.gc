@@ -4,6 +4,21 @@
 
 (defconstant AP-PROTOCOL-VERSION 2)
 (defconstant AP-GAME-INTEGRATION-VERSION 1)
+(defconstant AP-SLOT-DATA-VERSION 1)
+(defconstant AP-STATE-SCHEMA-VERSION 1)
+(defconstant AP-ITEM-TABLE-VERSION 2)
+(defconstant AP-LOCATION-TABLE-VERSION 2)
+(defconstant AP-MISSION-TABLE-VERSION 1)
+(defconstant AP-MISSION-PROFILE-VERSION 1)
+
+;; Static compatibility metadata only. Milestone 4 does not add gameplay I/O.
+(define *ap-design-version* (new 'global 'string 8 "0.3"))
+(define *ap-item-table-hash*
+  (new 'global 'string 65 "eb557676187512253327e2fdcbad2f8f49f62236d019fdd8129f14cb9987f99c"))
+(define *ap-location-table-hash*
+  (new 'global 'string 65 "f1c74c5a9da78e8e2b87a57ae283b514038be521699367342c0a555826333793"))
+(define *ap-mission-table-hash*
+  (new 'global 'string 65 "2e6e631ed650ceb860921e3feb066a85f6d858038a0f46f510a616d17633f09a"))
 
 (defconstant AP-CLIENT-STATUS-STARTING 0)
 (defconstant AP-CLIENT-STATUS-AP-DISCONNECTED 1)

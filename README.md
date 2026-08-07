@@ -37,6 +37,8 @@ controls remain customizable.
 
 The normative target is
 [docs/design/progression-and-logic.md](docs/design/progression-and-logic.md).
+The frozen registry, hash encoding, and slot-data envelope are documented in
+[docs/development/data-contract.md](docs/development/data-contract.md).
 See [docs/source-audit.md](docs/source-audit.md) for the source checks performed
 against OpenGOAL and for the limits of that verification.
 

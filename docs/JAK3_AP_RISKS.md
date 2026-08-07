@@ -1,0 +1,360 @@
+# Jak 3 Archipelago risk register
+
+This is the required home for conflicts, unknowns, and evidence gaps discovered
+while implementing the normative design. Do not silently resolve a risk by
+changing logic to match the retained pre-design-default scaffold.
+
+Snapshot date: **2026-08-07**
+
+## Status and severity
+
+- **Open**: unresolved and blocks some later acceptance claim.
+- **Watching**: a mitigation exists, but compatibility or operational evidence
+  must continue to be recorded.
+- **Closed**: exit criteria passed with linked evidence. Closed entries remain
+  for design history.
+- **Critical** blocks a playable/release claim; **High** can corrupt progression
+  or lose checks/items; **Medium** can cause integration or support failures.
+
+Owners are deliberately role-based until maintainers assign people.
+
+## Active risks
+
+### R-001 — Normative source drift
+
+- Severity/status: **High / Closed**
+- Owner: Design and release maintainers
+- Risk: Two editable workspace/repository specification copies could drift,
+  causing code, tests, or public documentation to target different contracts.
+- Historical evidence: On 2026-08-06 the workspace copy retained SHA-256
+  `F6630779AD84C58394A643886B93CCFC5871C02A09D4E8CF70D7CDD9E891CA1C`, while
+  the repository mirror had SHA-256
+  `CCF1CE26204EE99BD1BE72EF41DDCE2AE4DED140D17576509ABFD21FE8E74EEC`.
+  A line comparison found only the two intentional Markdown hard-break spaces
+  on workspace lines 3 and 4 missing from the mirror; trimmed text is equal.
+- Resolution evidence: `docs/design/progression-and-logic.md` and
+  `config/templates/Jak3.yaml` are now the canonical version-controlled paths.
+  The workspace-level specification files are redirect-only stubs,
+  `AGENTS.md` names the canonical paths, and standalone tests load no optional
+  sibling specification. YAML semantics and the overlay/shadow comments are
+  tested directly from the shipped template.
+- Exit criteria: **Passed.** There is one editable design and one editable
+  default YAML, both inside the standalone repository.
+
+### R-002 — Dirty working-tree baseline
+
+- Severity/status: **Medium / Closed**
+- Owner: Repository maintainer
+- Risk: The repository contained pre-existing uncommitted work when this
+  documentation snapshot was taken. Future changes can accidentally mix,
+  overwrite, or misattribute those edits.
+- Historical evidence: The first snapshot was made from commit `0c7497d` with
+  a dirty worktree. Before Milestone 4 work, the reviewed repository was clean
+  at `4974885`, matching `origin/main`.
+- Mitigation: Review `git status`, full diff, and untracked files before every
+  edit; preserve unrelated user changes; use focused commits only when asked.
+- Exit criteria: **Passed for the Milestone 4 baseline.** The implementation
+  began from the documented clean commit; this entry remains for history.
+
+### R-003 — Retained scaffold conflicts with the default design
+
+- Severity/status: **Critical / Open**
+- Owner: APWorld and logic maintainers
+- Risk: The existing 131-location, per-mission-key model can be mistaken for
+  implementation of the accepted 147-location default. Its checks, item pool,
+  classifications, route graph, side-task selection, and filler semantics all
+  differ materially.
+- Current evidence: See
+  [`development/specification-gap-matrix.md`](development/specification-gap-matrix.md).
+  The exact normative YAML now resolves to an immutable, validated 41-field
+  design profile, and tests prevent downstream world code from reading raw
+  option objects. Milestone 4 now freezes separate first-release registries for
+  26 progression instances, 28 useful instances, and all 147 target locations,
+  but the accepted values still feed the retained scaffold generator until
+  Milestone 5.
+- Mitigation: Label the older implementation as a disposable protocol
+  scaffold—not the design's Phase 1—and keep protocol 2 handshake-only so the
+  legacy item/check runtime cannot be mistaken for accepted behavior. Pin all
+  non-default options, and do not call accepted defaults implemented merely
+  because their schema values parse.
+- Exit criteria: Exact 147-location and 147-item arithmetic, tiered board,
+  default predicates/exclusions, deterministic data, and full generation tests
+  pass.
+
+### R-004 — Task 36 lacks a durable completion source
+
+- Severity/status: **High / Open**
+- Owner: OpenGOAL integration maintainer
+- Risk: The retained scaffold creates a network location for task 36, but the audited source
+  has no `close-task` node for it. The normal bridge hook therefore cannot
+  complete that location.
+- Current evidence: Source-table audit identifies task 36 as the only story
+  omission from `close-task` coverage. The first-release registry excludes it
+  and permanently reserves legacy location ID `743001036`. The active legacy
+  generator still creates it until Milestone 5.
+- Mitigation: Remove it from the default location set. Do not add it to another
+  preset without a new finite, durable AP completion flag and runtime proof.
+- Exit criteria: Default generation excludes task 36; any future enabled form
+  passes exactly-once, replay, offline, and save/load tests.
+
+### R-005 — Goal mismatch: task 71 versus task 72
+
+- Severity/status: **Critical / Open**
+- Owner: Logic and client maintainers
+- Risk: Current slot data/client reports victory on final-boss task 71. The
+  specification requires task 71 as a network check followed by locked task 72
+  City Win as the non-networked Victory event.
+- Current evidence: `rules.py` retains task-71 scaffold generation behavior.
+  The first-release registry represents task 72 as a code-less Victory event,
+  and slot-data version 1 names task 72 plus the five-relic threshold. Goal
+  reporting remains absent as required before Milestone 23.
+- Mitigation: Keep the mismatch prominently documented and avoid release seeds.
+- Exit criteria: Generator, client, bridge, tests, and reconnect goal resend all
+  use task 72 under `complete_city_win`.
+
+### R-006 — AP ledger and native rewards can diverge
+
+- Severity/status: **Critical / Open**
+- Owner: OpenGOAL persistence/reward maintainer
+- Risk: Native reward commands and save reconstruction may grant shuffled
+  permanent items independently of Archipelago, or overwrite AP-delivered
+  state. Replaying a native reward can duplicate effects; suppressing too much
+  can break task closure/cutscenes.
+- Current evidence: All 51 native reward nodes are source-audited, but no
+  permanent-grant interception, `ap-applying-item` guard, or authoritative
+  durable ledger exists.
+- Mitigation: Intercept only audited permanent grants; leave task, dialogue,
+  cutscene, and presentation behavior intact; reconcile native state from the
+  AP ledger after every reconstruction boundary.
+- Exit criteria: Every default item/reward passes first receipt, duplicate,
+  cap, save/load, native reconstruction, replay, and closure tests.
+
+### R-007 — Transient state can lose offline checks or replay position
+
+- Severity/status: **Critical / Open**
+- Owner: Client and persistence maintainers
+- Risk: The bridge snapshot and client sets are transient. A disconnect, game
+  crash, client restart, packet gap, or save switch can lose unsent checks or
+  create ambiguous receipt state.
+- Current evidence: Protocol 1's positional receipt/check paths are retired.
+  Protocol 2 provides only temporary session/heartbeat state and explicitly
+  requests no `ReceivedItems`; it has no durable item ledger, location bitset,
+  pending outbox, or packet-gap handling.
+- Mitigation: Treat the server list as authoritative, but persist a versioned
+  seed/team/slot/save ledger and monotonic outbox before gameplay acceptance.
+- Exit criteria: Duplicate, gap, reconnect, offline completion, both process
+  restarts, new game, load, and goal-resend scenarios pass without lost or
+  duplicated state.
+
+### R-008 — Mission bootstrap and shadow state are absent
+
+- Severity/status: **Critical / Open**
+- Owner: OpenGOAL mission adapter maintainer
+- Risk: AP-authorized missions may start with missing actors/loadouts/story
+  flags, while naive grants can leak permanent inventory, complete checks, or
+  inflate the AP relic count. Tasks 11, 27, 30, and 63 are explicit high-risk
+  cases.
+- Current evidence: Protocol 2 has no mission dispatch. The retired scaffold
+  had only generic task dispatch; per-mission bootstrap, cleanup, lesson
+  overlays, and separate shadow state do not exist.
+- Mitigation: Use explicit mission profiles and distinguish permanent AP
+  inventory, temporary bootstrap, and non-counting native story shadow state.
+- Exit criteria: Every profile passes complete/fail/retry/abort/death/load and
+  mid-overlay receipt tests, including all mandatory specification scenarios.
+
+### R-009 — nREPL acknowledgement is not a compiler-error gate
+
+- Severity/status: **High / Open**
+- Owner: Client/startup maintainer
+- Risk: `goalc` may accept an nREPL form while compiler output contains an
+  error. The client can continue toward title or time out with an indirect
+  message rather than immediately identifying the failed file/form.
+- Current evidence: Protocol 2 compiled all 1,165 targets in the recorded
+  OpenGOAL v0.3.5 runtime and produced command-specific hello/pong snapshots.
+  A first live attempt exposed and rejected quoted snapshot strings even though
+  nREPL acknowledged the GOAL forms; the corrected exporter then passed hello,
+  duplicate ping, and next-ping checks. The client still does not
+  parse/classify full compiler output.
+- Mitigation: Preserve raw `gk`/`goalc` output, require snapshot acknowledgement
+  for protocol commands, and tell users to provide both paired logs.
+- Exit criteria: Inject representative syntax, type, missing-file, and target
+  attach failures; client fails promptly with source/form context and never
+  claims readiness.
+
+### R-010 — Process ownership and cleanup are incomplete
+
+- Severity/status: **Medium / Open**
+- Owner: Client/startup maintainer
+- Risk: `gk`, `goalc`, or client windows can remain open after a test/client
+  exit. Reusing an old process also prevents the current diagnostic session
+  from capturing its earlier output.
+- Current evidence: The client records which processes it starts but does not
+  stop them on exit; old windows remained after a prior smoke test.
+- Mitigation: Start tests with no stale process, record PIDs, and close only
+  processes opened for that test using the maintained runbook.
+- Exit criteria: Define user-facing ownership policy and implement/test clean
+  normal exit, crash recovery, “leave game running” behavior if desired, and
+  no termination of unrelated processes.
+
+### R-011 — No connected-room gameplay acceptance
+
+- Severity/status: **Critical / Open**
+- Owner: Integration test maintainer
+- Risk: Compile/title success can conceal failures in authentication, bridge
+  binding, mission start, item application, check submission, save loading,
+  HUD notices, replay, and goal reporting.
+- Current evidence: The protocol-2 hello/ping completion gate passed without a
+  room connection or gameplay action. An earlier protocol-1 smoke reached the
+  normal title menu. No complete live multiworld scenario is recorded.
+- Mitigation: Do not equate startup smoke with playability; capture paired logs
+  and scenario metadata for every acceptance run.
+- Exit criteria: A connected default seed passes the generation, item,
+  location, bootstrap, persistence, full-accessibility, and HUD scenarios in
+  [`development/verification-matrix.md`](development/verification-matrix.md).
+
+### R-012 — Public ID and table compatibility enforcement
+
+- Severity/status: **High / Watching**
+- Owner: Protocol/release maintainer
+- Risk: A future client/game path could accept slot data whose versions or
+  registry hashes do not match the installed APWorld/GOAL integration.
+- Current evidence: Milestone 4 defines literal first-release item/location
+  records, mission/bootstrap/shadow identifiers, and an independent literal
+  protocol-1 snapshot that marks every published ID as an exact retained
+  semantic identity or a permanent reservation. Canonical UTF-8 JSON hashing,
+  versioned slot data, and frozen item/location/mission/resolved-option hashes
+  are present. Duplicate IDs/names, declaration reordering, reservation reuse,
+  retained-concept mutation, scaffold/snapshot parity, task 36, task 72, task
+  88, deterministic JSON, standalone defaults, and Python/GOAL constant parity
+  are covered by tests. The client diagnostics and GOAL source carry the same
+  versions and table hashes. Protocol 2 intentionally remains handshake-only
+  and does not yet validate room slot data.
+- Mitigation: Keep `legacy_ids.py` as the immutable protocol-1 compatibility
+  input; use only `registry.py`, `versions.py`, and `slot_data.py` for future
+  state or compatibility work. Add runtime slot-data/table mismatch rejection
+  when the runtime state/transport milestone begins consuming a room contract.
+- Exit criteria: Approve the final design registry and retired-ID policy,
+  export its schema version and deterministic hashes, reject mismatches in the
+  client/game handshake, and pass compatibility tests.
+
+### R-013 — Early routing can be directionless or blocked
+
+- Severity/status: **High / Open**
+- Owner: Generator/logic maintainer
+- Risk: The current forced task-12 key does not satisfy either required early
+  guarantee. A Haven-first alternative is unsafe without Jetboard, and lack of
+  local ranged access can stall later Standard branches.
+- Current evidence: The specification requires local Spargus Field Orders and
+  a local Blaster/Vulcan Fury in sphere zero. Current `generate_early()` forces
+  only one mission key.
+- Mitigation: Retain the conservative Spargus-first rule until a Haven snapshot
+  and actionable Jetboard placement are proven.
+- Exit criteria: Default generation and 10,000-seed metrics prove one local,
+  actionable route plus one local RANGED alternative and at least two early
+  branches.
+
+### R-014 — Currency balance and local-earned checks may contaminate each other
+
+- Severity/status: **High / Open**
+- Owner: Items/sanity maintainer
+- Risk: AP-delivered Orb/Gem Packs must be spendable but must never advance
+  local-world orb/gem check counters. Native kiosk/purchase costs can otherwise
+  create grind locks or false checks.
+- Current evidence: The retained scaffold has neither currency packs nor local-earned
+  counters; free side/purchase cost hooks and 24 orb thresholds are absent.
+- Mitigation: Maintain separate monotonic local-earned totals and AP balance;
+  default costs are free and thresholds above 300 are placement-excluded.
+- Exit criteria: Receipt, spending, native earning, replay, save/load, all 600
+  orb thresholds, and free-cost scenarios pass without counter leakage.
+
+### R-015 — OpenGOAL compatibility is pinned only informally
+
+- Severity/status: **High / Watching**
+- Owner: OpenGOAL/release maintainer
+- Risk: Decompiled types, task tables, startup forms, or runtime hooks may
+  change across OpenGOAL versions. Auto-installing a bridge against an unknown
+  project can fail compilation or, worse, compile against changed semantics.
+- Current evidence: Successful smoke used official OpenGOAL v0.3.5. The source
+  audit checks structural tables but no compatible commit/table hash is stored
+  in the APWorld handshake.
+- Mitigation: Log paths and bridge hashes and retain source-table audit.
+- Exit criteria: Define supported OpenGOAL version/commit range, include a
+  deterministic compatibility/table hash, reject known-incompatible projects,
+  and test every supported release.
+
+### R-016 — Successful smoke log still contains `gk` error-level noise
+
+- Severity/status: **Medium / Open**
+- Owner: OpenGOAL/integration maintainer
+- Risk: The recorded successful startup log contains 79 `[GK] [error]` lines.
+  Most report duplicate textures; the remainder report a duplicate MIPS2C
+  registration and reference patching. These may be known debug-load
+  diagnostics, but treating every error-level line as a compile failure creates
+  false alarms, while ignoring them wholesale can hide a real runtime problem.
+- Current evidence: The same session contains zero `goalc` error-level lines,
+  no matched nREPL/compiler-failure marker, a successful 1,165-target build,
+  bridge verification, and a loaded title level.
+- Mitigation: Keep the raw lines in the paired log and distinguish process,
+  subsystem, message, and final readiness state in diagnostics.
+- Exit criteria: Classify each message against a clean unmodified Jak 3 debug
+  launch on every supported OpenGOAL version; document an exact allowlist only
+  for proven-benign messages and fail on any new/unexpected error signature.
+
+### R-017 — Reference-tree contamination can corrupt source evidence
+
+- Severity/status: **High / Watching**
+- Owner: All development and automation maintainers
+- Risk: Installing a bridge, compiling, formatting, running writing tests, or
+  generating caches inside `jak-project`, `Archipelago`, or
+  `openGOAL-decompile` changes the evidence used to audit the mod. A later
+  source conclusion could unknowingly be based on project-modified input.
+- Current evidence: The 2026-08-05 audit found an `archipelago.o` registration
+  and untracked bridge inside `jak-project`; both were removed and Git is now
+  clean at `425f143fc`. `Archipelago` is clean at `feab54da`.
+  `openGOAL-decompile` has no Git baseline, so it can only be preserved as the
+  supplied immutable snapshot. During the first Milestone 4 local APWorld run,
+  importing the Archipelago reference refreshed ignored `__pycache__` files;
+  no tracked source changed, but pre-run cache bytes were not baselined. The
+  final 110-test evidence was therefore rerun from a disposable copy with
+  `PYTHONDONTWRITEBYTECODE=1` and the APWorld installed only in that copy's
+  `custom_worlds` directory.
+- Mitigation: Enforce
+  [`development/reference-source-policy.md`](development/reference-source-policy.md),
+  use the active OpenGOAL installation for smoke tests, and use disposable
+  copies for writing Archipelago tests.
+- Exit criteria: Add a repeatable pre/post reference-integrity guard to normal
+  development/test automation and document provenance or hashes for the
+  decompile snapshot.
+
+### R-018 — Standard placement controls can conflict with future guarantees
+
+- Severity/status: **High / Open**
+- Owner: Generator/options maintainer
+- Risk: Standard Archipelago controls remain customizable and core-owned. The
+  current resolver intentionally does not duplicate them, but the final Jak 3
+  pool must still reject `start_inventory_from_pool` overcounts, incompatible
+  local/non-local declarations, and placements that invalidate the required
+  local early route or reliable-ranged guarantees.
+- Current evidence: The resolved profile covers all 41 design-governed values;
+  a test confirms that standard placement controls do not alter that profile.
+  The retained scaffold has neither the specified target pool nor the two
+  design early guarantees, so their cross-validation cannot yet be accepted.
+- Mitigation: Keep Archipelago core authoritative for generic placement data.
+  When the 147-item target pool and early prefill are implemented, derive a
+  checked placement snapshot after mandatory pool selection and before fill.
+- Exit criteria: Generation tests reject pool overcounts and local/non-local
+  conflicts, account correctly for precollected items, and prove the local
+  route and RANGED guarantees under every supported placement-control case.
+
+## Risk update rules
+
+When a code or specification change touches an active risk:
+
+1. Link the exact automated/runtime evidence; do not close on code inspection
+   alone when the exit criteria require real-game behavior.
+2. Update
+   [`development/specification-gap-matrix.md`](development/specification-gap-matrix.md)
+   and [`development/verification-matrix.md`](development/verification-matrix.md)
+   in the same change.
+3. Preserve the original decision and evidence when closing a risk.
+4. Add new unknowns here before weakening a rule or inventing behavior.

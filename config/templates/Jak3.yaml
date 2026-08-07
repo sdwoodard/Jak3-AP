@@ -47,13 +47,14 @@ Jak 3:
                                      # expert: audited advanced movement alternatives only.
 
   mission_equipment: bootstrap      # [SUPPORTED DEFAULT] bootstrap: temporarily supply exact scripted mission equipment,
-                                     # lesson abilities, and non-counting native story props.
+                                     # actors, loadouts, and lesson abilities through reversible overlays only.
                                      # require_unlocks: require every exact permanent unlock; experimental.
                                      # vanilla: allow native mission grants to persist; least randomized.
 
   story_item_mode: simplified_authorizations # [SUPPORTED DEFAULT]
                                      # simplified_authorizations: eight broad route items plus shadow
-                                     # native Seal/pass/artifact state for script presentation (recommended).
+                                     # native Seal/pass/artifact props owned by a separate non-counting
+                                     # shadow-story subsystem for script presentation (recommended).
                                      # canonical: native passes/War Amulets; experimental fine-grained logic.
                                      # vanilla: native story gating, no shuffled route items.
 
@@ -137,8 +138,8 @@ Jak 3:
                                      # individual_free: one check per audited purchase, no cost.
                                      # individual_vanilla_costs: preserve native costs and grind.
 
-  allow_experimental_checks: false  # [SUPPORTED DEFAULT] false rejects unaudited individual/orb-hunt/milestone modes.
-                                     # Set true only when the APWorld and OpenGOAL client tables match.
+  allow_experimental_checks: false  # [SUPPORTED DEFAULT] true remains rejected in the default-only beta.
+                                     # Experimental names stay documented for future audited table versions.
 
   # ---------------------------------------------------------------------------
   # Item shuffle and logic options
