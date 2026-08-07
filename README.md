@@ -5,10 +5,11 @@ world and client, the in-game OpenGOAL bridge, development tooling, design
 records, and the future installer/release packaging.
 
 The repository is currently an **integration scaffold**, not a playable
-release. The original 131-check protocol vertical slice remains available for
-incremental testing, while the option schema is now pinned to the documented
-first-playable default profile. The next implementation pass replaces that
-vertical slice with the design's 147-location default world.
+release. The active runtime is a harmless protocol-2 handshake that detects
+OpenGOAL, verifies the loaded source and versions, and exchanges ping/pong
+heartbeats. It intentionally does not process items, locations, rewards,
+saves, or missions. The retained 131-location generator is pre-release data
+characterization, not an active gameplay protocol or the design's Phase 1.
 
 ## Repository layout
 
@@ -59,17 +60,16 @@ Starting **Jak 3 Client** from Archipelago Launcher automatically:
    in the active Jak 3 project;
 3. starts Jak 3 `gk` with `-debug` and starts `goalc` when needed;
 4. attaches to the target and runs the Jak 3 recompile;
-5. loads and initializes the bridge; and
-6. returns the game to the normal title menu so saves and game options remain
-   available.
+5. loads the handshake bridge;
+6. verifies protocol 2 and game integration 1; and
+7. exchanges a session hello and harmless incremented heartbeat.
 
-Newly received items and items sent to other players are queued as messages at
-the bottom of the gameplay screen. Connection-history replay is intentionally
-silent.
+The client does not request `ReceivedItems`, submit checks, report victory, or
+change inventory, saves, title state, or missions in this milestone.
 
 Every launch also creates a matched `Jak3Client_<session>.txt` and
 `Jak3OpenGOAL_<session>.txt` support pair. The latter combines game and compiler
-output, while `/diagnostics` records the current item/check/logic state and
+output, while `/diagnostics` records the current handshake state and
 prints both paths. See [docs/troubleshooting.md](docs/troubleshooting.md) before
 reporting an issue.
 

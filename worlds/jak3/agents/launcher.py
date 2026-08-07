@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .diagnostics import DiagnosticSession
+from .protocol import GAME_INTEGRATION_VERSION, PROTOCOL_VERSION
 
 
 BRIDGE_RESOURCE = "assets/opengoal/archipelago.gc"
@@ -79,6 +80,21 @@ class ProcessLaunchResult:
     compiler_command: tuple[str, ...]
 
 
+def _validate_bridge_payload(payload: bytes) -> None:
+    expected_protocol = f"(defconstant AP-PROTOCOL-VERSION {PROTOCOL_VERSION})".encode()
+    expected_integration = (
+        f"(defconstant AP-GAME-INTEGRATION-VERSION {GAME_INTEGRATION_VERSION})".encode()
+    )
+    if (
+        b"(in-package goal)" not in payload
+        or expected_protocol not in payload
+        or expected_integration not in payload
+    ):
+        raise ValueError(
+            "The bundled OpenGOAL bridge payload does not match the Python protocol versions."
+        )
+
+
 def load_packaged_bridge() -> bytes:
     """Read the GOAL bridge carried inside the installed APWorld."""
 
@@ -88,8 +104,7 @@ def load_packaged_bridge() -> bytes:
         raise FileNotFoundError(
             f"The installed Jak 3 APWorld is missing {BRIDGE_RESOURCE}; reinstall the APWorld."
         )
-    if b"(in-package goal)" not in payload or b"(defconstant AP-PROTOCOL-VERSION" not in payload:
-        raise ValueError("The bundled OpenGOAL bridge payload is invalid.")
+    _validate_bridge_payload(payload)
     return payload
 
 
@@ -171,8 +186,7 @@ def install_packaged_bridge(
         startup_payload if startup_payload is not None else load_packaged_startup()
     )
     bootstrap_types_payload = _build_bootstrap_type_database(install)
-    if b"(in-package goal)" not in bridge_payload:
-        raise ValueError("The OpenGOAL bridge payload is invalid.")
+    _validate_bridge_payload(bridge_payload)
     if (b"(in-package goal)" not in compile_overlay_payload
             or b"ap-bootstrap-show-startup-wait!" not in compile_overlay_payload):
         raise ValueError("The OpenGOAL startup overlay payload is invalid.")

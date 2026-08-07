@@ -60,6 +60,13 @@ $zipPath = Join-Path $resolvedOutput ("jak3-" + [guid]::NewGuid().ToString("N") 
 New-Item -ItemType Directory -Path $stagingRoot | Out-Null
 try {
     Copy-Item -LiteralPath $worldSource -Destination $stagingRoot -Recurse
+    $stagedWorld = Join-Path $stagingRoot "jak3"
+    Get-ChildItem -LiteralPath $stagedWorld -File -Recurse |
+        Where-Object { $_.Extension -in @(".pyc", ".pyo") } |
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
+    Get-ChildItem -LiteralPath $stagedWorld -Directory -Filter "__pycache__" -Recurse |
+        Sort-Object FullName -Descending |
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
     $stagedBridgeDirectory = Join-Path $stagingRoot "jak3\assets\opengoal"
     New-Item -ItemType Directory -Path $stagedBridgeDirectory -Force | Out-Null
     Copy-Item -LiteralPath $bridgeSource -Destination (Join-Path $stagedBridgeDirectory "archipelago.gc")
@@ -114,6 +121,7 @@ try {
     $requiredEntries = @(
         "jak3/agents/launcher.py",
         "jak3/agents/diagnostics.py",
+        "jak3/agents/protocol.py",
         "jak3/assets/opengoal/archipelago-startup.gc",
         "jak3/assets/opengoal/archipelago.gc",
         "jak3/icons/jak3-logo.png"

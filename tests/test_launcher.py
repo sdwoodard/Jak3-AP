@@ -11,8 +11,15 @@ from worlds.jak3.agents.launcher import (
 )
 
 
-BRIDGE_PAYLOAD = b""";; test bridge\n(in-package goal)\n(defconstant AP-PROTOCOL-VERSION 1)\n"""
-STARTUP_PAYLOAD = b""";; test startup\n(in-package goal)\n(defun ap-bootstrap-show-startup-wait! () #t)\n"""
+BRIDGE_PAYLOAD = b""";; test bridge
+(in-package goal)
+(defconstant AP-PROTOCOL-VERSION 2)
+(defconstant AP-GAME-INTEGRATION-VERSION 1)
+"""
+STARTUP_PAYLOAD = (
+    b";; test startup\n(in-package goal)\n"
+    b"(defun ap-bootstrap-show-startup-wait! () #t)\n"
+)
 
 
 class OpenGoalBridgeInstallerTest(unittest.TestCase):
@@ -52,7 +59,10 @@ class OpenGoalBridgeInstallerTest(unittest.TestCase):
             self.assertNotIn(b"must-not-be-imported", bootstrap_types)
             project_text = first.project_path.read_text(encoding="utf-8")
             self.assertEqual(project_text.count('"archipelago.o"'), 1)
-            self.assertLess(project_text.index('"task-control.o"'), project_text.index('"archipelago.o"'))
+            self.assertLess(
+                project_text.index('"task-control.o"'),
+                project_text.index('"archipelago.o"'),
+            )
             project_bytes = first.project_path.read_bytes()
             self.assertNotIn(b"\n", project_bytes.replace(b"\r\n", b""))
 

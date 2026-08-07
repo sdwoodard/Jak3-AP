@@ -47,18 +47,17 @@ will restore the bridge version carried by the installed APWorld.
 Start **Jak 3 Client** from Archipelago Launcher. The client mirrors the proven
 Jak 1 lifecycle: it launches missing OpenGOAL processes, starts `gk` in debug
 mode, connects to `goalc` nREPL, attaches with `(lt)`, recompiles with `(mi)`,
-loads the bridge, disables debug/cheat state, and opens `title-restart`.
+loads the bridge, disables debug/cheat state, verifies protocol 2/game
+integration 1, and exchanges a harmless heartbeat.
 
 There is no routine need to type `(mi)`, `(lt)`, or `(ml ...)` manually. The
 client console keeps these recovery commands:
 
-- `/diagnostics` writes and flushes a full current logic/protocol snapshot and
+- `/diagnostics` writes and flushes the current handshake snapshot and
   prints the paired client/OpenGOAL log paths.
-- `/repl status` reports server, compiler, and bridge state.
+- `/repl status` reports server, compiler, game, source, versions, session,
+  heartbeat, and last command/result state.
 - `/repl connect` retries the full compile/connect operation.
-- `/game title` reopens the normal title menu.
-- `/game start` initializes a fresh game from `intro-start`.
-- `/game sync` reapplies authoritative AP inventory after loading a save.
 
 The exact normal retail-style command supplied for local smoke testing is:
 
@@ -101,13 +100,12 @@ is statically provable; those require runtime acceptance tests.
    this package as `worlds\jak3`.
 3. Build and inspect `dist\jak3.apworld`.
 4. Compile the GOAL overlay against the active Jak 3 project.
-5. Perform an end-to-end debug launch and verify title return, save loading,
-   item reconstruction, check delivery, and both sent/received HUD messages.
+5. Perform the client-first, game-first, both-restart, mismatch, duplicate-ping,
+   and communication-loss protocol scenarios. Record a real `N -> N + 1` pong.
 6. Confirm the session creates exactly one matched Jak3 client/OpenGOAL support
    pair, compiler and bridge events are present, and `/diagnostics` flushes a
    parseable state snapshot.
 
-The checked-in phase-1 world is useful for protocol smoke tests but is not the
-design-default acceptance target. Do not publish an installer or call a seed
-playable until the 147-location default and the acceptance matrix in the design
-document pass.
+The checked-in generator retains the old 131-location scaffold, but protocol 2
+does not drive it. Do not publish an installer or call a seed playable until
+the 147-location default and the acceptance matrix in the design document pass.

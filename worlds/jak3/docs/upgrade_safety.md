@@ -1,7 +1,8 @@
-# Phase-1 upgrade and notification safety
+# Retired protocol-1 upgrade and notification reference
 
-This note documents the retained protocol vertical slice. Its progressive item
-kinds will be replaced by the design-default named-item ledger in phase 2.
+This note is historical. Protocol 2 does not load this item, mission, or HUD
+implementation and does not process `ReceivedItems`. The tables below document
+the retired protocol-1 experiment only; they are not active runtime behavior.
 
 The Archipelago grant bridge follows the same persistent `game-info` fields as
 Jak 3's native `eval-game-task-cmd!` reward evaluator in

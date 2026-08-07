@@ -32,6 +32,9 @@ class OpenGoalRepl:
         except asyncio.TimeoutError as exc:
             await self.close()
             raise ConnectionError("Timed out waiting for the OpenGOAL nREPL greeting") from exc
+        if not welcome_data:
+            await self.close()
+            raise ConnectionError("OpenGOAL nREPL closed before sending its greeting")
         welcome = welcome_data.decode(errors="replace")
         if "nREPL" not in welcome:
             await self.close()
@@ -59,14 +62,20 @@ class OpenGoalRepl:
             logger.debug("nREPL SEND timeout=%gs form=%s", timeout, form)
             # OpenGOAL processes requests serially. The PING greeting therefore
             # acts as a completion barrier for the preceding evaluation.
-            self.writer.write(eval_packet + ping_packet)
-            await self.writer.drain()
             try:
+                self.writer.write(eval_packet + ping_packet)
+                await self.writer.drain()
                 response = await asyncio.wait_for(self.reader.read(4096), timeout=timeout)
             except asyncio.TimeoutError as exc:
                 raise ConnectionError(
                     f"OpenGOAL did not acknowledge this command within {timeout:g} seconds: {form}"
                 ) from exc
+            except (ConnectionError, OSError) as exc:
+                raise ConnectionError(
+                    f"OpenGOAL communication failed while sending {form}: {exc}"
+                ) from exc
+            if not response:
+                raise ConnectionError(f"OpenGOAL closed the nREPL connection while sending {form}")
             decoded = response.decode(errors="replace")
             if "nREPL" not in decoded:
                 raise ConnectionError(

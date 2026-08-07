@@ -38,11 +38,14 @@ class PackagedWorldRegistrationTest(unittest.TestCase):
                 "jak3/__init__.py",
                 "jak3/client.py",
                 "jak3/agents/launcher.py",
+                "jak3/agents/protocol.py",
                 "jak3/assets/opengoal/archipelago.gc",
                 "jak3/assets/opengoal/archipelago-startup.gc",
                 "jak3/icons/jak3-logo.png",
             }.issubset(entries)
         )
+        self.assertFalse(any("__pycache__" in entry for entry in entries))
+        self.assertFalse(any(entry.endswith((".pyc", ".pyo")) for entry in entries))
 
     def test_world_metadata_matches_the_loaded_manifest(self) -> None:
         self.assertEqual("0.1.0", Jak3World.world_version.as_simple_string())
@@ -51,7 +54,11 @@ class PackagedWorldRegistrationTest(unittest.TestCase):
         self.assertEqual("0.6.7", Jak3World.manifest["minimum_ap_version"])
 
     def test_client_component_and_icon_are_registered_once(self) -> None:
-        matches = [component for component in components if component.display_name == "Jak 3 Client"]
+        matches = [
+            component
+            for component in components
+            if component.display_name == "Jak 3 Client"
+        ]
 
         self.assertEqual(1, len(matches))
         component = matches[0]
