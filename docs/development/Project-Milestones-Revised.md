@@ -85,6 +85,27 @@ The Milestone 7 history showed that an unbounded sequence of broad review-agent 
 7. Development-only hot reload is not automatically a supported player workflow. The release policy may require a clean game restart after bridge/APWorld updates. Do not add more hot-reload state preservation unless that workflow remains intentionally supported and is tested.
 8. Future OpenGOAL gameplay systems should be added in separate modules rather than continually enlarging the Milestone 7 control bridge. The existing `archipelago.gc` remains the protocol/runtime/save-binding core.
 
+### Cross-cutting OpenGOAL module-boundary contract
+
+Every milestone that adds OpenGOAL behavior must follow these boundaries:
+
+1. `mod/opengoal/goal_src/jak3/pc/features/archipelago.gc` remains the stable Protocol 3 control plane. It owns shared protocol constants/types, runtime and save/binding observation, session state, command validation/deduplication, compatibility checks, shared safety fields, result/error codes, and narrow dispatch wiring.
+2. Do not add item, consumable, location, reward, overlay, mission-board, route, or shadow-story implementations wholesale to `archipelago.gc`. Put each substantial domain in its dedicated sibling `archipelago-*.gc` module.
+3. Milestone 7.1 extends `worlds/jak3/agents/diagnostics.py` as the authoritative Python logger and introduces `archipelago-diagnostics.gc` only for bounded GOAL-side event production. GOAL never writes the authoritative JSONL stream or support bundle.
+4. Expected first-release module ownership is:
+   - `archipelago-diagnostics.gc` — bounded GOAL diagnostic event ring/API.
+   - `archipelago-items.gc` — permanent item application/reconciliation.
+   - `archipelago-consumables.gc` — additive filler/consumable effects.
+   - `archipelago-locations.gc` — native accomplishment observation/publication.
+   - `archipelago-rewards.gc` — native reward interception.
+   - `archipelago-overlays.gc` — reversible lesson/mission-equipment overlays.
+   - `archipelago-missions.gc` — route authorizations, mission board, and bootstrap orchestration.
+   - `archipelago-story-state.gc` — non-counting shadow native story state.
+5. A later milestone may change `archipelago.gc` only for a shared protocol field, command/result/error code, dispatch entry, compatibility/safety field, or another narrow interface required by its dedicated module. It must not refactor Milestone 7 merely to reorganize files.
+6. The first multi-module milestone, Milestone 7.1, must introduce one explicit versioned module manifest, recommended at `mod/opengoal/bridge-modules.json`. The package builder, installer/repair path, launcher, object registration, compile/load order, and canonical bridge source-set hash must consume the same manifest. Do not use wildcard module discovery.
+7. Every new module requires package, installation, compilation, deterministic load-order, source-set-hash, and source-boundary tests. Domain modules emit through the shared Milestone 7.1 diagnostic API rather than creating separate log formats.
+8. The module names are ownership boundaries, not a requirement to create empty placeholders. Create each file only when its milestone needs production behavior.
+
 ### Cross-cutting diagnostic contract for Milestones 7.1–26
 
 Milestone 7.1 establishes the diagnostic API, event registry, storage, retention, redaction, and support-bundle contract around the committed Milestone 7 implementation. Milestone 7 itself is not retroactively changed. Milestone 7.2 then uses those diagnostics for the remaining interactive acceptance and performance baseline. Every milestone from Milestone 8 onward that adds or changes runtime behavior must use the Milestone 7.1 API rather than creating unrelated free-form logging.
@@ -684,7 +705,7 @@ For the player, normal logging remains automatic and bounded. When a problem occ
 
 ## Frozen Milestone 7 boundary
 
-Milestone 7 is not revised by this milestone. Milestone 7.1 begins after commit `0cdc04e` is present, even though the existing interactive completion gate is still pending. Its purpose is to make that gate and later gameplay failures diagnosable. It may add passive observation adapters, event sinks, and diagnostic projections around Milestones 4–7, but it must not change persistence semantics, safe-state decisions, command/result semantics, protocol compatibility requirements, or Milestone 7's required tests.
+Milestone 7 is not revised by this milestone. Milestone 7.1 begins after commit `1348e92` is present, even though the existing interactive completion gate is still pending. Its purpose is to make that gate and later gameplay failures diagnosable. It may add passive observation adapters, event sinks, and diagnostic projections around Milestones 4–7, but it must not change persistence semantics, safe-state decisions, command/result semantics, protocol compatibility requirements, or Milestone 7's required tests.
 
 Formal live acceptance is performed in Milestone 7.2. If diagnostic work exposes an actual defect, record it as a focused regression with a reproducer or direct source evidence and repair only that defect; do not silently redefine or broadly re-review Milestone 7.
 
@@ -693,6 +714,15 @@ Formal live acceptance is performed in Milestone 7.2. If diagnostic work exposes
 Preserve the two current human-readable logs, add a versioned Python-owned structured event stream, instrument the existing launcher/protocol/persistence paths, establish crash/noise/privacy policies, and create a sanitized support-bundle exporter that every later milestone can extend.
 
 ## Required architecture
+
+### Implementation placement and first multi-module packaging change
+
+- Extend the existing `worlds/jak3/agents/diagnostics.py` as the authoritative Python logging boundary. It owns the human-readable client log, structured JSONL writer, ordering, rotation/retention, redaction, and support-bundle export. Do not create a competing top-level logger.
+- Introduce `mod/opengoal/goal_src/jak3/pc/features/archipelago-diagnostics.gc` for the bounded GOAL-side event ring, source sequence numbers, gap/overflow records, and a small `ap-diagnostic-emit!`-style API. It must not write support files directly.
+- Keep `archipelago.gc` as the Protocol 3 control plane. It may add only the narrow sink-registration/dispatch fields needed to emit control-plane events; do not move or redesign Milestone 7 save, binding, safety, or command semantics.
+- Milestone 7.1 is the first multi-module bridge milestone. Add one explicit versioned manifest, recommended at `mod/opengoal/bridge-modules.json`, and update `tools/build_apworld.ps1`, the standalone installer, the installed-client repair path, object registration, deterministic compile/load order, and compatibility hashing to consume it.
+- The canonical bridge hash covers the ordered contents and manifest identity of every declared module. Installation/repair must be atomic for the complete module set, and wildcard source discovery is forbidden.
+- Load diagnostics immediately after the control plane and before later gameplay modules. Future domain modules use the same event API and do not create their own log files or event schemas.
 
 ### One diagnostic session, three support-facing artifacts
 
@@ -918,6 +948,11 @@ Bundle creation must work after a partial startup failure and must report which 
 - Missing optional artifacts are disclosed.
 - Bundle can be created after startup failure and after clean shutdown.
 - Bundle creation is read-only with respect to AP persistent state and native gameplay state.
+- The bridge module manifest is deterministic, versioned, and rejects duplicate source/object/load-order entries.
+- APWorld packaging contains every declared module and no undeclared `archipelago-*.gc` file.
+- Installation/repair updates the complete module set atomically and registers objects in manifest order.
+- The canonical bridge source-set hash changes when any declared module or the manifest contract changes.
+- A source-boundary test rejects support-file writing in GOAL and rejects diagnostic storage/bundle logic added to `archipelago.gc`.
 
 ## Documentation deliverables
 
@@ -961,14 +996,19 @@ A synthetic cross-component failure involving startup, a persistence recovery/re
 
 Implement only Milestone 7.1.
 
-Preserve the existing paired human-readable logs, then add one Python-owned
-versioned JSONL event timeline, a stable event registry, GOAL event draining,
-persistence instrumentation, bounded rotation/retention, exception/crash
-capture, field-allowlist redaction, and `/diagnostics export` support bundles.
+Preserve the existing paired human-readable logs. Extend
+`worlds/jak3/agents/diagnostics.py` as the sole support-file writer, add
+`archipelago-diagnostics.gc` as a bounded GOAL event producer, and introduce the
+explicit ordered bridge-module manifest consumed by packaging, installation,
+load order, and source-set hashing. Then add one Python-owned versioned JSONL
+event timeline, a stable event registry, GOAL event draining, persistence
+instrumentation, bounded rotation/retention, exception/crash capture,
+field-allowlist redaction, and `/diagnostics export` support bundles.
 
-Do not add ReceivedItems, locations, rewards, or mission behavior. Make logging
-failure non-fatal and prove that a synthetic startup/persistence/command failure
-can be diagnosed from the sanitized bundle alone.
+Do not add ReceivedItems, locations, rewards, or mission behavior, and do not
+move Milestone 7 semantics into the diagnostic module. Make logging failure
+non-fatal and prove that a synthetic startup/persistence/command failure can be
+diagnosed from the sanitized bundle alone.
 ```
 
 ---
@@ -1057,12 +1097,16 @@ After the matrix passes:
 - A later protocol change requires an explicit version bump and compatibility/migration decision.
 - The eight-entry GOAL receipt ring remains session-level command deduplication, not the durable gameplay journal.
 - Python's AP ledger remains authoritative for permanent items.
-- Future GOAL systems are added in separate modules, for example:
+- `archipelago-diagnostics.gc` remains the shared bounded GOAL event producer, while `worlds/jak3/agents/diagnostics.py` remains the authoritative support-file writer.
+- Future GOAL systems are added in separate modules:
   - `archipelago-items.gc`
+  - `archipelago-consumables.gc`
   - `archipelago-locations.gc`
+  - `archipelago-rewards.gc`
   - `archipelago-overlays.gc`
   - `archipelago-missions.gc`
-- Do not continue placing all future gameplay behavior into the Milestone 7 control bridge.
+  - `archipelago-story-state.gc`
+- Do not continue placing future gameplay behavior into the Milestone 7 control bridge or reabsorb diagnostic/domain modules into it.
 
 ## Required documentation updates
 
@@ -1123,6 +1167,13 @@ After Milestone 7.2 passes, implement indexed `ReceivedItems` processing, a cras
 - Python persistence and indexed AP receipts are authoritative; the GOAL receipt ring is only current-game-session command deduplication and reconnect discovery.
 - Do not use the eight-entry ring as the crash-safe journal for currency or other consumables. Additive exactly-once application remains deferred to Milestone 14.
 - Add native item mapping/application in `archipelago-items.gc` or an equivalent separate module rather than continually enlarging the core `archipelago.gc`.
+
+## OpenGOAL implementation boundary
+
+- Introduce `archipelago-items.gc` for native permanent-item target-state application and reconciliation.
+- `archipelago.gc` may add only shared item command kinds, result/error codes, safety fields, and dispatch wiring; item grant/reconciliation implementations do not belong there.
+- `archipelago-items.gc` emits through `archipelago-diagnostics.gc`, while Python's ledger and `worlds/jak3/agents/diagnostics.py` remain authoritative for durability and support evidence.
+- Add the module to the explicit bridge manifest and extend package/install/compile/load-order/source-set-hash tests.
 
 ## Initial item slice
 
@@ -1246,6 +1297,13 @@ Archipelago location packets are safe to resend; there is not a simple one-packe
 
 Implement durable game-to-server location reporting for one debug check and one controlled native check. Add native check observation/outbox behavior in `archipelago-locations.gc` or an equivalent separate module rather than adding it to the Milestone 7 control core.
 
+## OpenGOAL implementation boundary
+
+- Introduce `archipelago-locations.gc` for native accomplishment observation and publication.
+- `archipelago.gc` may expose shared runtime/binding state and narrow transport dispatch, but individual location hooks and location-family tables do not belong there.
+- Python remains the authoritative writer for durable checked bits and the pending outbox. The GOAL module emits observations and diagnostics; it does not create a second persistent location ledger.
+- Add the module to the explicit bridge manifest and extend package/install/compile/load-order/source-set-hash tests.
+
 ## Initial location slice
 
 - One debug-only check.
@@ -1352,6 +1410,13 @@ It also moves one native reward-interception proof earlier so the project does n
 ## Technical objective
 
 Create a small connected gameplay slice with one real permanent native reward interception, then repeat the relevant Milestone 7.2 save-switch/restart rows with actual item and location hooks active.
+
+## OpenGOAL implementation boundary
+
+- Use `archipelago-items.gc` and `archipelago-locations.gc` for the existing incoming/outgoing paths.
+- Introduce `archipelago-rewards.gc` for the one native reward-interception proof, including permanent-grant suppression and the AP-item recursion guard.
+- `archipelago.gc` receives only the narrow command/dispatch additions needed to call those modules. Reward-node logic must not be implemented in the control plane.
+- Register the reward module in the explicit bridge manifest and extend source-boundary and packaging tests.
 
 ## Suggested scope
 
@@ -1674,6 +1739,12 @@ This milestone implements the full permanent default inventory table. It keeps l
 
 Implement table-driven application and reconciliation for all 26 progression instances and all 28 useful instances in the supported default profile.
 
+## OpenGOAL implementation boundary
+
+- Extend `archipelago-items.gc`; do not move the item table or native grant/reconciliation functions into `archipelago.gc`.
+- Keep route authorizations and relic ownership ledger-only until their own milestones.
+- Any new shared command/payload field is added narrowly to the control plane and versioned when compatibility requires it.
+
 ## Required item families
 
 ### Logical-only AP ownership
@@ -1807,6 +1878,13 @@ This milestone creates the durable application receipt needed for consumables, t
 
 Implement crash-safe, exactly-once application for all default filler effects.
 
+## OpenGOAL implementation boundary
+
+- Introduce `archipelago-consumables.gc` for additive/capped native effects and game-side application-receipt integration.
+- Permanent target-state logic remains in `archipelago-items.gc`; do not mix additive effects into it or the control plane.
+- The exactly-once durability owner remains the documented Python/game receipt boundary, not the diagnostic stream.
+- Add the module to the bridge manifest and its package/install/compile/load-order/source-boundary tests.
+
 ## Required architecture
 
 Before enabling any additive filler, prove one of these equivalent boundaries:
@@ -1926,6 +2004,13 @@ This milestone creates one persistent, reversible overlay mechanism and proves i
 
 Implement table-driven temporary mission overlays with idempotent cleanup and AP-ledger reconciliation.
 
+## OpenGOAL implementation boundary
+
+- Introduce `archipelago-overlays.gc` for overlay descriptors, activation, cleanup, and permanent-inventory reconciliation handoff.
+- Lesson/task-specific overlay tables and cleanup logic do not belong in `archipelago.gc` or `archipelago-items.gc`.
+- The module uses shared safety/binding state from the control plane and emits lifecycle events through `archipelago-diagnostics.gc`.
+- Add the module to the bridge manifest and its package/install/compile/load-order/source-boundary tests.
+
 ## Overlay lifecycle
 
 1. Validate a compatible bound AP save.
@@ -2019,6 +2104,12 @@ This milestone turns that proof into a table-driven system covering all 38 defau
 ## Technical objective
 
 Expand the proven interception architecture to the complete default reward table.
+
+## OpenGOAL implementation boundary
+
+- Extend `archipelago-rewards.gc` with the table-driven 38-node interceptor.
+- Keep only shared command/result and dispatch contracts in `archipelago.gc`; node IDs, suppression rules, recursion guards, and native reward decisions remain in the reward module.
+- Handoffs to temporary lessons use `archipelago-overlays.gc`, and permanent received-item grants use `archipelago-items.gc`.
 
 ## Required implementation shape
 
@@ -2126,6 +2217,13 @@ This milestone makes the native mission board reflect Archipelago reachability a
 
 Implement all eight route authorizations and the default tiered mission-board flow.
 
+## OpenGOAL implementation boundary
+
+- Introduce `archipelago-missions.gc` for authorization ownership projection, mission-board entries, native initialization profiles, and safe activation/rollback.
+- Mission masks, task initialization tables, and route-specific native writes do not belong in `archipelago.gc`.
+- The module uses the frozen control-plane binding/safety contract and the shared diagnostic API.
+- Add the module to the bridge manifest and its package/install/compile/load-order/source-boundary tests.
+
 ## Implementation order
 
 1. Spargus Field Orders.
@@ -2228,6 +2326,12 @@ This milestone expands the generic overlay/profile system so every default missi
 ## Technical objective
 
 Create reviewed, table-driven bootstrap profiles for all documented default mission equipment.
+
+## OpenGOAL implementation boundary
+
+- Extend `archipelago-missions.gc` for bootstrap profile selection/orchestration and `archipelago-overlays.gc` for reversible temporary equipment state.
+- Do not create profile-specific command handlers in `archipelago.gc`.
+- Split a further module only if a measured/reviewed boundary becomes independently substantial; do not create placeholders preemptively.
 
 ## Required subdivisions
 
@@ -2340,6 +2444,12 @@ This milestone creates a subsystem separate from both permanent AP inventory and
 
 Implement isolated shadow-story profiles, first for task 30 and task 63.
 
+## OpenGOAL implementation boundary
+
+- Introduce `archipelago-story-state.gc` for shadow-profile selection, exact allowlisted native props, preservation, cleanup, and AP-relic isolation checks.
+- Shadow state must not be implemented in `archipelago-items.gc`, because it is not AP inventory, and it must not be embedded in `archipelago.gc`.
+- Add the module to the bridge manifest and its package/install/compile/load-order/source-boundary tests.
+
 ## Proof cases
 
 ### Task 30
@@ -2421,6 +2531,12 @@ This milestone expands the proven durable completion hook to tasks 10–35 and 3
 ## Technical objective
 
 Implement all default story-completion locations through the persistent outbox.
+
+## OpenGOAL implementation boundary
+
+- Extend `archipelago-locations.gc` with table-driven story-completion observation.
+- Keep task/location mapping and close-task hooks outside `archipelago.gc`; the control plane provides only shared binding, safety, and transport state.
+- Split story checks into another file only if the location module becomes demonstrably unwieldy and the manifest/source-boundary decision is documented.
 
 ## Required coverage
 
@@ -2516,6 +2632,12 @@ This milestone adds source task IDs 114–137, bypasses grind-based entry costs 
 
 Implement the selected side-challenge location family and default free-entry behavior.
 
+## OpenGOAL implementation boundary
+
+- Extend `archipelago-locations.gc` for selected challenge completion observation.
+- Reuse `archipelago-missions.gc` and `archipelago-overlays.gc` only for cost/course access and fixed challenge loadouts; do not duplicate those systems inside the location module.
+- Challenge IDs, completion hooks, and publication rules remain outside `archipelago.gc`.
+
 ## Required behavior
 
 - Native task IDs 114–137.
@@ -2595,6 +2717,12 @@ This milestone implements a monotonic local-earned counter, keeps AP Orb Packs s
 ## Technical objective
 
 Implement the default orb-threshold location family and its separate accounting model.
+
+## OpenGOAL implementation boundary
+
+- Extend `archipelago-locations.gc` with local-earned orb observation and threshold publication.
+- Currency application remains in `archipelago-consumables.gc`; the location module consumes an explicitly classified `local_native` earning signal and must reject AP-delivered currency as threshold progress.
+- Do not put orb accounting or threshold tables into `archipelago.gc`.
 
 ## Required threshold set
 
@@ -2698,6 +2826,12 @@ This milestone joins the relic ledger, final mission access, final mission locat
 
 Implement the complete default finale contract.
 
+## OpenGOAL implementation boundary
+
+- Implement finale mission-gate projection in `archipelago-missions.gc`; keep AP relic ownership and goal durability authoritative in Python.
+- Use `archipelago-locations.gc` for task-71 completion observation and the established client path for `StatusUpdate(CLIENT_GOAL)`.
+- Create a separate `archipelago-goal.gc` only if the runtime goal behavior becomes independently substantial and the architecture/manifest is updated; do not place it by default in `archipelago.gc`.
+
 ## Required behavior
 
 - Define the seven-item `Finale Relics` group.
@@ -2799,6 +2933,8 @@ Also verify:
 - No self-locks.
 - Deterministic tables, slot data, and hashes.
 - No retired ID reuse.
+- The explicit OpenGOAL module manifest is deterministic, complete, and has no circular or wildcard-discovered modules.
+- Source-boundary tests confirm that item, consumable, location, reward, overlay, mission, and shadow-story implementations remain outside `archipelago.gc`.
 - Multi-player generation.
 - Standard placement controls.
 - No unsupported option can generate.
@@ -3027,8 +3163,8 @@ Produce the first default-only beta release package and its complete installatio
 ## Required packaging
 
 - Versioned `.apworld`.
-- Versioned OpenGOAL bridge/mod files.
-- Installer/repair tooling.
+- Versioned OpenGOAL bridge/mod files declared by the explicit ordered module manifest.
+- Installer/repair tooling that atomically installs, verifies, and registers the complete manifest-defined module set.
 - Uninstaller or precise removal instructions.
 - Default YAML.
 - Checksums.
@@ -3061,8 +3197,9 @@ The compatibility manifest also pins:
 - Known process-output capture gaps.
 - Supported bridge/APWorld update policy, including whether a clean game restart is mandatory after changed source.
 - Recorded cold compile, bridge-only load, and warm reconnect baseline ranges.
+- Bridge module-manifest version, deterministic object load order, and canonical ordered source-set hash.
 
-The packaged APWorld must include the event catalogue/bundle exporter and must verify their files/checksums during package validation.
+The packaged APWorld must include every manifest-declared GOAL module, the event catalogue/bundle exporter, and must verify their files/checksums during package validation. No undeclared `archipelago-*.gc` source may enter the release through wildcard discovery.
 
 ## Required documentation
 

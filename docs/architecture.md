@@ -22,6 +22,32 @@ child-process streams and GOAL-side protocol events. Existing OpenGOAL
 processes are never restarted merely to capture them; a prominent warning asks
 the user to reproduce from a clean process state instead.
 
+### Diagnostic ownership and placement
+
+`worlds/jak3/agents/diagnostics.py` is the authoritative support-facing logger.
+Milestone 7.1 extends that existing module rather than creating a competing
+logger. It owns the human-readable client log, the Python-owned structured
+JSONL event stream, ordering, rotation/retention, redaction, and support-bundle
+export. Persistence and protocol code receive a small injectable event sink so
+they remain independently testable.
+
+GOAL-side code does not write those support files. A sibling
+`archipelago-diagnostics.gc` module may own a bounded, sequence-numbered event
+ring and an `ap-diagnostic-emit!`-style API. Python drains that ring and writes
+the authoritative event stream. A normal event path is therefore:
+
+```text
+archipelago-items.gc / archipelago-locations.gc / archipelago.gc
+    -> archipelago-diagnostics.gc bounded event ring
+    -> Python protocol drain
+    -> worlds/jak3/agents/diagnostics.py
+    -> human logs, structured JSONL, and sanitized support bundle
+```
+
+`archipelago.gc` may expose a narrow optional diagnostic-sink registration or
+dispatch hook, but event storage, retention, redaction, and bundle creation do
+not belong in the control plane.
+
 ## OpenGOAL overlay (`mod/opengoal`)
 
 This directory mirrors the destination path beneath an OpenGOAL Jak 3 data
@@ -30,6 +56,54 @@ version/session validation, an eight-entry command receipt ring, one harmless
 test target, and metadata-only native save/load wrappers for tag 900. It has no
 item delivery, location submission, reward interception, goal reporting,
 mission mutation, or gameplay HUD hooks.
+
+### OpenGOAL gameplay-module boundaries
+
+`archipelago.gc` remains the stable control plane created by Milestone 7. It
+owns runtime observation, native-save identity and binding acknowledgement,
+protocol compatibility, session management, command validation and
+deduplication, shared safety state, and command dispatch.
+
+Gameplay-domain code is implemented in sibling modules rather than growing the
+control plane into one monolithic source file. The expected first-release
+boundaries are:
+
+```text
+mod/opengoal/goal_src/jak3/pc/features/
+├── archipelago.gc
+├── archipelago-diagnostics.gc
+├── archipelago-items.gc
+├── archipelago-consumables.gc
+├── archipelago-locations.gc
+├── archipelago-rewards.gc
+├── archipelago-overlays.gc
+├── archipelago-missions.gc
+├── archipelago-story-state.gc
+└── archipelago-startup.gc
+```
+
+| Module | Responsibility |
+| --- | --- |
+| `archipelago.gc` | Protocol control plane, runtime observation, save identity/binding, session state, compatibility checks, command dispatch |
+| `archipelago-diagnostics.gc` | Bounded GOAL-side event production and sequence/gap reporting; no authoritative file output |
+| `archipelago-items.gc` | Permanent native item target-state application and AP-ledger reconciliation |
+| `archipelago-consumables.gc` | Additive filler/consumable application and durable-application receipt integration |
+| `archipelago-locations.gc` | Native accomplishment observation and publication to Python-owned persistent location state |
+| `archipelago-rewards.gc` | Native reward interception, permanent-grant suppression, and AP-item recursion guards |
+| `archipelago-overlays.gc` | Temporary lesson and mission-equipment overlays with idempotent cleanup |
+| `archipelago-missions.gc` | Route authorizations, mission-board access, mission initialization, and bootstrap orchestration |
+| `archipelago-story-state.gc` | Non-counting shadow native story state used by simplified authorization mode |
+| `archipelago-startup.gc` | Existing startup/pre-build presentation behavior |
+
+Python remains the authoritative persistent writer. Splitting the OpenGOAL
+source does not transfer AP-ledger, checked-location, or sidecar authority into
+the game process. Domain modules may use shared types, safety state, dispatch,
+and diagnostics interfaces from the control plane, but circular gameplay-module
+dependencies are not permitted.
+
+The module list is an ownership plan, not a requirement to create empty files.
+A module is introduced by the first milestone that needs it. Completed
+Milestone 7 code is not proactively refactored solely to satisfy this layout.
 
 ## Persistent AP state
 
@@ -57,9 +131,20 @@ authenticated slot data is available.
 ## Tools and packaging
 
 `tools/build_apworld.ps1` stages `worlds/jak3` and injects the versioned GOAL
-source from `mod/opengoal` as package data. The installed client reads that
-resource from either the source tree or APWorld zip, atomically installs it in
-the active OpenGOAL project, and idempotently registers its object in `game.gd`.
+source from `mod/opengoal` as package data. The installed client reads those
+resources from either the source tree or APWorld zip and installs them into the
+active OpenGOAL project.
+
+The current single-source pipeline must become manifest-driven when Milestone
+7.1 introduces the first additional bridge module. Use one explicit versioned
+manifest, recommended at `mod/opengoal/bridge-modules.json`, containing each
+source, object name, role, and deterministic load order. The build script,
+standalone installer, installed-client repair path, object registration, and
+compatibility hashing must consume that same manifest. Wildcard discovery is
+not permitted. The bridge compatibility hash covers the canonical ordered
+source set rather than only `archipelago.gc`. Installation and repair are
+atomic for the complete declared module set.
+
 The standalone install tool remains useful while developing the GOAL source.
 `installer/` is reserved for any future experience beyond Archipelago's native
 APWorld installer, such as repair/uninstall UI or prerequisite validation.
