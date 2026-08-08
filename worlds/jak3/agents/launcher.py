@@ -6,8 +6,9 @@ process creation independent of Archipelago networking for unit testing.
 
 from __future__ import annotations
 
-import json
 import codecs
+import hashlib
+import json
 import os
 import pkgutil
 import re
@@ -20,11 +21,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .diagnostics import DiagnosticSession
-from .protocol import GAME_INTEGRATION_VERSION, PROTOCOL_VERSION
+from .protocol import (
+    BRIDGE_RUNTIME_VERSION,
+    GAME_INTEGRATION_VERSION,
+    PROTOCOL_VERSION,
+)
 
 
 BRIDGE_RESOURCE = "assets/opengoal/archipelago.gc"
 BRIDGE_DESTINATION = Path("goal_src/jak3/pc/features/archipelago.gc")
+BRIDGE_RELOAD_MARKER = Path("goal_src/jak3/pc/features/.archipelago-reload-required")
 STARTUP_RESOURCE = "assets/opengoal/archipelago-startup.gc"
 STARTUP_DESTINATION = Path("goal_src/jak3/pc/features/archipelago-startup.gc")
 BOOTSTRAP_TYPES_SOURCE = Path("decompiler/config/jak3/all-types.gc")
@@ -52,19 +58,31 @@ class OpenGoalInstall:
         return self.project_directory / "iso_data" / "jak3"
 
     def validate(self) -> None:
-        missing = [path for path in (self.gk, self.goalc, self.project_directory, self.iso_directory)
-                   if not path.exists()]
+        missing = [
+            path
+            for path in (
+                self.gk,
+                self.goalc,
+                self.project_directory,
+                self.iso_directory,
+            )
+            if not path.exists()
+        ]
         if missing:
-            raise FileNotFoundError("OpenGOAL Jak 3 is incomplete; missing " + ", ".join(map(str, missing)))
+            raise FileNotFoundError(
+                "OpenGOAL Jak 3 is incomplete; missing " + ", ".join(map(str, missing))
+            )
 
 
 @dataclass(frozen=True)
 class BridgeInstallResult:
     source_updated: bool
+    reload_required: bool
     project_updated: bool
     startup_updated: bool
     bootstrap_types_updated: bool
     source_path: Path
+    reload_marker_path: Path
     startup_path: Path
     bootstrap_types_path: Path
     project_path: Path
@@ -85,10 +103,14 @@ def _validate_bridge_payload(payload: bytes) -> None:
     expected_integration = (
         f"(defconstant AP-GAME-INTEGRATION-VERSION {GAME_INTEGRATION_VERSION})".encode()
     )
+    expected_runtime = (
+        f"(defconstant AP-BRIDGE-RUNTIME-VERSION {BRIDGE_RUNTIME_VERSION})".encode()
+    )
     if (
         b"(in-package goal)" not in payload
         or expected_protocol not in payload
         or expected_integration not in payload
+        or expected_runtime not in payload
     ):
         raise ValueError(
             "The bundled OpenGOAL bridge payload does not match the Python protocol versions."
@@ -117,7 +139,10 @@ def load_packaged_startup() -> bytes:
         raise FileNotFoundError(
             f"The installed Jak 3 APWorld is missing {STARTUP_RESOURCE}; reinstall the APWorld."
         )
-    if b"(in-package goal)" not in payload or b"ap-bootstrap-show-startup-wait!" not in payload:
+    if (
+        b"(in-package goal)" not in payload
+        or b"ap-bootstrap-show-startup-wait!" not in payload
+    ):
         raise ValueError("The bundled OpenGOAL startup overlay payload is invalid.")
     return payload
 
@@ -187,11 +212,14 @@ def install_packaged_bridge(
     )
     bootstrap_types_payload = _build_bootstrap_type_database(install)
     _validate_bridge_payload(bridge_payload)
-    if (b"(in-package goal)" not in compile_overlay_payload
-            or b"ap-bootstrap-show-startup-wait!" not in compile_overlay_payload):
+    if (
+        b"(in-package goal)" not in compile_overlay_payload
+        or b"ap-bootstrap-show-startup-wait!" not in compile_overlay_payload
+    ):
         raise ValueError("The OpenGOAL startup overlay payload is invalid.")
 
     source_path = install.project_directory / BRIDGE_DESTINATION
+    reload_marker_path = install.project_directory / BRIDGE_RELOAD_MARKER
     startup_path = install.project_directory / STARTUP_DESTINATION
     bootstrap_types_path = install.project_directory / BOOTSTRAP_TYPES_DESTINATION
     project_path = install.project_directory / GAME_DGO
@@ -216,30 +244,43 @@ def install_packaged_bridge(
             f"Expected at most one archipelago.o entry in {project_path}; found {len(bridge_entries)}."
         )
     if bridge_entries and bridge_entries[0].start() < task_entries[0].end():
-        raise ValueError("archipelago.o must load after task-control.o in the Jak 3 project.")
+        raise ValueError(
+            "archipelago.o must load after task-control.o in the Jak 3 project."
+        )
 
     project_updated = not bridge_entries
     if project_updated:
         marker = task_entries[0].group(0)
-        indent = re.match(r"[ \t]*", marker).group(0)
+        indent_match = re.match(r"[ \t]*", marker)
+        assert indent_match is not None
+        indent = indent_match.group(0)
         newline = "\r\n" if "\r\n" in project_text else "\n"
         project_text = (
-            project_text[:task_entries[0].end()]
+            project_text[: task_entries[0].end()]
             + newline
             + indent
             + '"archipelago.o"'
-            + project_text[task_entries[0].end():]
+            + project_text[task_entries[0].end() :]
         )
 
-    source_updated = not source_path.is_file() or source_path.read_bytes() != bridge_payload
+    source_updated = (
+        not source_path.is_file() or source_path.read_bytes() != bridge_payload
+    )
     startup_updated = (
-        not startup_path.is_file() or startup_path.read_bytes() != compile_overlay_payload
+        not startup_path.is_file()
+        or startup_path.read_bytes() != compile_overlay_payload
     )
     bootstrap_types_updated = (
         not bootstrap_types_path.is_file()
         or bootstrap_types_path.read_bytes() != bootstrap_types_payload
     )
     if source_updated:
+        # Record the live-reload obligation before replacing the installed
+        # source. If this client exits before a snapshot proves a new
+        # activation generation, a later client must still reload the
+        # corrected same-contract object.
+        marker_payload = hashlib.sha256(bridge_payload).hexdigest().encode("ascii")
+        _atomic_write(reload_marker_path, marker_payload + b"\n")
         _atomic_write(source_path, bridge_payload)
     if startup_updated:
         _atomic_write(startup_path, compile_overlay_payload)
@@ -249,14 +290,16 @@ def install_packaged_bridge(
         _atomic_write(project_path, project_text.encode("utf-8"))
 
     return BridgeInstallResult(
-        source_updated,
-        project_updated,
-        startup_updated,
-        bootstrap_types_updated,
-        source_path,
-        startup_path,
-        bootstrap_types_path,
-        project_path,
+        source_updated=source_updated,
+        reload_required=reload_marker_path.is_file(),
+        project_updated=project_updated,
+        startup_updated=startup_updated,
+        bootstrap_types_updated=bootstrap_types_updated,
+        source_path=source_path,
+        reload_marker_path=reload_marker_path,
+        startup_path=startup_path,
+        bootstrap_types_path=bootstrap_types_path,
+        project_path=project_path,
     )
 
 
@@ -264,10 +307,18 @@ def _settings_path() -> Path:
     if sys.platform == "win32":
         appdata = os.environ.get("APPDATA")
         if not appdata:
-            raise FileNotFoundError("APPDATA is not defined; OpenGOAL Launcher settings cannot be located")
+            raise FileNotFoundError(
+                "APPDATA is not defined; OpenGOAL Launcher settings cannot be located"
+            )
         return Path(appdata) / "OpenGOAL-Launcher" / "settings.json"
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "OpenGOAL-Launcher" / "settings.json"
+        return (
+            Path.home()
+            / "Library"
+            / "Application Support"
+            / "OpenGOAL-Launcher"
+            / "settings.json"
+        )
     return Path.home() / ".config" / "OpenGOAL-Launcher" / "settings.json"
 
 
@@ -277,10 +328,14 @@ def find_install(settings_path: Path | None = None) -> OpenGoalInstall:
     binary_override = os.environ.get("JAK3_OPENGOAL_BIN")
     project_override = os.environ.get("JAK3_OPENGOAL_PROJECT")
     if bool(binary_override) != bool(project_override):
-        raise ValueError("JAK3_OPENGOAL_BIN and JAK3_OPENGOAL_PROJECT must be set together")
+        raise ValueError(
+            "JAK3_OPENGOAL_BIN and JAK3_OPENGOAL_PROJECT must be set together"
+        )
     if binary_override and project_override:
-        install = OpenGoalInstall(Path(binary_override).expanduser().resolve(),
-                                  Path(project_override).expanduser().resolve())
+        install = OpenGoalInstall(
+            Path(binary_override).expanduser().resolve(),
+            Path(project_override).expanduser().resolve(),
+        )
         install.validate()
         return install
 
@@ -302,15 +357,17 @@ def find_install(settings_path: Path | None = None) -> OpenGoalInstall:
         raise ValueError(f"Unsupported OpenGOAL Launcher settings version: {version!r}")
     if not installed:
         raise FileNotFoundError("Jak 3 is not installed in OpenGOAL Launcher")
-    install = OpenGoalInstall(base / "versions" / "official" / installed_version,
-                              base / "active" / "jak3" / "data")
+    install = OpenGoalInstall(
+        base / "versions" / "official" / installed_version,
+        base / "active" / "jak3" / "data",
+    )
     install.validate()
     return install
 
 
 def _running_pid(process_name: str) -> int | None:
     try:
-        from PyMemoryEditor import OpenProcess, ProcessNotFoundError
+        from PyMemoryEditor import OpenProcess, ProcessNotFoundError  # type: ignore[import-not-found]
     except ImportError:
         return None
     try:
@@ -320,7 +377,9 @@ def _running_pid(process_name: str) -> int | None:
         return None
 
 
-def build_launch_commands(install: OpenGoalInstall) -> tuple[tuple[str, ...], tuple[str, ...]]:
+def build_launch_commands(
+    install: OpenGoalInstall,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Build the exact diagnostic-friendly Jak 3 runtime/compiler commands."""
 
     game_command = (
@@ -370,8 +429,10 @@ def _mirror_process_output(
             pending += decoder.decode(payload).replace("\r\n", "\n").replace("\r", "\n")
             last_newline = pending.rfind("\n")
             if last_newline >= 0:
-                diagnostics.append_process_output(label.upper(), pending[:last_newline + 1])
-                pending = pending[last_newline + 1:]
+                diagnostics.append_process_output(
+                    label.upper(), pending[: last_newline + 1]
+                )
+                pending = pending[last_newline + 1 :]
         if process.poll() is not None and not payload:
             break
         time.sleep(0.05)
@@ -386,7 +447,9 @@ def _mirror_process_output(
     try:
         raw_path.unlink()
     except OSError as exc:
-        diagnostics.note_opengoal("CLIENT", f"could not remove {label} spool file: {exc}")
+        diagnostics.note_opengoal(
+            "CLIENT", f"could not remove {label} spool file: {exc}"
+        )
 
 
 def _launch_logged_process(
@@ -429,7 +492,9 @@ def launch_missing_processes(
     compiler_pid = _running_pid(install.goalc.name)
 
     diagnostics.note_opengoal("CLIENT", f"binary_directory={install.binary_directory}")
-    diagnostics.note_opengoal("CLIENT", f"project_directory={install.project_directory}")
+    diagnostics.note_opengoal(
+        "CLIENT", f"project_directory={install.project_directory}"
+    )
     diagnostics.note_opengoal("CLIENT", f"iso_directory={install.iso_directory}")
     diagnostics.note_opengoal(
         "CLIENT", "gk_command=" + subprocess.list2cmdline(game_command)

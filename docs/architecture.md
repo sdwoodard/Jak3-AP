@@ -25,9 +25,11 @@ the user to reproduce from a clean process state instead.
 ## OpenGOAL overlay (`mod/opengoal`)
 
 This directory mirrors the destination path beneath an OpenGOAL Jak 3 data
-tree. In protocol 2 the GOAL bridge owns only a temporary handshake state,
-version/session validation, ping/pong, status export, and protocol logging. It
-has no task, item, location, reward, save, mission, or gameplay HUD hooks.
+tree. In protocol 3 the GOAL bridge owns a temporary runtime snapshot,
+version/session validation, an eight-entry command receipt ring, one harmless
+test target, and metadata-only native save/load wrappers for tag 900. It has no
+item delivery, location submission, reward interception, goal reporting,
+mission mutation, or gameplay HUD hooks.
 
 ## Persistent AP state
 
@@ -48,8 +50,9 @@ temporary file, file flush/`fsync`, atomic backup refresh from the last valid
 primary, and atomic primary replacement. Corrupt primaries are quarantined
 only after a compatible backup has been validated; compatibility and binding
 mismatches never trigger rollback or mutation. Milestone 6 tests this engine
-against opaque save descriptors. Live GOAL observation of identity and
-freshness is deferred to Milestone 7.
+against opaque save descriptors. Milestone 7 supplies live identity, slot, and
+monotonic freshness observation and opens/switches this repository only after
+authenticated slot data is available.
 
 ## Tools and packaging
 
@@ -72,12 +75,17 @@ dependencies.
 - A complete snapshot has matching begin/end revisions.
 - nREPL acknowledgement is only a command barrier; readiness requires the
   expected snapshot result.
-- A new ping `N` returns `N + 1`; duplicate `N` returns the same pong without
-  changing logical state.
+- A game-session nonce survives client reconnects and changes on bridge/game
+  restart. Mutating command IDs are nonnegative and monotonic per nonce.
+- AP-state acknowledgement is authority for one exact native save UUID and
+  slot. Stale loaded/bound bits never transfer across a save switch, and every
+  mutating command refreshes that acknowledgement before its safety check.
+- The last eight receipts provide reconnect discovery. Exact duplicates return
+  the stored result; conflicts and older evicted IDs are rejected.
 - Live client readiness requires a fresh pong. A stale file is never enough.
 - Communication failure closes the client transport and does not invoke a game
   mutation.
-- Protocol 2 has no AP inventory, native mission state, or network-location
+- Protocol 3 has no AP inventory, native mission state, or network-location
   behavior.
 
 ## Default implementation boundary
@@ -89,5 +97,5 @@ item. The active generator consumes the versioned first-release registry and
 creates the exact 26 progression, 28 useful, and 93 weighted filler instances.
 Its single always-open region and immediately reachable event locations are
 explicitly non-playable Milestone 5 scaffolding; Standard reachability remains
-Milestone 12 work. The runtime remains handshake-only and does not submit these
-locations or apply these items.
+Milestone 12 work. The runtime observes safety and save identity but does not
+submit these locations or apply these items.

@@ -38,9 +38,11 @@ from worlds.jak3.registry import (
     MISSION_TABLE_HASH,
 )
 from worlds.jak3.slot_data import build_slot_data
+from worlds.jak3.versions import GAME_INTEGRATION_VERSION, PROTOCOL_VERSION
 
 
 STATE_ID = "00000000-0000-4000-8000-000000000006"
+AUTHORIZED_SAVE_ID = "00000000-0000-4000-8000-000000000007"
 
 
 def native_save(
@@ -355,6 +357,78 @@ class PersistentStateRepositoryTest(unittest.TestCase):
             self.repository.paths_for(self.native.identity).primary.exists()
         )
 
+    def test_live_first_binding_requires_matching_durable_authorization(self) -> None:
+        native = native_save(identity=AUTHORIZED_SAVE_ID)
+        primary = self.repository.paths_for(native.identity).primary
+        with self.assertRaisesRegex(StateBindingError, "no durable"):
+            self.repository.open_live(native, self.auth)
+        self.assertFalse(primary.exists())
+
+        self.repository.authorize_save_identity(native.identity, self.auth)
+        authorization_path = self.repository.save_identity_authorization_path_for(
+            native.identity
+        )
+        self.assertTrue(authorization_path.is_file())
+        with self.assertRaisesRegex(StateBindingError, "different AP"):
+            self.repository.open_live(native, authenticated_slot(seed="DIFFERENT_SEED"))
+        self.assertFalse(primary.exists())
+
+        with self.repository.open_live(native, self.auth) as session:
+            self.assertTrue(session.binding_performed)
+            self.assertTrue(session.state.is_bound)
+
+    def test_live_unbound_crash_state_keeps_proposal_slot_provenance(self) -> None:
+        native = native_save(identity=AUTHORIZED_SAVE_ID)
+        self.repository.authorize_save_identity(native.identity, self.auth)
+        unbound = self.repository.open(native)
+        unbound.close(clean=False)
+        original = self.repository.paths_for(native.identity).primary.read_bytes()
+
+        with self.assertRaisesRegex(StateBindingError, "different AP"):
+            self.repository.open_live(
+                native_save(identity=native.identity, fresh=False),
+                authenticated_slot(team=1),
+            )
+        self.assertEqual(
+            original, self.repository.paths_for(native.identity).primary.read_bytes()
+        )
+
+        with self.repository.open_live(
+            native_save(identity=native.identity, fresh=False), self.auth
+        ) as recovered:
+            self.assertTrue(recovered.binding_performed)
+            self.assertTrue(recovered.state.is_bound)
+
+    def test_live_unbound_backup_checks_provenance_before_restore(self) -> None:
+        native = native_save(identity=AUTHORIZED_SAVE_ID)
+        self.repository.authorize_save_identity(native.identity, self.auth)
+        unbound = self.repository.open(native)
+        unbound.close(clean=True)
+        paths = self.repository.paths_for(native.identity)
+        paths.primary.unlink()
+        original_backup = paths.backup.read_bytes()
+
+        with self.assertRaisesRegex(StateBindingError, "different AP"):
+            self.repository.open_live(
+                native_save(identity=native.identity, fresh=False),
+                authenticated_slot(name="Another Slot"),
+            )
+        self.assertFalse(paths.primary.exists())
+        self.assertEqual(original_backup, paths.backup.read_bytes())
+
+    def test_save_identity_authorization_is_idempotent_but_not_rebindable(self) -> None:
+        self.repository.authorize_save_identity(AUTHORIZED_SAVE_ID, self.auth)
+        path = self.repository.save_identity_authorization_path_for(AUTHORIZED_SAVE_ID)
+        original = path.read_bytes()
+        self.repository.authorize_save_identity(AUTHORIZED_SAVE_ID, self.auth)
+        self.assertEqual(original, path.read_bytes())
+
+        with self.assertRaisesRegex(StateBindingError, "different AP"):
+            self.repository.authorize_save_identity(
+                AUTHORIZED_SAVE_ID, authenticated_slot(slot=2)
+            )
+        self.assertEqual(original, path.read_bytes())
+
     def test_bind_reload_and_duplicate_load_preserve_identity(self) -> None:
         with self.repository.open(self.native) as session:
             first_revision = session.state.state_revision
@@ -648,6 +722,7 @@ class PersistentStateRepositoryTest(unittest.TestCase):
         for changes, error in (
             ({"state_schema_version": 0}, StateCompatibilityError),
             ({"state_schema_version": 2}, StateCompatibilityError),
+            ({"protocol_version": 2}, StateCompatibilityError),
             ({"protocol_version": 999}, StateCompatibilityError),
             ({"game_integration_version": 999}, StateCompatibilityError),
             ({"slot_data_version": 999}, StateCompatibilityError),
@@ -666,8 +741,8 @@ class PersistentStateRepositoryTest(unittest.TestCase):
                 rewrite_payload(
                     path,
                     state_schema_version=1,
-                    protocol_version=2,
-                    game_integration_version=1,
+                    protocol_version=PROTOCOL_VERSION,
+                    game_integration_version=GAME_INTEGRATION_VERSION,
                     slot_data_version=2,
                     item_table_hash=ITEM_TABLE_HASH,
                     location_table_hash=LOCATION_TABLE_HASH,

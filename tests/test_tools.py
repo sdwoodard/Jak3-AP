@@ -1,3 +1,4 @@
+import hashlib
 import subprocess
 import unittest
 
@@ -55,10 +56,16 @@ class DeveloperInstallerTest(unittest.TestCase):
 
             first = self.run_installer(root)
             second = self.run_installer(root)
+            reload_marker = destination.with_name(".archipelago-reload-required")
 
             self.assertEqual(first.returncode, 0, first.stderr)
             self.assertEqual(second.returncode, 0, second.stderr)
             self.assertEqual(destination.read_bytes(), BRIDGE_SOURCE.read_bytes())
+            self.assertTrue(reload_marker.is_file())
+            self.assertEqual(
+                reload_marker.read_text(encoding="utf-8").strip(),
+                hashlib.sha256(BRIDGE_SOURCE.read_bytes()).hexdigest(),
+            )
             project_text = project.read_text(encoding="utf-8")
             self.assertEqual(project_text.count('"archipelago.o"'), 1)
             self.assertLess(

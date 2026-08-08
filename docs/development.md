@@ -47,8 +47,8 @@ will restore the bridge version carried by the installed APWorld.
 Start **Jak 3 Client** from Archipelago Launcher. The client mirrors the proven
 Jak 1 lifecycle: it launches missing OpenGOAL processes, starts `gk` in debug
 mode, connects to `goalc` nREPL, attaches with `(lt)`, recompiles with `(mi)`,
-loads the bridge, disables debug/cheat state, verifies protocol 2/game
-integration 1, and exchanges a harmless heartbeat.
+loads the bridge, disables debug/cheat state, verifies protocol 3/game
+integration 2, and exchanges a harmless runtime heartbeat.
 
 There is no routine need to type `(mi)`, `(lt)`, or `(ml ...)` manually. The
 client console keeps these recovery commands:
@@ -108,6 +108,6 @@ is statically provable; those require runtime acceptance tests.
 
 The checked-in generator now creates the exact versioned 147-location static
 pool. Its regions and events are deliberately always reachable until Milestone
-12 supplies Standard logic, and protocol 2 still does not drive gameplay. Do
+12 supplies Standard logic, and protocol 3 still does not drive gameplay. Do
 not publish an installer or call a seed playable until the remaining generator
 and runtime acceptance matrix passes.

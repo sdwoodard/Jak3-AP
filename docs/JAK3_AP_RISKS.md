@@ -136,9 +136,19 @@ Owners are deliberately role-based until maintainers assign people.
   Milestone 6 adds a checksummed schema-1 sidecar with one-time binding,
   per-index item states, explicit location IDs, pending outbox, atomic backup,
   quarantine, revision checks, and writer locking. These paths are automated
-  only against opaque test save descriptors. Protocol 2 still requests no
-  `ReceivedItems`, has no game check transport, and cannot observe a live
-  native identity/freshness descriptor.
+  only against opaque test save descriptors. Protocol 3 now adds a game-session
+  nonce, monotonic command IDs, an eight-entry receipt ring, duplicate/conflict
+  detection, and session-qualified persistence for the harmless test target.
+  The client allocator now advances beyond explicit as well as automatic IDs,
+  preventing the next automatic command from reusing an accepted or replayed
+  explicit ID. Command IDs and payloads are bounded to the signed 32-bit GOAL
+  receipt representation before Python reserves/transmits them and again
+  before GOAL records or applies them, preventing truncation from corrupting
+  deduplication or the high watermark.
+  A live disposable-config smoke verified receipt discovery after client
+  reconnect and a new nonce with stale-session rejection after game restart.
+  It still requests no `ReceivedItems` and has no game check transport, so item
+  replay and offline location outbox exit criteria remain open.
 - Mitigation: Keep the Milestone 6 sidecar authoritative and add idempotent
   game/client acknowledgement and packet-gap handling before gameplay
   acceptance.
@@ -230,8 +240,29 @@ Owners are deliberately role-based until maintainers assign people.
   identifier. On `Connected`, Python validates the complete authenticated
   contract and canonical slot identity; schema-1 state rejects every recorded
   version/hash/options/design or binding mismatch read-only. GOAL mirrors the
-  version bump but intentionally remains handshake-only and consumes no room
-  gameplay contract.
+  protocol-3 contract in its snapshot, and every mutating command carries the
+  schema/table contract. Client startup now also requires that complete
+  contract before reusing an already loaded bridge, preventing a matching
+  headline protocol version from hiding stale schema/table code. An
+  implementation-only runtime version detects older same-contract live code,
+  even if corrected source is already on disk. A changed packaged source
+  separately writes a durable pending-reload marker before source replacement,
+  forcing an activation-attested live reload across client restarts and
+  covering same-version bug-fix builds without resetting ordinary reconnects.
+  The bridge exports a reload-persistent positive activation generation that
+  increments only from `ap3-init!`; Python requires it to differ in a current
+  compatible snapshot before hello or marker removal. A mere nREPL completion
+  response is insufficient. Python and GOAL reject protocol, integration,
+  schema, slot-data,
+  item, location, and mission mismatches with distinct stable codes before the
+  harmless target can change. Explicit command-ID responses also advance the
+  client allocator without weakening the game-side high watermark. Both sides
+  also enforce the signed 32-bit width of command/receipt fields before any
+  harmless mutation or receipt publication. GOAL additionally rejects every
+  contract hash that is not exactly 64 characters before copying it into a
+  comparison buffer, so a valid digest prefix plus trailing data cannot be
+  accepted by truncation. No room
+  gameplay data is consumed yet.
 - Mitigation: Keep `legacy_ids.py` as the immutable protocol-1 compatibility
   input; use only `registry.py`, `versions.py`, and `slot_data.py` for future
   state or compatibility work. Retain Python's read-only rejection and add the
@@ -352,23 +383,82 @@ Owners are deliberately role-based until maintainers assign people.
   conflicts, account correctly for precollected items, and prove the local
   route and RANGED guarantees under every supported placement-control case.
 
-### R-019 — Live native-save identity and freshness are not yet observable
+### R-019 — Live native-save identity and freshness provenance
 
-- Severity/status: **High / Open**
+- Severity/status: **High / Watching**
 - Owner: Client and OpenGOAL persistence maintainers
 - Risk: The atomic sidecar can bind safely only if native save identity, slot,
   and fresh/unprogressed eligibility come from an audited live source. Guessing
   or deriving an unstable identity could bind the wrong save, allow a copied
   slot, or strand valid AP state.
-- Current evidence: Milestone 6 implements and tests the lifecycle policy with
-  an opaque `NativeSaveDescriptor`. OpenGOAL source confirms four native save
-  slots, but no live bridge observation or freshness proof is implemented.
-  Production binding therefore remains disabled and diagnostics report that
-  the Milestone 7 descriptor is awaited.
-- Mitigation: Keep all live binding disabled until Milestone 7 audits and
-  exports a stable native identity plus an explicit unprogressed attestation.
-  Preserve slot-copy rejection and never infer freshness from a missing
-  sidecar alone.
+- Current evidence: Protocol 3 wraps the audited native save/load methods with
+  version-1 metadata tag 900 containing a canonical 128-bit UUID. It publishes
+  identity only when the matching native auto-save process reaches its `done`
+  code, invalidates the candidate on native `error`, and preserves its original
+  save/load and state-code targets across bridge-only reloads. Missing/malformed
+  metadata preserves native loading. Native tag error code/message state also
+  survives bridge-only reloads and is cleared only by valid identity
+  publication. Freshness is attested from the candidate
+  save's serialized completion, collectible totals, and `task-list` complete
+  bits for tasks 6-137 rather than the previously active game, then flips
+  monotonically on live progress.
+  The published identity/slot/eligibility descriptor now uses OpenGOAL's
+  reload-persistent global pattern, while sidecar acknowledgement resets on
+  reload. A successful matching native `done` now commits that descriptor to
+  the reload-persistent globals before the wrapper returns; the observer keeps
+  a guarded fallback, closing the prior done-to-next-snapshot reload window.
+  The staged UUID, operation flags, eligibility, New Game marker, and exact
+  auto-save handle are also reload-persistent, closing the earlier
+  wrapper-to-`done` window while asynchronous memory-card I/O is pending.
+  Save proposals are one-shot: game publication records a consumption
+  acknowledgement independent of the live descriptor, rejects that UUID for
+  the rest of the bridge session, and lets Python rotate even if invalidation
+  or a save switch occurs before observation. Clean disconnect clears unused
+  proposals, and a five-second real-clock lease fails closed after an unclean
+  client exit. Authentication changes wake an
+  immediate serialized heartbeat, so a newly authenticated player does not
+  wait for the periodic ping before New Game identity entropy is armed. A
+  reload-safe `game-info`
+  initialization wrapper now invalidates the live descriptor and AP
+  acknowledgement on every full no-save session, including the native
+  `Continue Without Save` path. A one-shot marker armed only by a successful
+  native New Game save preserves the ordinary save-first transition.
+  Client acknowledgement now includes its exact native UUID and slot on every
+  hello, ping, query, and harmless mutation. GOAL accepts loaded/bound only
+  when that descriptor matches the live save and refreshes it again before a
+  command safety check, preventing stale sidecar bits from transferring across
+  a save switch or repository failure. If a manual reconnect reaches an
+  incompatible bridge, the client now closes the existing state session
+  uncleanly, releases its writer lease, and clears the sidecar acknowledgement
+  before closing nREPL.
+  Python binding/switch/copy rejection and source contracts are automated.
+  Python now writes a separate checksummed version-1 authorization record with
+  each proposed UUID's authenticated seed/team/slot/name before the protocol
+  can publish it. Live first binding requires an exact match when state is
+  missing or unbound, so a crash followed by a room/slot switch cannot claim a
+  UUID authorized by the prior slot. Existing bound sidecars continue to rely
+  on their schema-1 binding, and the native tag remains metadata-only.
+  Loaded-source reuse also requires the complete schema/table contract rather
+  than only the headline protocol versions. An implementation-only runtime
+  version rejects older live code even after source was already installed, and
+  a changed packaged source records a durable forced-reload marker before
+  replacement and clears it only after a current compatible snapshot proves
+  that its reload-persistent activation generation changed. The proof happens
+  before protocol hello, so an `(ml)` request that merely completes at the
+  transport layer cannot admit the older running object. Same-contract bug
+  fixes therefore cannot remain hidden across client restarts. The active
+  OpenGOAL project
+  compiles, a double-reload runtime smoke passed all
+  eight original-versus-installed hook assertions, and a later attached smoke
+  preserved the descriptor across repeated reloads while rejecting an expired
+  proposal and clearing one on disconnect. Live nonce behavior passes across
+  client reconnect and game restart. The no-save guard has source-contract and
+  full OpenGOAL compile evidence, but its live title-menu transition has not
+  yet been exercised. The real save/load/copy and clean/unclean client-process
+  matrix has not yet been recorded.
+- Mitigation: Keep Milestone 7 formally incomplete until that live matrix
+  proves identity stability and nonce behavior. Never infer freshness from a
+  missing sidecar or tag, and preserve slot-copy rejection.
 - Exit criteria: The real bridge supplies stable identity/slot/freshness across
   clean and crashed restarts; new, progressed, copied, deleted, restored, and
   switched native saves pass the documented policy without inventory changes.

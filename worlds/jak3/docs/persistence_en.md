@@ -10,9 +10,15 @@ State is stored below the platform user-data directory at
 portable installation or tests. Each opaque native-save identity selects a
 SHA-256-named `.json` sidecar, with a retained `.json.bak`. The native slot and
 AP seed/team/slot/name binding also remain inside the checksummed payload.
+The same root contains `save-identity-authorizations-v1`, whose small
+checksummed records durably associate each proposed UUID with the authenticated
+seed/team/slot/name before that UUID is offered to the game. Back up the whole
+`state-v1` directory, including this subdirectory.
 
 For the first binding, the native save must be explicitly verified fresh and
-unprogressed. A binding is permanent:
+unprogressed, and its proposal authorization must match the currently
+authenticated AP slot. This check also applies if a crash left an unbound
+sidecar. A binding is permanent:
 
 - restoring the same save identity to its original native slot is supported;
 - copying that identity into another native slot is rejected;
@@ -38,6 +44,13 @@ evidence. Version, hash, option, seed, team, slot, name, and native-save
 mismatches are read-only failures: they are not quarantined, rolled back, or
 rebound.
 
-Live observation of native identity and fresh-save eligibility is deferred to
-Milestone 7. Milestone 6 provides and tests this policy through the Python
-persistence API without modifying game inventory or native saves.
+Protocol 3 embeds a version-1 metadata tag with numeric ID 900 and a canonical
+128-bit UUID in native saves. Missing or malformed tags never block native
+loading, but they disable AP binding. Identity becomes visible only after a
+successful native save/restore with slot 0-3. Fresh eligibility requires a
+native new-game save with zero completion, collectible totals, and completed
+tasks 6-137; once progress is observed, eligibility becomes ineligible for that
+loaded identity. No inventory or mission data is stored in the native tag.
+If an upgrade finds a tagged fresh save with neither a bound sidecar nor its
+durable proposal authorization, it refuses first binding instead of guessing
+which AP slot authorized that UUID.

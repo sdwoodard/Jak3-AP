@@ -13,7 +13,8 @@ later gameplay work is not credited early.
 | 4 — Consolidate normative sources and freeze the versioned data contract | **Complete** | Canonical in-repository sources, literal first-release registries, complete legacy ID retention/reservation, deterministic table/options hashes, versioned JSON-safe slot data, shared Python/GOAL constants, standalone tests, and push/PR CI are present and passing. |
 | 5 — Activate the exact default static APWorld pool | **Complete** | The active APWorld consumes the Milestone 4 registry and generates exactly 147 network locations, 26 progression instances, 28 useful instances, 93 weighted filler instances, zero traps, 65 hidden completion events, and one code-less Victory event. |
 | 6 — Add atomic persistent AP state and seed/save binding | **Complete** | Accepted Python-writer ADR, schema-1 atomic sidecar/binding engine, slot-data version 2 authenticated seed identity, recovery/quarantine/lock tests, and explicit Milestone 7 live-save deferral. |
-| 7–26 | Not started | Deliberately outside this change. |
+| 7 — Add a runtime state model and idempotent command transport | **Implementation complete; live gate pending** | Protocol 3/game integration 2 snapshot, native tag 900 identity wrappers, live safety observation, sidecar switching, game-session nonces, and eight duplicate-safe harmless receipts are implemented and automated. The required real save/copy/both-restart matrix is not yet recorded, so this row is not marked complete. |
+| 8–26 | Not started | Deliberately outside this change. |
 
 ## Milestone 4 completion evidence
 
@@ -99,15 +100,107 @@ later gameplay work is not credited early.
   `jak3/persistence.py`, with SHA-256
   `a4c415999ce1b749d252840b1ebca7da53397a2fa97d83d942a083292bb3e827`.
 
+## Milestone 7 implementation evidence
+
+- Protocol 3 exports every roadmap runtime field plus schema/table metadata,
+  native-save eligibility, client identity, a game-session nonce, and the eight
+  most recent command receipts. Unknown snapshot fields are forward-safe.
+- Native save/load method slots 22/23 are wrapped only to append/read version-1
+  metadata tag 900. Missing or malformed tags preserve native loading and
+  disable AP binding. Reload-safe hook capture retains the real native targets,
+  and the matching auto-save `done`/`error` path commits or invalidates each
+  staged identity. Freshness reads the candidate save's serialized totals/tasks
+  rather than state from the save being switched away from.
+- Review remediation makes the published identity/slot/eligibility descriptor
+  reload-persistent while resetting sidecar acknowledgement, consumes each save
+  proposal once, exports that consumption independently of the live descriptor,
+  rotates client UUID entropy even after immediate invalidation/save switching,
+  and expires or clears unused proposals after lost/clean client contact.
+  Title-menu new-game
+  saves cannot inherit the previous identity, eligibility monotonicity is scoped
+  to one UUID, and tag-append failures invalidate the live binding. Mutation
+  safety now positively requires a live target and current level, with level
+  identity cleared before each observation; explicit command IDs also advance
+  the client's automatic allocator.
+- Follow-up review remediation publishes a successful native descriptor into
+  reload-persistent state inside the matching `done` wrapper, validates the
+  complete schema/table contract before reusing an already loaded bridge, and
+  wakes the serialized heartbeat immediately when AP authentication changes.
+- The final reload-lifecycle remediation also preserves the entire in-flight
+  native save/load candidate and its exact auto-save handle across bridge-only
+  reloads. An implementation-only bridge runtime version detects an older live
+  object even after corrected source is already on disk, while packaged source
+  changes create a durable marker before replacement and retain it across
+  client restarts until a reload-persistent activation generation advances in
+  a current compatible snapshot. The check occurs before protocol hello; an
+  nREPL completion response without source activation retains the marker and
+  fails the connection. A running same-contract bridge therefore cannot hide
+  installed bug fixes; unchanged compatible reconnects still retain nonce and
+  receipts.
+- Command IDs, kinds, and payloads are now bounded to the signed 32-bit width of
+  the GOAL snapshot and receipt fields on both sides. Python rejects overflow
+  before allocation/transmission, while GOAL rejects it before sidecar refresh,
+  receipt recording, high-watermark advancement, or test-target mutation. An
+  incompatible reconnect also closes any already-open sidecar writer lease and
+  clears its live acknowledgement.
+- Table-contract hashes are validated at their exact 64-character wire length
+  before GOAL copies them, so a canonical prefix with trailing data cannot pass
+  compatibility. Native tag error code/message state is reload-persistent and
+  is cleared only when a valid identity is published, preserving actionable
+  missing, malformed, and I/O diagnostics through bridge-only reloads.
+- Save-binding acknowledgement is now descriptor-qualified on every control
+  message and harmless mutation: loaded/bound bits are accepted only with the
+  exact live native UUID and slot, and commands refresh them before runtime
+  safety is evaluated. This prevents a stale sidecar heartbeat from re-binding
+  a newly loaded or copied save before Python completes repository switching.
+- The Python client opens, switches, and closes schema-1 state as live save
+  identity changes; binding failures stay read-only and harmless receipts are
+  persisted with their game-session nonce.
+- Each Python UUID proposal is now preceded by an atomic, checksummed version-1
+  authorization record containing its seed/team/slot/name provenance. Live
+  first binding requires that exact record for both a missing sidecar and a
+  crash-left unbound sidecar, closing the room-switch window between native tag
+  publication and the sidecar binding commit without changing schema 1 or tag
+  900.
+- `SET_TEST_TARGET` is target-state/idempotent. Additive effects, invalid or
+  conflicting IDs, stale sessions, contract mismatches, and unsafe state are
+  rejected with stable result/error codes. `QUEUED` is reserved and not used.
+- The dependency-ordered OpenGOAL v0.3.5 build compiled all 1,165 rebuilt
+  targets against the separate active project, including the reload-safe and
+  operation-specific save hooks. The later no-save safety fix adds a
+  reload-safe `game-info.initialize!` wrapper: full native sessions without a
+  supplied save now clear the old descriptor, while a successful New Game save
+  arms a one-shot exception for the normal save-first transition. The focused
+  protocol/client/persistence suite now passes all 104 tests, and the full
+  1,165-target OpenGOAL rebuild passes with the new hook, signed-width command
+  guard, exact-length contract hashes, and reload-persistent diagnostics. An
+  attached-runtime
+  smoke then loaded the
+  bridge twice more and passed all eight native-versus-installed pointer
+  assertions. Automated protocol/client tests pass. A live disposable-config
+  smoke verified the complete snapshot,
+  hello/query/ping, client-reconnect receipt discovery, game-restart nonce
+  replacement, stale-nonce rejection, duplicate/conflict behavior, missing-save
+  safety, and additive-effect rejection. Live title/save/copy acceptance remains
+  the completion gate, including the `Continue Without Save` transition.
+- A second attached-runtime review smoke preserved identity, slot, and
+  eligibility across repeated bridge reloads while resetting AP
+  acknowledgement, accepted a fresh proposal, rejected it after six seconds,
+  and cleared it on clean disconnect. It used only bridge metadata and the
+  harmless test target.
+- The 30-entry packaged APWorld passed all 195 tests from the disposable
+  Archipelago environment with bytecode/cache writes disabled; the final
+  artifact hash is recorded in the verification matrix.
+
 ## Explicitly deferred
 
 The active generator deliberately exposes one always-open, non-playable region
-until Milestone 12 supplies Standard reachability. Milestone 6 adds storage and
-authenticated Python contract validation, but no early placement guarantees,
-received-item handling, location submission, mission hooks/dispatch, reward
-interception, native state mutation, or goal reporting. Live observation of a
-stable native identity and fresh/unprogressed status is deferred to Milestone
-7; production binding stays disabled until then.
+until Milestone 12 supplies Standard reachability. Protocol 3 now observes
+native identity/freshness and opens the sidecar for a compatible authenticated
+save, but there are still no early placement guarantees, received-item
+handling, location submission, mission hooks/dispatch, reward interception, or
+goal reporting. Milestone 7 remains pending until its real save/copy and both-
+process-restart matrix is captured.
 
 Open runtime risks remain recorded in [`../JAK3_AP_RISKS.md`](../JAK3_AP_RISKS.md),
 especially permissive generator logic (`R-003`), runtime goal reporting

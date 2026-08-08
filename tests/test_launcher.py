@@ -1,3 +1,4 @@
+import hashlib
 import os
 import unittest
 from pathlib import Path
@@ -13,8 +14,9 @@ from worlds.jak3.agents.launcher import (
 
 BRIDGE_PAYLOAD = b""";; test bridge
 (in-package goal)
-(defconstant AP-PROTOCOL-VERSION 2)
-(defconstant AP-GAME-INTEGRATION-VERSION 1)
+(defconstant AP-PROTOCOL-VERSION 3)
+(defconstant AP-GAME-INTEGRATION-VERSION 2)
+(defconstant AP-BRIDGE-RUNTIME-VERSION 2)
 """
 STARTUP_PAYLOAD = (
     b";; test startup\n(in-package goal)\n"
@@ -45,14 +47,20 @@ class OpenGoalBridgeInstallerTest(unittest.TestCase):
             second = install_packaged_bridge(install, BRIDGE_PAYLOAD, STARTUP_PAYLOAD)
 
             self.assertTrue(first.source_updated)
+            self.assertTrue(first.reload_required)
             self.assertTrue(first.project_updated)
             self.assertTrue(first.startup_updated)
             self.assertTrue(first.bootstrap_types_updated)
             self.assertFalse(second.source_updated)
+            self.assertTrue(second.reload_required)
             self.assertFalse(second.project_updated)
             self.assertFalse(second.startup_updated)
             self.assertFalse(second.bootstrap_types_updated)
             self.assertEqual(first.source_path.read_bytes(), BRIDGE_PAYLOAD)
+            self.assertEqual(
+                first.reload_marker_path.read_text(encoding="ascii").strip(),
+                hashlib.sha256(BRIDGE_PAYLOAD).hexdigest(),
+            )
             self.assertEqual(first.startup_path.read_bytes(), STARTUP_PAYLOAD)
             bootstrap_types = first.bootstrap_types_path.read_bytes()
             self.assertIn(b"*font-default-matrix*", bootstrap_types)
@@ -65,6 +73,16 @@ class OpenGoalBridgeInstallerTest(unittest.TestCase):
             )
             project_bytes = first.project_path.read_bytes()
             self.assertNotIn(b"\n", project_bytes.replace(b"\r\n", b""))
+
+            with self.assertRaisesRegex(ValueError, "does not match"):
+                install_packaged_bridge(
+                    install,
+                    BRIDGE_PAYLOAD.replace(
+                        b"AP-BRIDGE-RUNTIME-VERSION 2",
+                        b"AP-BRIDGE-RUNTIME-VERSION 1",
+                    ),
+                    STARTUP_PAYLOAD,
+                )
 
     def test_partial_environment_override_is_rejected(self) -> None:
         from unittest.mock import patch
@@ -84,16 +102,22 @@ class OpenGoalBridgeInstallerTest(unittest.TestCase):
         self.assertIn("--disable-ansi", game)
         self.assertIn("--disable-ansi", compiler)
         self.assertEqual(compiler[compiler.index("--game") + 1], "jak3")
-        self.assertEqual(compiler[compiler.index("--iso-path") + 1], str(install.iso_directory))
+        self.assertEqual(
+            compiler[compiler.index("--iso-path") + 1], str(install.iso_directory)
+        )
 
     def test_diagnostic_pair_uses_one_session_id(self) -> None:
         with TemporaryDirectory() as directory:
             session = DiagnosticSession.create(Path(directory), "known_session")
             session.note_opengoal("TEST", "diagnostic marker")
-            session.append_process_output("GOALC", "\x1b[31mcompiler error\x1b[0m\rnext line\n")
+            session.append_process_output(
+                "GOALC", "\x1b[31mcompiler error\x1b[0m\rnext line\n"
+            )
 
             self.assertEqual(session.client_log.name, "Jak3Client_known_session.txt")
-            self.assertEqual(session.opengoal_log.name, "Jak3OpenGOAL_known_session.txt")
+            self.assertEqual(
+                session.opengoal_log.name, "Jak3OpenGOAL_known_session.txt"
+            )
             contents = session.opengoal_log.read_text("utf-8")
             self.assertIn("[TEST] diagnostic marker", contents)
             self.assertIn("[GOALC] compiler error", contents)

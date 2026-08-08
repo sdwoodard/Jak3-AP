@@ -5,12 +5,11 @@ world and client, the in-game OpenGOAL bridge, development tooling, design
 records, and the future installer/release packaging.
 
 The repository is currently an **integration scaffold**, not a playable
-release. The active runtime is a harmless protocol-2 handshake that detects
-OpenGOAL, verifies the loaded source, versions, and authenticated slot-data
-contract, and exchanges ping/pong heartbeats. A Python-owned schema-1 sidecar
-and binding engine is tested against opaque save descriptors, but live native
-identity/freshness observation is deferred to Milestone 7. The runtime still
-does not process items, locations, rewards, native saves, or missions.
+release. The active protocol-3 runtime publishes a conservative live snapshot,
+binds the Python-owned schema-1 sidecar to metadata tag 900 in a native save,
+durably authorizes each proposed tag UUID to the current AP slot before first
+binding, and provides duplicate-safe harmless test commands. It still does not process
+items, locations, rewards, goals, or mission state.
 
 ## Repository layout
 
@@ -63,12 +62,14 @@ Starting **Jak 3 Client** from Archipelago Launcher automatically:
    in the active Jak 3 project;
 3. starts Jak 3 `gk` with `-debug` and starts `goalc` when needed;
 4. attaches to the target and runs the Jak 3 recompile;
-5. loads the handshake bridge;
-6. verifies protocol 2 and game integration 1; and
-7. exchanges a session hello and harmless incremented heartbeat.
+5. loads the runtime bridge;
+6. verifies protocol 3 and game integration 2; and
+7. exchanges a session hello, live snapshot, and harmless heartbeat.
 
 The client does not request `ReceivedItems`, submit checks, report victory, or
-change inventory, saves, title state, or missions in this milestone.
+change inventory, submit checks, report victory, or change mission state in
+this milestone. The only native-save change is the version-1 identity metadata
+tag; the only command mutation is a bridge-owned test boolean.
 
 Every launch also creates a matched `Jak3Client_<session>.txt` and
 `Jak3OpenGOAL_<session>.txt` support pair. The latter combines game and compiler

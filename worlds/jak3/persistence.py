@@ -40,6 +40,8 @@ from .versions import (
 
 STATE_FORMAT = "jak3-ap-state"
 CHECKSUM_ALGORITHM = "sha256"
+SAVE_IDENTITY_AUTHORIZATION_FORMAT = "jak3-ap-save-identity-authorization"
+SAVE_IDENTITY_AUTHORIZATION_VERSION = 1
 GAME_APPLICATION_JOURNAL_VERSION = 1
 NATIVE_SAVE_SLOT_COUNT = 4
 NETWORK_ID_ABSOLUTE_LIMIT = (1 << 53) - 1
@@ -525,6 +527,16 @@ PERSISTENT_STATE_KEYS = frozenset(
 )
 
 ENVELOPE_KEYS = frozenset({"format", "checksum_algorithm", "payload_sha256", "payload"})
+SAVE_IDENTITY_AUTHORIZATION_KEYS = frozenset(
+    {
+        "authorization_version",
+        "native_save_identity",
+        "seed_identifier",
+        "team",
+        "slot",
+        "slot_name",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -624,6 +636,66 @@ class StateRepository:
         primary = self.root / f"{digest}.json"
         return StatePaths(primary=primary, backup=primary.with_suffix(".json.bak"))
 
+    def save_identity_authorization_path_for(self, native_save_identity: str) -> Path:
+        """Return the separate version-1 authorization record for a save UUID."""
+
+        _validate_uuid("proposed native save identity", native_save_identity)
+        digest = hashlib.sha256(native_save_identity.encode("utf-8")).hexdigest()
+        return (
+            self.root
+            / f"save-identity-authorizations-v{SAVE_IDENTITY_AUTHORIZATION_VERSION}"
+            / f"{digest}.json"
+        )
+
+    def create_authorized_save_identity(
+        self, authenticated_slot: AuthenticatedSlot
+    ) -> str:
+        """Durably bind fresh UUID entropy to an authenticated AP slot."""
+
+        native_save_identity = str(uuid.uuid4())
+        self.authorize_save_identity(native_save_identity, authenticated_slot)
+        return native_save_identity
+
+    def authorize_save_identity(
+        self,
+        native_save_identity: str,
+        authenticated_slot: AuthenticatedSlot,
+    ) -> None:
+        """Persist proposal provenance before exposing its UUID to the game."""
+
+        path = self.save_identity_authorization_path_for(native_save_identity)
+        payload = _save_identity_authorization_payload(
+            native_save_identity, authenticated_slot
+        )
+        serialized = _serialize_checked_envelope(
+            SAVE_IDENTITY_AUTHORIZATION_FORMAT, payload
+        )
+        if path.exists():
+            existing = _load_save_identity_authorization(path)
+            _validate_save_identity_authorization(
+                existing, native_save_identity, authenticated_slot
+            )
+            return
+        try:
+            _write_new_primary(path, serialized)
+        except OSError as exc:
+            raise StateCorruptionError(
+                f"Could not persist native-save identity authorization: {exc}"
+            ) from exc
+
+    def open_live(
+        self,
+        native_save: NativeSaveDescriptor,
+        authenticated_slot: AuthenticatedSlot,
+    ) -> "StateSession":
+        """Open game-observed state with first-binding provenance enforced."""
+
+        return self._open(
+            native_save,
+            authenticated_slot,
+            require_save_identity_authorization=True,
+        )
+
     def inspect(
         self,
         native_save: NativeSaveDescriptor,
@@ -643,14 +715,35 @@ class StateRepository:
         native_save: NativeSaveDescriptor,
         authenticated_slot: AuthenticatedSlot | None = None,
     ) -> "StateSession":
+        return self._open(
+            native_save,
+            authenticated_slot,
+            require_save_identity_authorization=False,
+        )
+
+    def _open(
+        self,
+        native_save: NativeSaveDescriptor,
+        authenticated_slot: AuthenticatedSlot | None,
+        *,
+        require_save_identity_authorization: bool,
+    ) -> "StateSession":
         lease = _StateWriterLease(self.root)
         lease.acquire()
         try:
             paths = self.paths_for(native_save.identity)
+            if require_save_identity_authorization and authenticated_slot is not None:
+                self._preflight_save_identity_authorization(
+                    paths, native_save.identity, authenticated_slot
+                )
             state, status = self._load_or_create(paths, native_save, authenticated_slot)
             changed = False
             binding_performed = False
             if authenticated_slot is not None and not state.is_bound:
+                if require_save_identity_authorization:
+                    self._require_save_identity_authorization(
+                        native_save.identity, authenticated_slot
+                    )
                 state = state.bind(authenticated_slot)
                 binding_performed = True
                 if status is not StateOpenStatus.RECOVERED_BACKUP:
@@ -682,6 +775,56 @@ class StateRepository:
         except BaseException:
             lease.release()
             raise
+
+    def _require_save_identity_authorization(
+        self,
+        native_save_identity: str,
+        authenticated_slot: AuthenticatedSlot,
+    ) -> None:
+        path = self.save_identity_authorization_path_for(native_save_identity)
+        authorization = _load_save_identity_authorization(path)
+        _validate_save_identity_authorization(
+            authorization, native_save_identity, authenticated_slot
+        )
+
+    def _preflight_save_identity_authorization(
+        self,
+        paths: StatePaths,
+        native_save_identity: str,
+        authenticated_slot: AuthenticatedSlot,
+    ) -> None:
+        """Check first-binding provenance before recovery can change disk state."""
+
+        try:
+            state = _load_state_file(paths.primary)
+        except _StateFileMissing:
+            try:
+                state = _load_state_file(paths.backup)
+            except _StateFileMissing:
+                self._require_save_identity_authorization(
+                    native_save_identity, authenticated_slot
+                )
+                return
+            except (StateCompatibilityError, StateCorruptionError):
+                # Preserve the normal backup diagnostics/quarantine path.
+                return
+        except StateCompatibilityError:
+            # An incompatible primary is never recovered from a backup.
+            return
+        except StateCorruptionError:
+            try:
+                state = _load_state_file(paths.backup)
+            except (
+                _StateFileMissing,
+                StateCompatibilityError,
+                StateCorruptionError,
+            ):
+                # Preserve the normal primary/backup recovery diagnostics.
+                return
+        if not state.is_bound:
+            self._require_save_identity_authorization(
+                native_save_identity, authenticated_slot
+            )
 
     def _load_or_create(
         self,
@@ -948,10 +1091,15 @@ def default_state_root() -> Path:
 
 def serialize_state(state: PersistentState) -> bytes:
     validate_state(state)
-    payload = state.to_payload()
+    return _serialize_checked_envelope(STATE_FORMAT, state.to_payload())
+
+
+def _serialize_checked_envelope(
+    envelope_format: str, payload: Mapping[str, Any]
+) -> bytes:
     payload_sha256 = hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
     envelope = {
-        "format": STATE_FORMAT,
+        "format": envelope_format,
         "checksum_algorithm": CHECKSUM_ALGORITHM,
         "payload_sha256": payload_sha256,
         "payload": payload,
@@ -1238,6 +1386,110 @@ def _validate_authenticated_binding(
 
 def _binding_tuple(state: PersistentState) -> tuple[object, ...]:
     return (state.seed_identifier, state.team, state.slot, state.slot_name)
+
+
+def _save_identity_authorization_payload(
+    native_save_identity: str,
+    authenticated_slot: AuthenticatedSlot,
+) -> dict[str, object]:
+    return {
+        "authorization_version": SAVE_IDENTITY_AUTHORIZATION_VERSION,
+        "native_save_identity": native_save_identity,
+        "seed_identifier": authenticated_slot.seed_identifier,
+        "team": authenticated_slot.team,
+        "slot": authenticated_slot.slot,
+        "slot_name": authenticated_slot.slot_name,
+    }
+
+
+def _load_save_identity_authorization(path: Path) -> Mapping[str, Any]:
+    try:
+        data = path.read_bytes()
+    except FileNotFoundError as exc:
+        raise StateBindingError(
+            "Native save identity has no durable authenticated-slot authorization; "
+            "refusing its first AP binding."
+        ) from exc
+    except OSError as exc:
+        raise StateCorruptionError(
+            f"Could not read native-save identity authorization {path}: {exc}"
+        ) from exc
+    if not data:
+        raise StateCorruptionError("Native-save identity authorization is empty.")
+    try:
+        envelope = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise StateCorruptionError(
+            f"Native-save identity authorization is not valid UTF-8 JSON: {exc}"
+        ) from exc
+    if not isinstance(envelope, dict) or set(envelope) != ENVELOPE_KEYS:
+        raise StateCorruptionError(
+            "Native-save identity authorization envelope has an incompatible shape."
+        )
+    if envelope["format"] != SAVE_IDENTITY_AUTHORIZATION_FORMAT:
+        raise StateCompatibilityError(
+            "Unsupported native-save identity authorization format: "
+            f"{envelope['format']!r}."
+        )
+    if envelope["checksum_algorithm"] != CHECKSUM_ALGORITHM:
+        raise StateCompatibilityError(
+            "Unsupported native-save identity authorization checksum algorithm: "
+            f"{envelope['checksum_algorithm']!r}."
+        )
+    payload = _require_mapping(
+        envelope["payload"], "native-save identity authorization payload"
+    )
+    if set(payload) != SAVE_IDENTITY_AUTHORIZATION_KEYS:
+        raise StateCorruptionError(
+            "Native-save identity authorization payload has an incompatible shape."
+        )
+    checksum = envelope["payload_sha256"]
+    if not isinstance(checksum, str) or len(checksum) != 64:
+        raise StateCorruptionError(
+            "Native-save identity authorization checksum has an invalid shape."
+        )
+    try:
+        actual_checksum = hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+    except (TypeError, ValueError) as exc:
+        raise StateCorruptionError(
+            "Native-save identity authorization is not canonical JSON data."
+        ) from exc
+    if checksum != actual_checksum:
+        raise StateCorruptionError(
+            "Native-save identity authorization checksum does not match its payload."
+        )
+    if type(payload["authorization_version"]) is not int:
+        raise StateCorruptionError(
+            "Native-save identity authorization version must be an integer."
+        )
+    if payload["authorization_version"] != SAVE_IDENTITY_AUTHORIZATION_VERSION:
+        raise StateCompatibilityError(
+            "Unsupported native-save identity authorization version: "
+            f"{payload['authorization_version']!r}."
+        )
+    _validate_uuid("authorized native save identity", payload["native_save_identity"])
+    _validate_identity_text(
+        "authorized seed identifier", payload["seed_identifier"], maximum=256
+    )
+    _validate_nonnegative_int("authorized team", payload["team"])
+    _validate_nonnegative_int("authorized slot", payload["slot"])
+    _validate_identity_text("authorized slot name", payload["slot_name"], maximum=128)
+    return payload
+
+
+def _validate_save_identity_authorization(
+    authorization: Mapping[str, Any],
+    native_save_identity: str,
+    authenticated_slot: AuthenticatedSlot,
+) -> None:
+    expected = _save_identity_authorization_payload(
+        native_save_identity, authenticated_slot
+    )
+    if dict(authorization) != expected:
+        raise StateBindingError(
+            "Native save identity was authorized for a different AP "
+            "seed/team/slot; refusing its first AP binding."
+        )
 
 
 def _load_state_file(path: Path) -> PersistentState:

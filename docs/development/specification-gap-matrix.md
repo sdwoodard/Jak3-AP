@@ -47,9 +47,9 @@ still absent.
 | Automatic OpenGOAL discovery | Launcher v2/v3 settings and paired environment overrides supported. | Implemented | — |
 | Automatic debug game/compiler startup | Missing `gk`/`goalc` processes are launched with diagnostic commands. | Implemented | `R-010` |
 | Compile-wait message | Flashing overlay is installed before `(mi)` and removed after compile path. | Implemented | `R-009` |
-| Versioned runtime handshake | Protocol 2/game integration 1 hello and harmless `N -> N+1` ping use a framed temporary snapshot. | Automated; live smoke pending | `R-009` |
-| Restart tolerance | Supervisor re-enters discovery/attach/hello after client or game restart; lifecycle cases are automated. | Partial until live smoke | `R-010`, `R-011` |
-| Normal title handoff | Retired with protocol 1; protocol 2 does not change game/title/mission state. | Deliberately absent | — |
+| Versioned runtime handshake | Protocol 3/game integration 2 exports a forward-safe live snapshot, full compatibility metadata, game nonce, and eight harmless receipts. | Automated and compiled; live matrix pending | `R-009`, `R-019` |
+| Restart tolerance | Client reconnect preserves the game nonce/receipts; a bridge/game restart changes the nonce and stale commands fail. Lifecycle cases are automated. | Partial until live matrix | `R-010`, `R-019` |
+| Normal title handoff | Retired with protocol 1; protocol 3 permits read/query at title but does not change title or mission state. | Deliberately absent | — |
 | Compile failure is authoritative | Protocol commands require snapshot acknowledgement, but `(mi)` completion does not prove compiler output contains no error. | Partial | `R-009` |
 | Client-owned process cleanup | Client does not stop processes it started. | Missing | `R-010` |
 | Tagged artifact automation | `v*` GitHub workflow validates version, builds, hashes, and releases. | Implemented | — |

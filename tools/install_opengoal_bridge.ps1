@@ -10,6 +10,7 @@ $repository = (Resolve-Path -LiteralPath $OpenGoalRepository).Path
 $projectFile = Join-Path $repository "goal_src\jak3\dgos\game.gd"
 $destinationDirectory = Join-Path $repository "goal_src\jak3\pc\features"
 $destinationSource = Join-Path $destinationDirectory "archipelago.gc"
+$reloadMarker = Join-Path $destinationDirectory ".archipelago-reload-required"
 $source = Join-Path $PSScriptRoot "..\mod\opengoal\goal_src\jak3\pc\features\archipelago.gc"
 $source = (Resolve-Path -LiteralPath $source).Path
 
@@ -46,7 +47,24 @@ if ($projectUpdated) {
     )
 }
 
-Copy-Item -LiteralPath $source -Destination $destinationSource -Force
+$sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+$sourceUpdated = -not (Test-Path -LiteralPath $destinationSource -PathType Leaf)
+if (-not $sourceUpdated) {
+    $destinationHash = (Get-FileHash -LiteralPath $destinationSource -Algorithm SHA256).Hash.ToLowerInvariant()
+    $sourceUpdated = $sourceHash -ne $destinationHash
+}
+if ($sourceUpdated) {
+    # Persist the obligation before changing source so a client/process crash
+    # cannot leave corrected bytes on disk while stale same-version code runs.
+    # The client removes this only after a snapshot proves a new compatible
+    # bridge activation generation.
+    [System.IO.File]::WriteAllText(
+        $reloadMarker,
+        $sourceHash + [Environment]::NewLine,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    Copy-Item -LiteralPath $source -Destination $destinationSource -Force
+}
 
 if ($projectUpdated) {
     [System.IO.File]::WriteAllText(
@@ -59,4 +77,4 @@ if ($projectUpdated) {
 Write-Host "Installed Jak 3 Archipelago bridge source: $destinationSource"
 Write-Host "Registered archipelago.o immediately after task-control.o in: $projectFile"
 Write-Host "Bridge installation complete."
-Write-Host "Launching Jak 3 Client now starts Debug gk/goalc, recompiles, and verifies protocol 2."
+Write-Host "Launching Jak 3 Client now starts Debug gk/goalc, recompiles, and verifies protocol 3."

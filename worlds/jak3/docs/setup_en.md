@@ -22,16 +22,24 @@ playable release. These steps are for protocol and integration testing.
 Start **Jak 3 Client** from Archipelago Launcher. It automatically discovers
 OpenGOAL Launcher, installs or repairs the bridge bundled in the APWorld,
 starts `gk` in Debug mode and the matching `goalc`, attaches to the game,
-recompiles, loads the bridge, and verifies protocol 2/game integration 1. The
+recompiles, loads the bridge, and verifies protocol 3/game integration 2. The
 compile can take several minutes. A flashing message appears in the game while
 this is happening; wait until it disappears and `/repl status` reports ready.
 
-An Archipelago room connection is optional for this handshake milestone. On a
+An Archipelago room connection is optional for title-menu queries. On a
 successful connection the client validates slot-data version 2, including the
 authenticated seed identifier, team, slot, canonical slot name, versions,
-hashes, options, and design contract. Live native-save identity/freshness
-observation is deferred to Milestone 7, so the client reports that binding is
-awaiting that descriptor and still enables no items or checks.
+hashes, options, and design contract. A fresh native save receives metadata tag
+900 with a UUID. After a successful save/restore in slot 0-3, the client opens
+and binds its sidecar; progressed vanilla saves and copied slots are rejected.
+Identity proposals are single-use and require a recent authenticated client
+heartbeat. Disconnecting or losing the client for five seconds disarms an
+unused proposal, while an already published identity remains stable across a
+bridge reload.
+The client durably records the authenticated seed/team/slot behind each UUID
+before offering it. If the client crashes after the native tag is saved, that
+UUID can still first-bind only after reconnecting to the same AP slot; changing
+rooms or slots is refused read-only.
 
 Useful recovery commands in Jak 3 Client are:
 
@@ -39,10 +47,10 @@ Useful recovery commands in Jak 3 Client are:
 - `/repl status` — show transport, source, versions, session, and heartbeat.
 - `/repl connect` — retry compilation and bridge attachment.
 
-Protocol 2 does not start gameplay, bind a live save, apply inventory, submit
-locations, report victory, modify missions, or show item messages. The tested
-Python sidecar/binding engine is present but is not opened against live GOAL
-state yet.
+Protocol 3 does not start gameplay, apply inventory, submit locations, report
+victory, modify missions, or show item messages. It observes live state and
+accepts only a duplicate-safe bridge-owned `SET_TEST_TARGET`; additive effects
+are explicitly forbidden.
 
 ## AP state backups and save copies
 

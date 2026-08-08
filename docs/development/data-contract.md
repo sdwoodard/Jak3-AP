@@ -15,8 +15,8 @@ static compatibility constants in the OpenGOAL bridge.
 
 | Field | Version |
 | --- | ---: |
-| Protocol | 2 |
-| Game integration | 1 |
+| Protocol | 3 |
+| Game integration | 2 |
 | Slot data | 2 |
 | State schema | 1 |
 | Item table | 2 |
@@ -24,10 +24,11 @@ static compatibility constants in the OpenGOAL bridge.
 | Mission table | 1 |
 | Mission profiles | 1 |
 
-Protocol 2 remains handshake-only. Slot-data version 2 adds the generated
-`multiworld.seed_name` as the mandatory opaque `seed_identifier`. State schema
-version 1 is active for the Python-owned persistent sidecar; it adds no
-gameplay transport or GOAL save behavior.
+Protocol 3 adds the forward-safe runtime snapshot, game-session nonce, and
+eight-entry idempotent command receipt ring. Slot-data version 2 adds the
+generated `multiworld.seed_name` as the mandatory opaque `seed_identifier`.
+State schema version 1 and every table version/hash remain unchanged. Protocol
+2 sidecars are incompatible read-only evidence and are not migrated.
 
 ## Registry scope
 

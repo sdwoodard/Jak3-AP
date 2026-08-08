@@ -3,7 +3,13 @@ from __future__ import annotations
 from BaseClasses import ItemClassification, Tutorial
 from Options import OptionGroup
 from worlds.AutoWorld import WebWorld, World
-from worlds.LauncherComponents import Component, Type, components, icon_paths, launch_subprocess
+from worlds.LauncherComponents import (
+    Component,
+    Type,
+    components,
+    icon_paths,
+    launch_subprocess,
+)
 
 from . import options
 from .game_id import GAME_NAME
@@ -22,6 +28,7 @@ from .registry import (
     USEFUL_ITEMS,
 )
 from .items import Jak3Item
+from .option_resolution import ResolvedJak3Options
 from .regions import create_regions
 from .rules import set_rules
 from .slot_data import build_slot_data
@@ -39,18 +46,21 @@ _CLASSIFICATION_BY_REGISTRY_VALUE = {
 
 def launch_client() -> None:
     from . import client
+
     launch_subprocess(client.launch, name="Jak3Client")
 
 
-components.append(Component(
-    "Jak 3 Client",
-    func=launch_client,
-    component_type=Type.CLIENT,
-    icon="jak3-logo",
-    game_name=GAME_NAME,
-    supports_uri=True,
-    description="Connect Jak 3 for OpenGOAL to an Archipelago multiworld.",
-))
+components.append(
+    Component(
+        "Jak 3 Client",
+        func=launch_client,
+        component_type=Type.CLIENT,
+        icon="jak3-logo",
+        game_name=GAME_NAME,
+        supports_uri=True,
+        description="Connect Jak 3 for OpenGOAL to an Archipelago multiworld.",
+    )
+)
 icon_paths["jak3-logo"] = f"ap:{__name__}/icons/jak3-logo.png"
 
 
@@ -66,53 +76,65 @@ class Jak3WebWorld(WebWorld):
     )
     tutorials = [setup_en]
     option_groups = [
-        OptionGroup("Progression", [
-            options.Goal,
-            options.MissionOrder,
-            options.LogicDifficulty,
-            options.MissionEquipment,
-            options.StoryItemMode,
-            options.FinaleRelicRequirement,
-            options.EarlyRouteItem,
-            options.EarlyRangedGun,
-        ]),
-        OptionGroup("Checks", [
-            options.MissionCompletionChecks,
-            options.VanillaRewardChecks,
-            options.MissionMilestoneChecks,
-            options.SideMissionSanity,
-            options.SanityCosts,
-            options.ChallengeProgression,
-            options.MedalSanity,
-            options.PrecursorOrbSanity,
-            options.PrecursorOrbBundleSize,
-            options.PrecursorOrbProgressionCap,
-            options.SkullGemSanity,
-            options.SkullGemBundleSize,
-            options.SecretPurchaseSanity,
-            options.AllowExperimentalChecks,
-        ]),
-        OptionGroup("Items", [
-            options.GunShuffle,
-            options.GunLogic,
-            options.AmmoUpgradeShuffle,
-            options.ArmorShuffle,
-            options.JetboardShuffle,
-            options.JetboardUpgradeShuffle,
-            options.InvisibilityStatuesShuffle,
-            options.LightPowerShuffle,
-            options.DarkPowerShuffle,
-            options.VehicleShuffle,
-            options.EcoCrystalShuffle,
-            options.SecretUpgradeShuffle,
-            options.FillerItemWeights,
-        ]),
-        OptionGroup("Traps", [
-            options.TrapPercentage,
-            options.TrapDuration,
-            options.TrapWeights,
-            options.DeathLink,
-        ]),
+        OptionGroup(
+            "Progression",
+            [
+                options.Goal,
+                options.MissionOrder,
+                options.LogicDifficulty,
+                options.MissionEquipment,
+                options.StoryItemMode,
+                options.FinaleRelicRequirement,
+                options.EarlyRouteItem,
+                options.EarlyRangedGun,
+            ],
+        ),
+        OptionGroup(
+            "Checks",
+            [
+                options.MissionCompletionChecks,
+                options.VanillaRewardChecks,
+                options.MissionMilestoneChecks,
+                options.SideMissionSanity,
+                options.SanityCosts,
+                options.ChallengeProgression,
+                options.MedalSanity,
+                options.PrecursorOrbSanity,
+                options.PrecursorOrbBundleSize,
+                options.PrecursorOrbProgressionCap,
+                options.SkullGemSanity,
+                options.SkullGemBundleSize,
+                options.SecretPurchaseSanity,
+                options.AllowExperimentalChecks,
+            ],
+        ),
+        OptionGroup(
+            "Items",
+            [
+                options.GunShuffle,
+                options.GunLogic,
+                options.AmmoUpgradeShuffle,
+                options.ArmorShuffle,
+                options.JetboardShuffle,
+                options.JetboardUpgradeShuffle,
+                options.InvisibilityStatuesShuffle,
+                options.LightPowerShuffle,
+                options.DarkPowerShuffle,
+                options.VehicleShuffle,
+                options.EcoCrystalShuffle,
+                options.SecretUpgradeShuffle,
+                options.FillerItemWeights,
+            ],
+        ),
+        OptionGroup(
+            "Traps",
+            [
+                options.TrapPercentage,
+                options.TrapDuration,
+                options.TrapWeights,
+                options.DeathLink,
+            ],
+        ),
     ]
 
 
@@ -146,15 +168,11 @@ class Jak3World(World):
     location_name_groups = {
         "Story Completions": {record.name for record in STORY_COMPLETION_LOCATIONS},
         "Major Rewards": {record.name for record in MAJOR_REWARD_LOCATIONS},
-        "Selected Side Challenges": {
-            record.name for record in SELECTED_SIDE_LOCATIONS
-        },
-        "Precursor Orb Thresholds": {
-            record.name for record in ORB_THRESHOLD_LOCATIONS
-        },
+        "Selected Side Challenges": {record.name for record in SELECTED_SIDE_LOCATIONS},
+        "Precursor Orb Thresholds": {record.name for record in ORB_THRESHOLD_LOCATIONS},
     }
 
-    resolved_options: options.ResolvedJak3Options
+    resolved_options: ResolvedJak3Options
 
     def generate_early(self) -> None:
         self.resolved_options = options.resolve_options(self.options)
