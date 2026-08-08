@@ -73,6 +73,12 @@ class DeveloperInstallerTest(unittest.TestCase):
                 project_text.index('"archipelago.o"'),
             )
 
+    def test_installer_hashing_has_no_powershell_module_dependency(self) -> None:
+        script = INSTALL_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertNotIn("Get-FileHash -LiteralPath", script)
+        self.assertIn("[System.Security.Cryptography.SHA256]::Create()", script)
+
     def test_invalid_project_is_rejected_before_source_copy(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

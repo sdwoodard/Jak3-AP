@@ -14,6 +14,31 @@ $reloadMarker = Join-Path $destinationDirectory ".archipelago-reload-required"
 $source = Join-Path $PSScriptRoot "..\mod\opengoal\goal_src\jak3\pc\features\archipelago.gc"
 $source = (Resolve-Path -LiteralPath $source).Path
 
+function Get-Sha256Hex {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $LiteralPath
+    )
+
+    # Get-FileHash is supplied by Microsoft.PowerShell.Utility, which is not
+    # available in every PowerShell host used by Archipelago's Windows tests.
+    # Use the framework crypto API so the standalone installer has no module
+    # dependency.
+    $stream = [System.IO.File]::OpenRead($LiteralPath)
+    $algorithm = $null
+    try {
+        $algorithm = [System.Security.Cryptography.SHA256]::Create()
+        $digest = $algorithm.ComputeHash($stream)
+        return [System.BitConverter]::ToString($digest).Replace("-", "").ToLowerInvariant()
+    }
+    finally {
+        if ($null -ne $algorithm) {
+            $algorithm.Dispose()
+        }
+        $stream.Dispose()
+    }
+}
+
 if (-not (Test-Path -LiteralPath $projectFile -PathType Leaf)) {
     throw "This does not look like an OpenGOAL Jak 3 repository: $projectFile was not found."
 }
@@ -47,10 +72,10 @@ if ($projectUpdated) {
     )
 }
 
-$sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+$sourceHash = Get-Sha256Hex -LiteralPath $source
 $sourceUpdated = -not (Test-Path -LiteralPath $destinationSource -PathType Leaf)
 if (-not $sourceUpdated) {
-    $destinationHash = (Get-FileHash -LiteralPath $destinationSource -Algorithm SHA256).Hash.ToLowerInvariant()
+    $destinationHash = Get-Sha256Hex -LiteralPath $destinationSource
     $sourceUpdated = $sourceHash -ne $destinationHash
 }
 if ($sourceUpdated) {
