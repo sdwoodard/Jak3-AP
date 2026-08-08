@@ -1,11 +1,11 @@
 # Jak 3 Archipelago — Revised Remaining Project Milestones
 
-**Applies after:** Milestones 0–3  
-**Reviewed repository state:** public `main` at commit `49748856f6e26ca4396c9603fb3e515210e95aa0`  
+**Applies after:** Milestones 0–6 completed; Milestone 7 implementation committed as `0cdc04e`; formal live acceptance pending  
+**Repository review basis:** commit `0cdc04e` plus the complete attached Milestone 7 implementation/review history  
 **Design target:** OpenGOAL Jak 3 + Archipelago, design version 0.3  
 **First-release scope:** one supported default profile only
 
-This document replaces the previous Milestones 4–22. Milestones 0–3 remain completed and should not be reopened unless a regression is discovered.
+This revision preserves the established Milestones 4–26 numbering. Milestones 4–6 remain completed contracts, and **Milestone 7 is preserved exactly as previously written**. Commit `0cdc04e` is treated as its implementation result, not as proof of its remaining interactive acceptance gate. **Milestone 7.1** adds diagnostics around the committed implementation, and **Milestone 7.2** performs the real save/restart matrix, measures overhead, and freezes the control architecture before Milestone 8. No existing whole-number milestone is renumbered or displaced.
 
 ---
 
@@ -71,34 +71,88 @@ Every milestone prompt should begin with these requirements:
 
 A milestone must not be marked complete merely because code compiles. Its completion gate must be demonstrated. A sub-grouped milestone must be delivered as separate reviewable agent tasks; one agent run must not silently continue into the next subgroup.
 
+
+### Review, complexity, and stop rules
+
+The Milestone 7 history showed that an unbounded sequence of broad review-agent passes over one large cross-layer diff is inefficient and can eventually produce false positives as well as valid defects. Future milestones use this review policy:
+
+1. Split work before implementation when one task crosses more than two independently stateful boundaries, such as server protocol, Python persistence, native save I/O, live GOAL state, or installer/update activation.
+2. Prefer reviewable sub-tasks whose production diff is small enough for one human to understand. Tests and generated evidence do not count against that goal, but a large production diff must be justified explicitly.
+3. Before coding a lifecycle feature, write its state-transition table and identify the authoritative owner, durability boundary, identity, restart behavior, and unsupported transitions.
+4. Use one implementation review, one focused adversarial review of the changed boundaries, and the milestone acceptance run. Additional broad re-reviews require a new failing test, a reproduced runtime failure, or direct source evidence.
+5. A review finding must state a reachable transition, expected behavior, observed behavior, severity, and supporting source/test evidence. Purely hypothetical hardening is recorded rather than implemented unless the failure could corrupt AP progress, bind the wrong save, crash normal input, or violate a documented supported workflow.
+6. After no credible P1/P2 findings remain and the required acceptance matrix passes, stop adding defensive branches. Later discoveries become focused regression fixes; they do not reopen the entire milestone.
+7. Development-only hot reload is not automatically a supported player workflow. The release policy may require a clean game restart after bridge/APWorld updates. Do not add more hot-reload state preservation unless that workflow remains intentionally supported and is tested.
+8. Future OpenGOAL gameplay systems should be added in separate modules rather than continually enlarging the Milestone 7 control bridge. The existing `archipelago.gc` remains the protocol/runtime/save-binding core.
+
+### Cross-cutting diagnostic contract for Milestones 7.1–26
+
+Milestone 7.1 establishes the diagnostic API, event registry, storage, retention, redaction, and support-bundle contract around the committed Milestone 7 implementation. Milestone 7 itself is not retroactively changed. Milestone 7.2 then uses those diagnostics for the remaining interactive acceptance and performance baseline. Every milestone from Milestone 8 onward that adds or changes runtime behavior must use the Milestone 7.1 API rather than creating unrelated free-form logging.
+
+For each meaningful state transition, command, durable write, native hook, recovery path, rejection, retry, and externally visible error, the implementing milestone must:
+
+1. Emit a stable, documented event name from the shared diagnostic-event registry.
+2. Include the relevant correlation identity, such as command ID, received-item index, location ID, task ID, overlay/profile ID, state revision, or goal update ID.
+3. Record the result after the authoritative durability or native-application boundary, not merely the attempted action.
+4. Record rejected and duplicate/idempotent paths distinctly from successful first application.
+5. Avoid passwords, authentication tokens, credential-bearing URLs, raw native-save identities, arbitrary packet dumps, full sidecar contents, or uncontrolled GOAL forms.
+6. Keep diagnostic failure non-fatal: an unwritable log or malformed optional diagnostic event must not mutate gameplay state, skip persistence validation, or crash the game/client.
+7. Add tests for the event's success, duplicate/idempotent, rejected/error, and restart/recovery paths where those paths exist.
+8. Prefer state transitions and sampled health summaries over high-frequency polling noise. A one-second heartbeat must not generate normal INFO-level events indefinitely.
+9. Preserve a concise human-readable message while keeping machine decisions in stable codes and structured fields.
+10. Update the diagnostic-event catalogue and support-bundle field allowlist when new event fields are introduced.
+
 ---
 
-## 3. Roadmap changes from the prior document
+## 3. Numbering decision and downstream wording changes
 
-| Previous milestone | Revised treatment |
+| Milestone | Treatment in this revision |
 | --- | --- |
-| 4 — Persistent state | Moved to Milestone 6. It now depends on a final registry and slot-data contract. |
-| 5 — Received items | Moved to Milestone 8, after a runtime-state and idempotent-command layer exists. |
-| 6 — Location outbox | Moved to Milestone 9. “Acknowledgment” is replaced with reconciliation against server checked-location state. |
-| 7 — Vertical slice | Moved to Milestone 10 and strengthened to include one real native reward interception. |
-| 8 — Complete APWorld data | Split between Milestones 4 and 5 and moved before persistence. |
-| 9 — Pure logic | Moved to Milestone 12, after high-risk runtime assumptions are tested. |
-| 10 — One reward interception | Folded into Milestone 10 so the first vertical slice proves the real substitution model. |
-| 11 — All reward interception | Becomes Milestone 16 and remains subdivided into small chapter tasks. |
-| 12 — Generic overlays | Becomes Milestone 15 so lesson-state handling exists before all reward nodes are intercepted. |
-| 13 — Bootstrap profiles | Becomes Milestone 18, after the route-board subsystem exists. |
-| 14 — Route authorizations | Split into an early feasibility spike in Milestone 11 and production implementation in Milestone 17. |
-| 15 — Shadow story state | Becomes Milestone 19, with early proof work in Milestone 11. |
-| 16 — Story checks | Becomes Milestone 20. |
-| 17 — Side challenges | Becomes Milestone 21. |
-| 18 — Orb thresholds | Split into an obtainability audit in Milestone 11 and production implementation in Milestone 22. |
-| 19 — Goal/finale | Becomes Milestone 23. |
-| 20 — Full integration | Becomes Milestone 24 with tiered CI/fuzzing requirements. |
-| 21 — Diagnostics | Basic observability becomes mandatory throughout; final player-facing polish is Milestone 25. |
-| 22 — Release packaging | Becomes Milestone 26 and focuses on hardening the package pipeline that already exists. |
-| Missing from prior roadmap | Milestone 13 implements every permanent default item; Milestone 14 implements exactly-once filler and consumable delivery. |
+| Milestones 4–6 | Preserved as completed contracts. Milestone 7.1 may instrument their paths without changing their behavior. |
+| Milestone 7 | Preserved exactly as previously written. Commit `0cdc04e` is implementation-complete, but its existing live save/copy/restart completion gate is still pending. |
+| **Milestone 7.1** | Structured diagnostic logging and forensic support bundles around the committed Milestone 7 behavior. It must not redefine protocol or save-binding semantics. |
+| **Milestone 7.2** | New validation-first milestone: execute the real runtime matrix, measure startup/runtime cost, define the supported update/reload policy, and freeze Protocol 3 before gameplay traffic. |
+| Milestones 8–24 | Keep their existing numbers and functional scope. Their wording adds subsystem-specific diagnostic-event and support-evidence requirements and requires Milestone 7.2 acceptance before real gameplay transport. |
+| Milestone 25 | Keeps its number, but becomes player-facing status, recovery guidance, and diagnostic-export UX. It reuses Milestone 7.1 rather than creating the logger late in development. |
+| Milestone 26 | Keeps its number and adds diagnostic schema, retention, redaction, and support-bundle validation to release hardening. |
+
+This ordering gives the logger access to the committed Milestone 7 runtime snapshot and idempotent command channel, uses it to capture the remaining live acceptance evidence, and still places both observability and protocol freeze before real `ReceivedItems`, real location traffic, reward interception, overlays, route mutation, and finale handling.
 
 ---
+
+## 4. Diagnostic logging review and architectural decision
+
+### Current foundation to preserve
+
+At commit `0cdc04e`, the project already has a useful launch/handshake/runtime logger:
+
+- One session ID names a paired client log and combined OpenGOAL/compiler log.
+- Client metadata records versions, platform, executable, working directory, and support-file paths.
+- `gk` and `goalc` output launched by the client is captured, ANSI-cleaned, and source-prefixed.
+- Client lifecycle, source installation/hash, process launch, nREPL traffic, handshake failures, protocol versions, slot-contract validation, and manual diagnostic snapshots are logged.
+- The GOAL bridge emits stable handshake messages, and wrapped background tasks preserve their Python exceptions.
+- Basic tests protect paired filenames, source prefixes, and ANSI stripping.
+
+This is a strong **startup and handshake diagnostic logger**. It is not yet a complete forensic logger for the item, location, persistence, mission, reward, overlay, authorization, and goal systems that follow.
+
+### Gaps that Milestone 7.1 closes
+
+- Most records are free-form text rather than a versioned, machine-readable event stream.
+- Client, compiler, game, persistence, command, save, item, check, and mission activity do not yet share correlation IDs or one authoritative ordering contract.
+- Raw process lines and GOAL events do not consistently share UTC timestamps or source-monotonic sequence data.
+- A one-second heartbeat and raw nREPL form logging can overwhelm long sessions, while no bounded rotation/retention policy exists.
+- The atomic persistence engine has extensive recovery and commit behavior but no subsystem-level diagnostic event sink.
+- GOAL and Python output cannot be treated as one perfectly ordered transaction ledger when written independently.
+- Unhandled thread/async-loop failures, log-writer failures, and previous unclean sessions do not yet have one explicit project-owned capture contract.
+- Current tests do not cover schema stability, redaction, rotation, support-bundle contents, concurrent sources, disk/log failure, or high-volume sessions.
+- Leaving the engineering logger until the old late diagnostics milestone would require retrofitting the most difficult gameplay systems after they were already built.
+
+### Decision
+
+Do not revert, rewrite, or broadly reopen commit `0cdc04e`. Treat its Protocol 3, native-save identity, descriptor-qualified binding, runtime-safety, and idempotent command semantics as frozen pending real acceptance. Implement Milestone 7.1 as a separate, reviewable instrumentation task, then perform Milestone 7.2 as the evidence-producing completion of Milestone 7's existing live gate. Production fixes during Milestone 7.2 are limited to reproduced failures or direct source-proven defects. Milestone 25 remains responsible only for concise player-facing presentation and recovery guidance.
+
+---
+
 # Milestone 4 — Consolidate Normative Sources and Freeze the Versioned Data Contract
 
 ## Human-readable summary
@@ -240,8 +294,6 @@ The APWorld, client, and GOAL integration can all import or consume the same ver
 /plan
 
 Read AGENTS.md and the canonical design/default YAML first.
-
-Then read the Project-Milestones-Revised.md file for a list of project milestones.
 
 Implement only Milestone 4: consolidate the normative source paths and create
 the versioned first-release item/location/mission registry and slot-data
@@ -620,17 +672,457 @@ Use only harmless test commands. Do not deliver AP items or submit locations.
 
 ---
 
+# Milestone 7.1 — Establish Structured Diagnostic Logging and Forensic Support Bundles
+
+## Human-readable summary
+
+The project already produces useful paired client and OpenGOAL logs, but upcoming Archipelago gameplay can fail across many boundaries: the server packet, Python ledger, persistent sidecar, command transport, native game application, mission script, save reconstruction, or reconnect path.
+
+A maintainer or agentic AI should be able to reconstruct that chain without attaching a debugger or asking the player to reproduce the problem repeatedly. This milestone upgrades the existing logger into an engineering-grade diagnostic subsystem before real items and checks are enabled.
+
+For the player, normal logging remains automatic and bounded. When a problem occurs, one sanitized support bundle contains the relevant timeline, versions, state summaries, and errors without exposing passwords or native save data.
+
+## Frozen Milestone 7 boundary
+
+Milestone 7 is not revised by this milestone. Milestone 7.1 begins after commit `0cdc04e` is present, even though the existing interactive completion gate is still pending. Its purpose is to make that gate and later gameplay failures diagnosable. It may add passive observation adapters, event sinks, and diagnostic projections around Milestones 4–7, but it must not change persistence semantics, safe-state decisions, command/result semantics, protocol compatibility requirements, or Milestone 7's required tests.
+
+Formal live acceptance is performed in Milestone 7.2. If diagnostic work exposes an actual defect, record it as a focused regression with a reproducer or direct source evidence and repair only that defect; do not silently redefine or broadly re-review Milestone 7.
+
+## Technical objective
+
+Preserve the two current human-readable logs, add a versioned Python-owned structured event stream, instrument the existing launcher/protocol/persistence paths, establish crash/noise/privacy policies, and create a sanitized support-bundle exporter that every later milestone can extend.
+
+## Required architecture
+
+### One diagnostic session, three support-facing artifacts
+
+Each client run owns one session ID and creates:
+
+```text
+Jak3Client_<session>.txt       # human-readable Python/AP client log
+Jak3OpenGOAL_<session>.txt     # human-readable gk/goalc/game output
+Jak3Events_<session>.jsonl     # machine-readable correlated event timeline
+```
+
+The JSON Lines event stream is the authoritative diagnostic timeline. The human logs remain valuable raw context and must not be removed.
+
+### Single-writer rule
+
+- Python is the only writer to the structured event file and support bundle.
+- Python should also be the only writer to each support-facing merged file where practical.
+- GOAL emits bounded, sequence-numbered diagnostic records through a dedicated bridge/ring/outbox or another explicitly versioned channel; Python drains and records them.
+- Do not rely on Python's thread lock to order writes made independently by the GOAL process.
+- Keep `format #t` or an equivalent emergency game-side trace as a fallback, but do not use a second process to write the authoritative structured file.
+- The first source-loaded/initialization event must be retrievable even when it occurs before the client finishes attaching.
+- If `gk` or `goalc` was already running and its prior stdout cannot be captured, emit an explicit capture-gap event rather than implying the log is complete.
+
+### Diagnostic event envelope
+
+Define and version a JSON-serializable envelope. Required fields are:
+
+```text
+diagnostic_schema_version
+event_sequence
+observed_utc
+source_component
+source_sequence
+source_monotonic_or_game_tick
+severity
+event_name
+message
+session_id
+correlation_id
+process_id
+thread_or_task
+protocol_version
+game_integration_version
+runtime_state_sequence
+persistent_state_revision
+context
+details
+```
+
+Rules:
+
+- `observed_utc` is timezone-aware UTC.
+- `event_sequence` is assigned by the Python writer and is monotonic within the diagnostic session.
+- `source_sequence` identifies ordering within the client, launcher, GOAL bridge, compiler/game collector, or persistence source.
+- `correlation_id` is required for commands and is used where available for item indices, location sends, task hooks, overlay profiles, and goal updates.
+- Optional fields use explicit null/absence rules; arbitrary Python objects and unserializable payloads are rejected safely.
+- Event names are stable identifiers such as `protocol.command.completed`, not prose.
+- Human-readable `message` supplements stable fields; code must not parse the message to make gameplay decisions.
+- The diagnostic schema has its own version and migration policy. It is support-tool compatibility, not an AP item/location ID contract.
+
+### Event catalogue and required current coverage
+
+Create a documented event-name catalogue. Milestone 7.1 must cover the systems already present:
+
+#### Session/process lifecycle
+
+- Diagnostic session started and configuration summary.
+- Prior session detected as clean or unclean.
+- AP client start/stop.
+- AP server connecting/authenticated/disconnected/rejected.
+- OpenGOAL installation discovery and bridge hash verification.
+- `gk`/`goalc` start, already-running capture gap, exit code, crash/abnormal exit.
+- nREPL connect/attach/close/timeout.
+- GOAL source loaded and log/event channel ready.
+
+#### Compatibility and binding prerequisites
+
+- Protocol/integration/table/slot/state versions and hashes.
+- Slot-data contract accepted or rejected, with stable mismatch field/code.
+- Native save observed, eligible/ineligible, loaded/unloaded/switched.
+- Binding deferred, attempted, accepted, rejected, or read-only.
+- Raw native-save identity is never logged; use a one-way diagnostic identity hash.
+
+#### Milestone 7 save/binding and bridge-update lifecycle
+
+At minimum, define stable events for:
+
+- `save.identity.proposed`, `save.identity.authorized`, `save.identity.consumed`, `save.identity.published`, and `save.identity.invalidated`.
+- `save.native_operation.started`, `save.native_operation.succeeded`, and `save.native_operation.failed`.
+- `binding.opened`, `binding.switched`, `binding.rejected`, and `binding.closed`.
+- `runtime.safety.changed`, carrying only the changed safe-state reasons.
+- `bridge.reload.required`, `bridge.reload.started`, `bridge.reload.activated`, `bridge.reload.failed`, and `bridge.restart_required`.
+- `protocol.command.submitted`, `protocol.command.applied`, `protocol.command.replayed`, and `protocol.command.rejected`.
+
+Use a one-way diagnostic identity hash, command ID, game-session nonce hash, state revision, native slot, and activation generation as correlation data. Never log a raw save UUID.
+
+#### Protocol/runtime state
+
+- Handshake accepted/rejected.
+- Runtime state transitions, not every unchanged poll.
+- Safe-state changes.
+- Command submitted, accepted, applied, already applied, queued, unsafe, rejected, timed out, failed, and recovered after reconnect.
+- Duplicate and stale-session commands.
+- Communication loss/reconnect.
+- Heartbeat health is sampled or summarized; steady one-second pings are DEBUG/TRACE-only and rate-limited.
+
+#### Persistence retrofit for completed Milestone 6
+
+Instrument the existing persistence layer without changing its semantics:
+
+- Writer lock acquired/refused/released.
+- State path selected using only a redacted/hash identity.
+- State created, loaded, bound, switched, and closed.
+- Commit attempted/succeeded/failed with old/new revision and operation category.
+- Backup refreshed/restored.
+- Corruption detected.
+- Quarantine performed with sanitized filename/reference.
+- Compatibility/binding/eligibility rejection.
+- Clean versus unclean shutdown state.
+- Stale revision and concurrent-writer rejection.
+
+Prefer dependency injection or a small event-sink protocol so `persistence.py` remains independently testable and does not depend on the global client logger.
+
+### Noise, levels, rotation, and retention
+
+- INFO records lifecycle, state transitions, durable operations, retries that affect behavior, and user-actionable failures.
+- DEBUG records bounded command/protocol detail.
+- TRACE or an explicit opt-in diagnostic mode may include sanitized raw nREPL forms and high-frequency polling.
+- Normal mode must not log each one-second healthy heartbeat to human or structured INFO output.
+- Add rate limiting and a `diagnostics.events_dropped_or_suppressed` summary when events are intentionally sampled or a game-side ring overflows.
+- Use bounded size-based rotation or an equivalent bounded per-session design.
+- Retention must be configurable and default to a finite number of sessions/files/bytes.
+- Old logs may be compressed or removed only after the current session is safely initialized.
+- A three-hour normal session and an accelerated high-volume test must stay within the documented storage bound.
+
+### Crash and exception capture
+
+Create one explicit project-owned policy for:
+
+- Main-thread unhandled exceptions.
+- `asyncio` loop exceptions and unawaited task failures.
+- Background thread exceptions, including process-output collectors.
+- GOAL/compiler/game abnormal exits.
+- Failure while writing or rotating diagnostics.
+- Previous session missing a clean-shutdown marker.
+
+Use existing Archipelago exception logging where it is authoritative, but install missing hooks rather than assuming every task/thread is covered. Avoid duplicate traceback storms. A diagnostic failure falls back to stderr/client output and never changes AP state.
+
+### Redaction and privacy
+
+The normal logs and exported bundle must never include:
+
+- AP server passwords or authentication tokens.
+- Credential-bearing URLs.
+- Raw native-save identity.
+- Complete native save files.
+- Game assets, ISO data, or memory dumps.
+- Full persistent sidecar/journal contents by default.
+- Unbounded raw server packets or arbitrary command payloads.
+
+Use field allowlists, not only pattern replacement. The support bundle additionally sanitizes user/profile path segments and records which fields were redacted. Item/location/task numeric IDs and names are allowed because they are required for diagnosis.
+
+### Support bundle
+
+Implement a command such as:
+
+```text
+/diagnostics export
+```
+
+It creates a timestamped archive containing only allowlisted files/data:
+
+- Current client log.
+- Current OpenGOAL/compiler log.
+- Structured event JSONL.
+- Manifest with checksums and diagnostic schema version.
+- Current sanitized protocol/runtime snapshot.
+- Version/hash/installed-bridge summary.
+- Sanitized persistence summary: state revision, open/recovery status, counts, pending counts, and clean-shutdown state, but not the full journal or native identity.
+- Recent command-result summaries.
+- A small README describing contents and known capture gaps.
+
+Bundle creation must work after a partial startup failure and must report which optional artifacts were unavailable. It must not upload anything automatically.
+
+## Required tests
+
+### Schema and event tests
+
+- Every event is valid UTF-8 JSON and matches the versioned schema.
+- Event names are registered and unique.
+- Python event sequence is monotonic.
+- Source sequence and correlation IDs survive asynchronous ordering.
+- Unknown optional fields are forward-safe for the bundle reader.
+- Multiline text, Unicode, and ANSI control sequences are normalized safely.
+- Unsupported/unserializable details produce a safe diagnostic error rather than recursion or a client crash.
+
+### Coverage tests
+
+- Session start and clean shutdown.
+- Prior unclean session.
+- Server connect/auth/reject/disconnect.
+- OpenGOAL start/already-running/exit.
+- nREPL timeout and protocol mismatch.
+- Runtime state transition and unchanged-poll suppression.
+- Duplicate/stale/unsafe/failed harmless commands.
+- Persistence create/load/bind/commit/revision conflict/backup recovery/quarantine/writer-lock rejection.
+- GOAL event-ring drain, duplicate drain, sequence gap, and overflow summary.
+- The earliest source-loaded event is present after attach.
+
+### Noise, failure, and retention tests
+
+- Ten thousand synthetic heartbeats do not create ten thousand INFO events.
+- Rotation/retention stays within its configured bound.
+- Concurrent compiler/game/client events remain parseable and do not overwrite each other.
+- Unwritable directory, permission error, partial line, simulated disk-full write, and rotation failure do not mutate AP state or terminate gameplay.
+- Collector-thread and asyncio-loop exceptions are captured once with traceback/correlation.
+- Logging an error from inside the logger does not recurse indefinitely.
+
+### Redaction and bundle tests
+
+- Passwords, auth tokens, credential URLs, raw save identity, user-profile paths, and prohibited file types are absent.
+- Bundle manifest/checksums match included files.
+- Missing optional artifacts are disclosed.
+- Bundle can be created after startup failure and after clean shutdown.
+- Bundle creation is read-only with respect to AP persistent state and native gameplay state.
+
+## Documentation deliverables
+
+Create or update:
+
+```text
+docs/development/diagnostic-architecture.md
+docs/development/diagnostic-events.md
+docs/troubleshooting.md
+worlds/jak3/docs/setup_en.md
+```
+
+Document:
+
+- File locations and retention.
+- Log levels and temporary verbose mode.
+- Event-envelope fields.
+- Redaction policy.
+- Support-bundle command and contents.
+- Known capture gaps for pre-existing OpenGOAL processes.
+- How later milestones add event names without breaking the schema.
+
+## Non-goals
+
+- No real `ReceivedItems` processing.
+- No real location submission.
+- No reward interception or mission mutation.
+- No large in-game UI.
+- No remote telemetry or automatic upload.
+- No full native memory dump or full sidecar export.
+- Do not change completed Milestone 6 persistence behavior merely to simplify logging.
+
+## Completion gate
+
+A synthetic cross-component failure involving startup, a persistence recovery/rejection, a harmless command timeout/duplicate, and a game/client reconnect can be diagnosed from the exported support bundle alone. The structured timeline identifies the component, stable event, correlation ID, state revision, command result, and capture gaps in order; the bundle passes redaction tests; a high-volume session remains bounded; and disabling or breaking the diagnostic sink cannot corrupt gameplay or persistent AP state.
+
+## Suggested Codex prompt
+
+```text
+/plan
+
+Implement only Milestone 7.1.
+
+Preserve the existing paired human-readable logs, then add one Python-owned
+versioned JSONL event timeline, a stable event registry, GOAL event draining,
+persistence instrumentation, bounded rotation/retention, exception/crash
+capture, field-allowlist redaction, and `/diagnostics export` support bundles.
+
+Do not add ReceivedItems, locations, rewards, or mission behavior. Make logging
+failure non-fatal and prove that a synthetic startup/persistence/command failure
+can be diagnosed from the sanitized bundle alone.
+```
+
+---
+
+# Milestone 7.2 — Perform Live Runtime Acceptance, Establish Performance Baselines, and Freeze Protocol 3
+
+## Human-readable summary
+
+Milestone 7 now has extensive source, compiler, fake-protocol, persistence, and harmless transport coverage. The remaining uncertainty is not another hypothetical branch: it is whether native save identity, binding, safety, and restart behavior work correctly during real player workflows.
+
+This milestone stops broad speculative review and exercises those workflows in an actual OpenGOAL game using Milestone 7.1 diagnostics. It also measures startup, compile, heartbeat, logging, and runtime cost so future milestones do not accidentally turn the control bridge into an unbounded performance or maintenance burden.
+
+For the player, this is the point where the project proves that the correct save remains attached to the correct Archipelago slot through ordinary saving, switching, restarting, disconnecting, and failure. No real items or locations are enabled yet.
+
+## Technical objective
+
+Demonstrate Milestone 7's existing completion gate on a real runtime, establish reproducible performance baselines, define the supported bridge-update lifecycle, and freeze Protocol 3/control semantics before Milestone 8 sends gameplay data.
+
+## Validation-first change policy
+
+- Do not perform another unbounded review-agent pass over the complete Milestone 7 diff.
+- Do not add defensive branches for merely imaginable transitions.
+- Production code may change only for:
+  - A reproduced live failure.
+  - A deterministic failing regression test derived from the live matrix.
+  - A direct contradiction with audited native source that can corrupt state, bind the wrong save, or crash a supported workflow.
+- Every fix must be narrow, must add a focused regression, and must rerun only the affected matrix rows plus the existing required suite.
+- No real item, location, reward, mission-board, overlay, or goal behavior is added.
+
+## Required real native-save matrix
+
+Run and record, at minimum:
+
+1. Authenticate, start a fresh New Game, save, and verify one stable UUID/slot/eligibility descriptor.
+2. Load the same save repeatedly and verify the same descriptor and sidecar binding.
+3. Cleanly restart the client while the game remains open.
+4. Terminate the client uncleanly while the game remains open, then reconnect.
+5. Restart the game while the client remains open; verify a new game-session nonce and safe reconciliation.
+6. Restart both processes in both orders.
+7. Switch save A → save B → save A and verify binding follows the exact descriptor without a false-safe window.
+8. Copy a tagged native save to another native slot and verify copied-slot rejection is read-only and recoverable.
+9. Attempt to use a progressed vanilla save and verify it is rejected as ineligible without altering it.
+10. Enter Continue Without Save and verify no prior descriptor or binding remains active.
+11. From the title menu, create another New Game after loading an AP save; verify a fresh UUID is used and the previous sidecar is not reopened.
+12. Overwrite the same native slot with a new game and verify the new save cannot inherit the old AP identity.
+13. Exercise a controlled save/load failure where practical; verify identity publication and binding fail closed while native behavior remains recoverable.
+14. Send the harmless target-state command, repeat it, reconnect, and verify `APPLIED`/`ALREADY_APPLIED` or stored receipt behavior without a second effect.
+15. Verify title-menu queries remain available while mutating commands remain unsafe/unbound.
+
+Each row must include the diagnostic session/support bundle, expected result, observed result, pass/fail, and any known capture gap.
+
+## Supported update and reload policy
+
+Adopt this first-release policy unless the matrix proves a different policy is both necessary and reliable:
+
+- Installing a changed APWorld/OpenGOAL bridge while Jak 3 is running requires a clean game restart before normal play.
+- Bridge-only live reload remains a development/recovery aid, not a player-facing guarantee.
+- Do not expand support for live reload during native memory-card I/O in later gameplay milestones.
+- Existing reload protections in `0cdc04e` remain in place; they are not removed in this milestone unless a reproduced defect requires it.
+
+Document the policy in setup, update, recovery, and release instructions.
+
+## Performance and complexity baseline
+
+Measure and record on the test system:
+
+- Cold client startup to attached compiler.
+- Full `(mi)` duration.
+- Bridge-only `(ml)` duration.
+- Warm reconnect with an unchanged compatible bridge.
+- CPU utilization and game frame-time impact of the one-second heartbeat during at least 30 minutes of gameplay.
+- Snapshot write rate and bytes per hour.
+- Human-log and structured-log bytes per hour in normal mode.
+- Memory use of the bridge before and after a long idle/gameplay session.
+- Time to export a sanitized support bundle.
+
+The currently observed roughly 28-second dependency rebuild is a baseline to explain, not automatic evidence that Milestone 7 code caused the cost. Compare cold, warm, unchanged-source, and changed-source paths before optimizing.
+
+If measurement shows material overhead or the update policy cannot be simplified safely, record a proposed **Milestone 7.3**. Do not create or implement Milestone 7.3 merely because the code is large.
+
+## Architecture freeze and modularity rules
+
+After the matrix passes:
+
+- Freeze Protocol 3 field meanings, command/result/error codes, native tag 900, save-authorization format, and descriptor-qualified binding semantics for the default-only beta.
+- A later protocol change requires an explicit version bump and compatibility/migration decision.
+- The eight-entry GOAL receipt ring remains session-level command deduplication, not the durable gameplay journal.
+- Python's AP ledger remains authoritative for permanent items.
+- Future GOAL systems are added in separate modules, for example:
+  - `archipelago-items.gc`
+  - `archipelago-locations.gc`
+  - `archipelago-overlays.gc`
+  - `archipelago-missions.gc`
+- Do not continue placing all future gameplay behavior into the Milestone 7 control bridge.
+
+## Required documentation updates
+
+- Mark Milestone 7 complete only after every mandatory matrix row passes or has a documented, approved safe limitation.
+- Record measured performance rather than estimates.
+- Record the supported update/restart policy.
+- Update R-019 and any bridge-reload risk with real evidence.
+- Store a concise acceptance report under `docs/development/`.
+
+## Non-goals
+
+- No `ReceivedItems` processing.
+- No `LocationChecks` submission.
+- No reward interception.
+- No mission mutation.
+- No speculative cleanup/refactor of working Milestone 7 code.
+- No promise that arbitrary hot reload during memory-card I/O is a supported player workflow.
+
+## Completion gate
+
+Milestone 7's existing live gate is demonstrated with real runtime evidence: no tested workflow binds the wrong save, transfers acknowledgement across descriptors, publishes an uncommitted identity, reports mutation-safe without a compatible bound save, or loses recoverable state across the required restart matrix. Protocol 3 is then frozen, measured overhead and the update/restart policy are documented, and Milestone 8 may begin.
+
+## Suggested Codex prompt
+
+```text
+/plan
+
+Implement only Milestone 7.2.
+
+Do not broadly revise Milestone 7 or add gameplay. Use the Milestone 7.1 event
+stream and support bundle to execute the real native save/load/copy/new-game,
+clean/unclean restart, save-switch, and harmless-command matrix. Measure cold
+compile, bridge load, warm reconnect, heartbeat, log, and runtime overhead.
+
+Change production code only for a reproduced failure or direct source-proven
+state-corruption defect, with a focused regression. Define and document the
+first-release update/restart policy, then freeze Protocol 3 before Milestone 8.
+```
+
+---
+
 # Milestone 8 — Implement Indexed ReceivedItems and the AP Item Ledger
 
 ## Human-readable summary
 
-When the Archipelago server sends an item, the mod must record it in order, survive a crash between receipt and application, and rebuild the native game state after a restart.
+Milestone 7.2 has now proven and frozen the save/binding and idempotent-command foundation. When the Archipelago server sends an item, the mod must record it in order, survive a crash between receipt and application, and rebuild the native game state after a restart.
 
-This milestone enables the incoming half of Archipelago for a deliberately small item slice. The persistent AP ledger, not native reward history, becomes authoritative for those items.
+This milestone enables the incoming half of Archipelago for a deliberately small permanent-item slice. The persistent Python AP ledger, not native reward history and not the eight-entry GOAL receipt ring, becomes authoritative for those items. It reuses Protocol 3 rather than reopening Milestone 7.
 
 ## Technical objective
 
-Implement indexed `ReceivedItems` processing, a crash-safe ledger, and safe native reconciliation for a small test set.
+After Milestone 7.2 passes, implement indexed `ReceivedItems` processing, a crash-safe Python ledger, and safe native reconciliation for a small test set. Keep the Milestone 7 runtime/save-binding core stable and add native item behavior in a separate OpenGOAL module.
+
+## Milestone 7 foundation constraints
+
+- Milestone 7.2 is a hard prerequisite.
+- Use idempotent target-state/reconciliation commands for permanent unlocks.
+- Python persistence and indexed AP receipts are authoritative; the GOAL receipt ring is only current-game-session command deduplication and reconnect discovery.
+- Do not use the eight-entry ring as the crash-safe journal for currency or other consumables. Additive exactly-once application remains deferred to Milestone 14.
+- Add native item mapping/application in `archipelago-items.gc` or an equivalent separate module rather than continually enlarging the core `archipelago.gc`.
 
 ## Initial item slice
 
@@ -664,6 +1156,28 @@ Do not use an Orb Pack or another additive consumable in this milestone; those r
 - Queue unsafe application until the Milestone 7 snapshot says it is safe.
 - Distinguish received count from native cap.
 - Native inventory is reconstructed from the AP ledger after load.
+
+## Required diagnostic events
+
+Use the Milestone 7.1 event API and correlate every path by received-item index and game command ID. At minimum emit:
+
+```text
+ap.received_items.packet_observed
+item.receipt.accepted
+item.receipt.duplicate
+item.receipt.index_gap
+item.replay.started
+item.replay.completed
+item.application.queued
+item.application.command_submitted
+item.application.completed
+item.application.already_applied
+item.application.failed
+item.reconciliation.started
+item.reconciliation.completed
+```
+
+Record item ID/name, source player, source location ID, packet start index, expected index, persistent state revision, command correlation ID, safe-state reason, and final outcome. Do not log the full server packet or password-bearing connection data.
 
 ## Crash-consistency tests
 
@@ -726,11 +1240,11 @@ currency separate from locally earned collectible totals.
 
 A location check must remain complete forever, even when the server is offline or the same activity is replayed.
 
-Archipelago location packets are safe to resend; there is not a simple one-packet acknowledgment to trust. This milestone therefore keeps the local durable bit as authoritative and reconciles it with the server's checked-location state after connection and room updates.
+Archipelago location packets are safe to resend; there is not a simple one-packet acknowledgment to trust. This milestone therefore keeps the local durable bit as authoritative and reconciles it with the server's checked-location state after connection and room updates. Milestone 7.2 is a hard prerequisite, and its Protocol 3/save-binding semantics remain frozen.
 
 ## Technical objective
 
-Implement durable game-to-server location reporting for one debug check and one controlled native check.
+Implement durable game-to-server location reporting for one debug check and one controlled native check. Add native check observation/outbox behavior in `archipelago-locations.gc` or an equivalent separate module rather than adding it to the Milestone 7 control core.
 
 ## Initial location slice
 
@@ -755,6 +1269,24 @@ Implement durable game-to-server location reporting for one debug check and one 
 10. Mission replay cannot create a second AP check.
 
 Do not rely on volatile actor addresses or transient task-node state as the AP identity.
+
+## Required diagnostic events
+
+Correlate the native observation, durable commit, outbox send, and server reconciliation using the location ID and outbox batch ID. At minimum emit:
+
+```text
+location.observed
+location.duplicate_ignored
+location.committed_local
+location.outbox.enqueued
+location.outbox.batch_sent
+location.server_confirmed
+location.reconciliation.started
+location.reconciliation.completed
+location.reconciliation.rejected
+```
+
+The timeline must distinguish native task completion from the AP durable bit and must show that server confirmation compacts the outbox without clearing local completion.
 
 ## Required tests
 
@@ -815,11 +1347,11 @@ The previous milestones prove incoming and outgoing reliability separately. This
 - Apply it in the running game.
 - Preserve everything through save, restart, reconnect, and replay.
 
-It also moves one native reward-interception proof earlier so the project does not spend months expanding data before validating its most important substitution mechanism.
+It also moves one native reward-interception proof earlier so the project does not spend months expanding data before validating its most important substitution mechanism. The Milestone 7.2 control protocol remains frozen; this slice must use it rather than growing a second transport path.
 
 ## Technical objective
 
-Create a small connected gameplay slice with one real permanent native reward interception.
+Create a small connected gameplay slice with one real permanent native reward interception, then repeat the relevant Milestone 7.2 save-switch/restart rows with actual item and location hooks active.
 
 ## Suggested scope
 
@@ -849,6 +1381,23 @@ Create a small connected gameplay slice with one real permanent native reward in
 - The native grant path may be reused.
 - An `ap-applying-item` recursion guard prevents the grant from sending the reward location.
 - A duplicate command cannot grant twice.
+
+## Diagnostic acceptance for the vertical slice
+
+The slice must emit one correlated timeline spanning:
+
+```text
+native reward/task observation
+→ AP location durable commit
+→ outbox send/reconciliation
+→ ReceivedItems index receipt
+→ persistent item journal commit
+→ game command/result
+→ native inventory reconciliation
+→ clean restart/reconnect verification
+```
+
+The location ID, received-item index, command ID, persistence revision, task/reward node, and AP/native result must be recoverable from the structured event stream. The exported support bundle must be sufficient to explain a deliberately injected failure at each boundary.
 
 ## End-to-end required tests
 
@@ -951,6 +1500,10 @@ Prove the maximum number of locally earnable Precursor Orbs on one normal post-g
 ### 7. Side-challenge cost and course access
 
 Verify the safe zero-cost entry path and hidden Ratchet & Clank course-access behavior used by the default.
+
+## Diagnostic evidence requirements
+
+Each runtime spike must have an experiment/correlation ID and must retain its structured event timeline or sanitized support bundle. A PASS or fallback decision cannot rely only on prose recollection; the deliverable must point to the source/runtime procedure and the diagnostic evidence that demonstrates the observed state transitions, native flags, item/relic counts, and save/reload result.
 
 ## Required deliverable
 
@@ -1179,6 +1732,10 @@ Implement table-driven application and reconciliation for all 26 progression ins
 - Unknown/default-unsupported IDs fail safely.
 - Route authorization and relic receipt cannot accidentally trigger mission checks, native story state, or reward hooks.
 
+## Required diagnostic events
+
+Every permanent item implementation must extend the shared event catalogue with target-state reconciliation events. Record item ID/name, AP count, native target state, native observed state, command ID, state revision, safe-state decision, and outcome. Do not dump arbitrary native memory. Required paths include first application, already-correct state, repeated receipt beyond native cap, queued application, save reconstruction, and reconciliation repair.
+
 ## Required tests
 
 Parameterize every permanent item definition for:
@@ -1299,6 +1856,10 @@ Document the selected method in an ADR and update the state schema/version if re
 - AP mode off remains native.
 - The status output reports queued/applied filler without exposing internal IDs to normal users.
 
+## Required diagnostic events
+
+Exactly-once consumables require a complete receipt/application timeline. Correlate received-item index, application receipt ID, command ID, pre/post capped resource summary, persistent revision, game-session nonce, and final result. Emit distinct events for reserved, applied, observed-applied-after-restart, duplicate-suppressed, unsafe/queued, capped/no-op, and failed/ambiguous. Never log a raw memory dump or make the diagnostic event the durability boundary.
+
 ## Required tests
 
 For every filler family or table-driven representative:
@@ -1402,6 +1963,10 @@ Implement table-driven temporary mission overlays with idempotent cleanup and AP
 - Retain through return teleport/mission exit.
 - Remove after cleanup unless permanently owned.
 
+## Required diagnostic events
+
+For each overlay emit profile selected, activation requested/applied, lesson-stage transition, permanent-item arrival while active, cleanup requested/completed, reconciliation completed, and cleanup failure/recovery. Include task/node, overlay instance ID, exact temporary capabilities, pre-existing native state summary, and final AP-ledger/native-state comparison.
+
 ## Required tests
 
 - Every lifecycle exit.
@@ -1483,6 +2048,10 @@ Complete and review as separate Codex tasks:
 6. Late game.
 
 Each subdivision must leave tests green and must not begin the next group automatically.
+
+## Required diagnostic events
+
+For every intercepted node record native reward hook observed, AP mode decision, recursion-guard state, location ID, permanent native grants suppressed, unrelated native effects allowed, task closure observed, local AP bit/outbox result, replay/duplicate decision, and AP-mode-off native path. Correlate by task ID, reward-node ID, location ID, and reward interception instance ID.
 
 ## Required behavior for every reward
 
@@ -1567,6 +2136,10 @@ Implement all eight route authorizations and the default tiered mission-board fl
 6. Precursor Network Access.
 7. Dark Maker Targeting Data.
 8. Haven City Access last.
+
+## Required diagnostic events
+
+Each authorization/profile operation must record authorization ownership, rule eligibility, mission-board entry considered, native snapshot/profile planned, fields changed, fields already satisfied, activation result, rollback/cleanup, save/load reconstruction, and any divergence from the expected native snapshot. Correlate by authorization item, mission/task, profile version, and operation ID.
 
 ## Required behavior
 
@@ -1658,14 +2231,14 @@ Create reviewed, table-driven bootstrap profiles for all documented default miss
 
 ## Required subdivisions
 
-### 16A — Spargus and early Wasteland
+### 18A — Spargus and early Wasteland
 
 - Training/race vehicles.
 - Leaper sections.
 - Turrets.
 - Arena and gun-training loadouts.
 
-### 16B — Temple, Volcano, and Mines
+### 18B — Temple, Volcano, and Mines
 
 - Flut-Flut/glider.
 - Daxter sections.
@@ -1673,7 +2246,7 @@ Create reviewed, table-driven bootstrap profiles for all documented default miss
 - Bomb train.
 - Remaining lesson powers used in these missions.
 
-### 16C — Haven and Sewers
+### 18C — Haven and Sewers
 
 - Haven vehicles.
 - Missile and Blast Bot sequences.
@@ -1681,7 +2254,7 @@ Create reviewed, table-driven bootstrap profiles for all documented default miss
 - Board Trail.
 - Mission-only shooters.
 
-### 16D — War Factory and late game
+### 18D — War Factory and late game
 
 - Fighter.
 - Mech.
@@ -1714,6 +2287,10 @@ Each subdivision is a separate Codex task.
 - Dark Strike after task 42.
 - Light Flight after task 61.
 - Blaster/Vulcan where Standard logic explicitly requires RANGED.
+
+## Required diagnostic events
+
+Every bootstrap profile must emit profile lifecycle events using task/profile/overlay instance IDs. Record supplied actors/equipment, stage boundaries, mission result, death/abort/retry, cleanup, permanent item receipt during the profile, and final AP-ledger/native-state reconciliation.
 
 ## Required tests
 
@@ -1788,6 +2365,10 @@ Supply only the five native Astro-Viewer artifact flags/props identified by Mile
 11. Reconcile permanent AP inventory afterward.
 12. Make cleanup idempotent.
 
+## Required diagnostic events
+
+Shadow-state events must state the profile/task, exact allowlisted native flags/props requested, which were pre-existing, which were synthesized, cleanup/preservation result, and AP relic count before/after. A nonzero relic-count delta caused by shadow state is an ERROR event and blocks completion.
+
 ## Required tests
 
 - Mission works with zero corresponding AP relics.
@@ -1853,6 +2434,10 @@ Exclude:
 - Tasks 6–9 from the default.
 - Task 36.
 - Task 72 as a normal network location.
+
+## Required diagnostic events
+
+For each story mission record close-task/native completion observed, durable AP bit decision, duplicate/replay decision, outbox enqueue/send/confirmation, current task/node, and any mismatch between native completion and AP completion. Use the task ID and location ID as correlation fields; do not use actor addresses as identifiers.
 
 ## Required behavior
 
@@ -1957,6 +2542,10 @@ Keep these enabled but `EXCLUDED`:
 136
 ```
 
+## Required diagnostic events
+
+For each selected challenge record availability/cost bypass decision, start, native completion, durable AP bit, replay/duplicate, fixed-equipment profile, outbox result, and placement-classification metadata. Correlate by source task ID and location ID.
+
 ## Required tests
 
 - Every challenge sends once.
@@ -2057,6 +2646,10 @@ Reserved IDs above the proven maximum remain reserved.
 - They may hold filler or traps only.
 - `accessibility: full` still requires them to be reachable in all-state and in the proven runtime collectible model.
 
+## Required diagnostic events
+
+Record each local native orb delta, AP-delivered spendable-orb delta, monotonic local-earned total, threshold(s) crossed, durable threshold bits, duplicate reconstruction suppression, spend event, and outbox result. Every event must explicitly identify the source class (`local_native` versus `ap_delivered`) so an AP Orb Pack can never be mistaken for local threshold progress.
+
 ## Required tests
 
 - Cross one threshold.
@@ -2122,6 +2715,10 @@ Implement the complete default finale contract.
 - Send `StatusUpdate(CLIENT_GOAL)`.
 - Resend goal status safely after reconnect.
 - Do not consume an item-pool slot for Victory.
+
+## Required diagnostic events
+
+Record unique AP relic ownership changes, current five-of-seven count, finale gate transition, task-71 start/completion, task-72/city-win observation, durable goal commit, `StatusUpdate` send/resend/confirmation state, and duplicate suppression. Shadow/native presentation props must be identified separately and must never appear as AP relic ownership.
 
 ## Required tests
 
@@ -2233,6 +2830,8 @@ Record:
 
 ## Runtime verification matrix
 
+Repeat the complete Milestone 7.2 save/binding/restart matrix against the full gameplay integration; do not assume its earlier pass covers later native hooks. In addition:
+
 - Fresh save binding.
 - Wrong save/seed rejection.
 - Existing bound save.
@@ -2252,6 +2851,18 @@ Record:
 - Goal resend.
 - Table/protocol mismatch.
 - Corrupt sidecar recovery.
+
+## Diagnostic and soak verification
+
+- Every injected or naturally discovered runtime failure produces a support bundle before the issue is considered understood.
+- The structured event sequence is parseable end to end; any source-sequence gap or intentionally dropped/sampled event is represented explicitly.
+- A three-hour connected runtime session, or an equivalent accelerated test plus one real extended session, respects documented file-size/retention bounds.
+- Ten thousand heartbeat cycles do not bury state changes in INFO-level noise.
+- Diagnostic CPU/I/O overhead is measured and shown not to materially alter game behavior or protocol timing.
+- Cold compile, warm reconnect, bridge-only load, heartbeat, and log-growth measurements are compared with the Milestone 7.2 baseline; material regressions require explanation or remediation.
+- Client crash, game crash, compiler exit, log-directory failure, and unclean restart retain enough evidence to identify the failing component.
+- Support-bundle redaction is revalidated against realistic slot names, usernames, paths, server addresses, and passwords.
+- A maintainer who did not run the test can reconstruct the item/check/mission timeline from the bundle without the native save or full sidecar.
 
 ## Manual playthrough target
 
@@ -2301,85 +2912,89 @@ unresolved invariant violation.
 
 ---
 
-# Milestone 25 — Polish Player-Facing Status and Diagnostics
+# Milestone 25 — Polish Player-Facing Status, Recovery Guidance, and Diagnostic Export UX
 
 ## Human-readable summary
 
-Basic diagnostics must exist throughout development, but a normal player should not need source code or a debugger to understand a wrong save, queued item, disconnected game, incompatible version, or pending check.
+Engineering-grade diagnostics and the support-bundle exporter have existed since Milestone 7.1 and were used for the Milestone 7.2 runtime acceptance matrix. A normal player still should not need to read JSON events or source code to understand a wrong save, queued item, disconnected game, incompatible version, pending check, or failed recovery.
 
-This milestone turns the existing technical observability into concise player-facing status and recovery guidance.
+This milestone turns the already authoritative protocol, persistence, and diagnostic state into concise status and recovery guidance. It does not create another logger, another state model, or another support-bundle format.
 
 ## Technical objective
 
-Provide usable status in the Python client and, where low-risk, a small OpenGOAL debug/status view.
+Provide small, reliable player-facing status commands and, where low-risk, a compact OpenGOAL status view that summarize Milestone 7.1's data and guide safe recovery.
 
 ## Required information
 
-- AP server connected/disconnected.
-- OpenGOAL attached/detached.
-- Compatible/incompatible protocol.
-- Game integration version.
-- Table/slot-data versions and hashes.
-- Seed, team, slot, and native save identity.
-- Bound/unbound/wrong-save status.
+- AP server connected/disconnected/authenticated.
+- OpenGOAL attached/detached and process status.
+- Compatible/incompatible protocol and game integration.
+- Table/slot-data/state/diagnostic schema versions and hashes.
+- Seed, team, slot, and redacted native save identity.
+- Bound/unbound/wrong-save/read-only status.
 - Current task/level and safe-state summary.
-- Last received item.
-- Pending item count.
-- Pending outgoing check count.
-- Last server-confirmed check.
-- Active mission overlay.
-- Active shadow profile.
-- Item queued until safe.
-- Goal state.
-- Last error with actionable wording.
+- Last received item and item index.
+- Pending item/application count.
+- Pending outgoing check count and last server-confirmed check.
+- Active mission overlay and active shadow profile.
+- Item/check/mission operation queued until safe.
+- Goal state and pending/resend status.
+- Last actionable error code/message and correlation ID.
+- Current diagnostic session ID, files, retention status, and known capture gaps.
 
 ## Recommended commands
 
 - `/status`
-- `/diagnostics`
-- `/resync`
 - `/pending`
 - `/binding`
 - `/version`
+- `/resync`
+- `/diagnostics summary`
+- `/diagnostics export`
+- `/diagnostics verbose on|off` for a temporary, clearly disclosed session-scoped mode
 
-Recovery commands must not bypass seed binding or mutate permanent progress without an explicit, audited operation.
+Recovery commands must not bypass seed binding, compatibility checks, durable journals, or safe-state rules. Diagnostic commands are read-only except for creating an archive or changing the session-local verbosity setting.
 
-## Support bundle
+## Support-bundle UX requirements
 
-Create a safe diagnostic bundle containing:
+Reuse the Milestone 7.1 exporter and schema. Add only:
 
-- Client log.
-- OpenGOAL/compiler log.
-- Protocol snapshot.
-- Version/hash summary.
-- Sanitized state metadata.
-- Recent command/results.
+- Clear success/failure output and archive path.
+- A short explanation of what is included and redacted.
+- A warning when pre-existing OpenGOAL processes created a capture gap.
+- A correlation/session ID the player can include in a bug report.
+- Safe guidance when the log directory is unwritable or the bundle is incomplete.
 
-Do not include server passwords or unnecessary personal paths/secrets.
+Do not fork the exporter or add a second bundle format.
 
 ## Required tests
 
-- Every common error has clear text.
+- Every common error maps to clear, actionable text.
 - Wrong seed/save.
-- Table mismatch.
-- Item queued.
-- Outbox pending.
+- Table or diagnostic-schema mismatch.
+- Item queued/failed/already applied.
+- Outbox pending/server confirmed.
 - Server reconnect.
-- Game reconnect.
-- Corrupt sidecar.
-- Goal completed.
-- Support bundle redaction.
-- UI/status code cannot change gameplay state accidentally.
+- Game reconnect/restart.
+- Corrupt sidecar and backup recovery.
+- Active overlay/shadow profile.
+- Goal completed/status pending.
+- Support bundle success, partial success, redaction, and unwritable destination.
+- Verbose mode expires at shutdown and does not expose prohibited data.
+- UI/status/export code cannot mutate gameplay or persistent progress accidentally.
+- Human status values match the authoritative structured event/protocol/persistence state.
 
 ## Non-goals
 
+- No new diagnostic storage architecture.
 - No large custom UI framework.
 - No experimental gameplay options.
 - No silent error suppression.
+- No “force” recovery command that bypasses an invariant.
 
 ## Completion gate
 
-A tester can diagnose the common connection, binding, delivery, persistence, and version problems using only the client/status output and support bundle.
+A tester can identify and safely respond to common connection, binding, delivery, persistence, mission-state, and version problems using the status commands. The same session's Milestone 7.1 support bundle can be exported with one command, and every displayed status is traceable to the authoritative protocol/persistence/diagnostic state.
 
 ## Suggested Codex prompt
 
@@ -2388,10 +3003,11 @@ A tester can diagnose the common connection, binding, delivery, persistence, and
 
 Implement only Milestone 25.
 
-Polish the existing diagnostics into player-facing status commands and a
-sanitized support bundle. Reuse the authoritative protocol/persistence state;
-do not create a second state model. Keep UI scope small and make every error
-actionable without hiding serious failures.
+Polish the existing Milestone 7.1 diagnostic infrastructure into concise status,
+pending, binding, version, resync-guidance, and diagnostic-export commands.
+Reuse the authoritative event stream, protocol snapshot, persistence state, and
+support-bundle exporter. Do not create a second logger/state model or add any
+force command that bypasses invariants.
 ```
 
 ---
@@ -2435,6 +3051,19 @@ Pin:
 - Supported operating systems.
 - Known unsupported combinations.
 
+## Additional diagnostic release requirements
+
+The compatibility manifest also pins:
+
+- Diagnostic event schema version.
+- Support-bundle manifest version.
+- Default log levels, rotation limits, and retention policy.
+- Known process-output capture gaps.
+- Supported bridge/APWorld update policy, including whether a clean game restart is mandatory after changed source.
+- Recorded cold compile, bridge-only load, and warm reconnect baseline ranges.
+
+The packaged APWorld must include the event catalogue/bundle exporter and must verify their files/checksums during package validation.
+
 ## Required documentation
 
 - Install Archipelago/APWorld.
@@ -2447,9 +3076,9 @@ Pin:
 - Save backup.
 - Reconnect/resync.
 - Move between save slots safely.
-- Update the mod.
+- Update the mod, including the required clean-restart boundary after changed bridge/APWorld source.
 - Handle an incompatible state.
-- Gather logs/support bundle.
+- Locate logs, temporarily enable verbose diagnostics, export a sanitized support bundle, and explain its retention/redaction policy.
 - Report a bug.
 - Known limitations.
 - Unsupported options.
@@ -2470,10 +3099,12 @@ Test:
 - Bind a new save.
 - Complete a connected test seed.
 - Restart/reconnect.
-- Upgrade/repair.
+- Upgrade/repair, including a changed-source update followed by the documented restart path.
 - Uninstall.
 - No writes to source-reference trees.
 - Documentation paths and screenshots match the release.
+- A startup failure and one injected runtime failure both produce a redacted, parseable support bundle in the clean environment.
+- Log rotation/retention behaves as documented during an extended or accelerated session.
 
 At least one tester who did not implement the project should follow the guide without undocumented steps.
 
@@ -2546,3 +3177,5 @@ An option remains rejected until all of the following are complete:
 - Documentation.
 
 Partial supporting code is not enough to make an option selectable.
+
+---
