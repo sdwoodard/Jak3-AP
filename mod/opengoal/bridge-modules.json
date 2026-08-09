@@ -1,0 +1,34 @@
+{
+  "manifest_version": 1,
+  "source_set_format": "jak3-bridge-source-set-v1",
+  "object_anchor": "task-control.o",
+  "modules": [
+    {
+      "name": "startup",
+      "order": 10,
+      "phase": "pre_mi",
+      "source": "goal_src/jak3/pc/features/archipelago-startup.gc",
+      "resource": "assets/opengoal/archipelago-startup.gc",
+      "destination": "goal_src/jak3/pc/features/archipelago-startup.gc",
+      "object": null
+    },
+    {
+      "name": "control",
+      "order": 20,
+      "phase": "bridge",
+      "source": "goal_src/jak3/pc/features/archipelago.gc",
+      "resource": "assets/opengoal/archipelago.gc",
+      "destination": "goal_src/jak3/pc/features/archipelago.gc",
+      "object": "archipelago.o"
+    },
+    {
+      "name": "diagnostics",
+      "order": 30,
+      "phase": "bridge",
+      "source": "goal_src/jak3/pc/features/archipelago-diagnostics.gc",
+      "resource": "assets/opengoal/archipelago-diagnostics.gc",
+      "destination": "goal_src/jak3/pc/features/archipelago-diagnostics.gc",
+      "object": "archipelago-diagnostics.o"
+    }
+  ]
+}

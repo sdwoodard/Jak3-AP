@@ -28,6 +28,7 @@ from worlds.jak3.agents.protocol import (
     format_snapshot,
     parse_snapshot_text,
 )
+from worlds.jak3.agents.diagnostics import GoalDiagnosticRecord
 
 
 class FakeGame:
@@ -535,6 +536,380 @@ class ProtocolLifecycleTest(unittest.IsolatedAsyncioTestCase):
             ClientStatus.AP_DISCONNECTED
         )
         self.assertTrue(snapshot.connection_ready)
+
+    async def test_diagnostic_sink_failure_cannot_change_command_result(self) -> None:
+        game = FakeGame(self.path)
+        game.save_loaded = True
+        game.save_slot = 0
+        game.save_identity = str(uuid.uuid4())
+        game.title = False
+
+        class SyntheticDiagnosticFailure(BaseException):
+            pass
+
+        def failing_sink(event_name: str, **fields: object) -> None:
+            raise SyntheticDiagnosticFailure("synthetic diagnostics failure")
+
+        bridge = BridgeProtocol(
+            FakeRepl(game),
+            self.path,
+            "diagnostic-failure",
+            command_timeout=0.03,
+            poll_interval=0.001,
+            event_sink=failing_sink,
+        )
+        bridge.set_ap_state_status(
+            loaded=True,
+            bound=True,
+            native_save_slot=0,
+            native_save_identity=game.save_identity,
+        )
+        await bridge.initialize(ClientStatus.AP_CONNECTED)
+        result = await bridge.set_test_target(True)
+        self.assertEqual(result.last_command_result, ProtocolResult.APPLIED)
+        self.assertTrue(game.test_target)
+
+    async def test_timed_out_command_is_recovered_once_from_later_receipt(self) -> None:
+        events: list[tuple[str, dict[str, object]]] = []
+        timed_out: dict[tuple[str, int], ProtocolCommand] = {}
+
+        class NoSnapshotRepl:
+            async def send_form(self, form: str, timeout: float = 10.0) -> str:
+                return "nREPL"
+
+        first = BridgeProtocol(
+            NoSnapshotRepl(),
+            self.path,
+            "timeout-client",
+            command_timeout=0.002,
+            poll_interval=0.0001,
+            timed_out_commands=timed_out,
+        )
+        first.session_nonce = "retained-game-session"
+        with self.assertRaises(ConnectionError):
+            await first.send_command(ProtocolCommand.SET_TEST_TARGET, 1, command_id=19)
+        self.assertEqual(
+            timed_out,
+            {("retained-game-session", 19): ProtocolCommand.SET_TEST_TARGET},
+        )
+
+        reconnected = BridgeProtocol(
+            NoSnapshotRepl(),
+            self.path,
+            "reconnected-client",
+            timed_out_commands=timed_out,
+            event_sink=lambda event_name, **fields: events.append((event_name, fields)),
+        )
+        receipt = CommandReceipt(
+            19,
+            ProtocolCommand.SET_TEST_TARGET,
+            1,
+            ProtocolResult.APPLIED,
+            ProtocolError.NONE,
+        )
+        snapshot = BridgeSnapshot(
+            snapshot_revision=22,
+            session_nonce="retained-game-session",
+            recent_command_receipts=(receipt,),
+        )
+
+        reconnected._observe_snapshot(snapshot)
+        reconnected._observe_snapshot(snapshot)
+
+        recovered = [
+            event for event in events if event[0] == "protocol.command.recovered"
+        ]
+        self.assertEqual(len(recovered), 1)
+        self.assertEqual(recovered[0][1]["correlation_id"], "command:19")
+        self.assertEqual(timed_out, {})
+
+    async def test_nrepl_acknowledgement_timeout_is_a_command_timeout(self) -> None:
+        events: list[str] = []
+
+        class AckTimeoutRepl:
+            async def send_form(self, form: str, timeout: float = 10.0) -> str:
+                raise ConnectionError(
+                    "OpenGOAL did not acknowledge this command within 10 seconds"
+                )
+
+        def collect(event_name: str, **fields: object) -> None:
+            events.append(event_name)
+
+        bridge = BridgeProtocol(
+            AckTimeoutRepl(),
+            self.path,
+            "command-ack-timeout",
+            event_sink=collect,
+        )
+        bridge.session_nonce = "game-session"
+
+        with self.assertRaises(ConnectionError):
+            await bridge.send_command(ProtocolCommand.SET_TEST_TARGET, 1)
+
+        self.assertIn("protocol.command.timed_out", events)
+        self.assertNotIn("protocol.command.failed", events)
+
+    async def test_failed_goal_acknowledgement_does_not_fail_protocol(self) -> None:
+        game = FakeGame(self.path)
+        original_snapshot = game.snapshot
+
+        def diagnostic_snapshot() -> BridgeSnapshot:
+            return replace(
+                original_snapshot(),
+                diagnostic_next_sequence=1,
+                diagnostic_events=(
+                    GoalDiagnosticRecord(0, 1, 1, 100, 0, 0, 1, 0, 0, 0, 0),
+                ),
+            )
+
+        game.snapshot = diagnostic_snapshot  # type: ignore[method-assign]
+
+        class SyntheticAckFailure(BaseException):
+            pass
+
+        class AckFailRepl(FakeRepl):
+            async def send_form(self, form: str, timeout: float = 10.0) -> str:
+                if form.startswith("(ap-diagnostic-ack!"):
+                    raise SyntheticAckFailure("synthetic ack failure")
+                return await super().send_form(form, timeout)
+
+        drained: list[int] = []
+        events: list[tuple[str, dict[str, object]]] = []
+
+        def drain(records: tuple[GoalDiagnosticRecord, ...], dropped: int) -> int:
+            drained.extend(record.source_sequence for record in records)
+            return max(record.source_sequence for record in records)
+
+        bridge = BridgeProtocol(
+            AckFailRepl(game),
+            self.path,
+            "ack-failure",
+            command_timeout=0.03,
+            poll_interval=0.001,
+            goal_event_sink=drain,
+            event_sink=lambda event_name, **fields: events.append((event_name, fields)),
+        )
+        snapshot = await bridge.initialize(ClientStatus.AP_DISCONNECTED)
+        self.assertTrue(snapshot.connection_ready)
+        self.assertIn(0, drained)
+        await bridge.ping(ClientStatus.AP_DISCONNECTED)
+        await asyncio.sleep(0)
+        acknowledgement_gaps = [
+            event
+            for event in events
+            if event[0] == "diagnostics.capture_gap"
+            and event[1].get("context", {}).get("reason") == "goal_ack_failure"
+        ]
+        self.assertEqual(len(acknowledgement_gaps), 1)
+
+    async def test_goal_generation_change_resets_python_drain_high_watermark(
+        self,
+    ) -> None:
+        drained: list[int] = []
+        resets: list[str] = []
+        source_state: dict[str, int] = {}
+
+        def drain(records: tuple[GoalDiagnosticRecord, ...], dropped: int) -> int:
+            drained.extend(record.source_sequence for record in records)
+            return max(record.source_sequence for record in records)
+
+        bridge = BridgeProtocol(
+            FakeRepl(FakeGame(self.path)),
+            self.path,
+            "goal-generations",
+            goal_event_sink=drain,
+            goal_event_reset=lambda: resets.append("reset") is None,
+            goal_source_state=source_state,
+        )
+        bridge._observe_snapshot(
+            BridgeSnapshot(
+                diagnostic_activation_generation=7,
+                diagnostic_next_sequence=12,
+                diagnostic_events=(
+                    GoalDiagnosticRecord(11, 20, 1, 100, 0, 0, 1, 0, 0, 0, 0),
+                ),
+            )
+        )
+        bridge._observe_snapshot(
+            BridgeSnapshot(
+                diagnostic_activation_generation=8,
+                diagnostic_next_sequence=1,
+                diagnostic_events=(
+                    GoalDiagnosticRecord(0, 1, 1, 100, 0, 0, 1, 0, 0, 0, 0),
+                ),
+            )
+        )
+
+        self.assertEqual(drained, [11, 0])
+        self.assertEqual(resets, ["reset"])
+        self.assertEqual(source_state["activation_generation"], 8)
+
+    async def test_delayed_goal_acknowledgement_cannot_drain_a_new_generation(
+        self,
+    ) -> None:
+        forms: list[str] = []
+        first_started = asyncio.Event()
+        release_first = asyncio.Event()
+
+        class DelayedAckRepl:
+            async def send_form_unacknowledged(
+                self, form: str, timeout: float = 0.25
+            ) -> None:
+                forms.append(form)
+                if len(forms) == 1:
+                    first_started.set()
+                    await release_first.wait()
+
+        bridge = BridgeProtocol(
+            DelayedAckRepl(),
+            self.path,
+            "generation-qualified-ack",
+        )
+        bridge._schedule_goal_acknowledgement(7, 11)
+        await asyncio.wait_for(first_started.wait(), timeout=0.1)
+        bridge._schedule_goal_acknowledgement(8, 0)
+        release_first.set()
+        for _ in range(20):
+            if bridge._goal_ack_task is None and bridge._goal_ack_pending is None:
+                break
+            await asyncio.sleep(0)
+
+        self.assertEqual(
+            forms,
+            ["(ap-diagnostic-ack! 7 11)", "(ap-diagnostic-ack! 8 0)"],
+        )
+
+    async def test_persistent_goal_capture_failures_are_transition_latched(
+        self,
+    ) -> None:
+        events: list[tuple[str, dict[str, object]]] = []
+        source_state: dict[str, int] = {}
+        bridge = BridgeProtocol(
+            FakeRepl(FakeGame(self.path)),
+            self.path,
+            "goal-gap-latches",
+            event_sink=lambda event_name, **fields: events.append((event_name, fields)),
+            goal_event_sink=lambda records, dropped: (_ for _ in ()).throw(
+                RuntimeError("synthetic drain failure")
+            ),
+            goal_source_state=source_state,
+        )
+        malformed = BridgeSnapshot(
+            diagnostic_schema_version=None,
+            diagnostic_manifest_version=None,
+            diagnostic_activation_generation=None,
+            diagnostic_malformed=True,
+        )
+        for _ in range(10_000):
+            bridge._observe_snapshot(malformed)
+        valid = BridgeSnapshot(
+            diagnostic_next_sequence=1,
+            diagnostic_events=(
+                GoalDiagnosticRecord(0, 1, 1, 100, 0, 0, 1, 0, 0, 0, 0),
+            ),
+        )
+        for _ in range(10_000):
+            bridge._observe_snapshot(valid)
+
+        reasons = [
+            event[1].get("context", {}).get("reason")
+            for event in events
+            if event[0] == "diagnostics.capture_gap"
+        ]
+        self.assertEqual(reasons.count("malformed_goal_snapshot"), 1)
+        self.assertEqual(reasons.count("goal_drain_failure"), 1)
+
+    async def test_goal_acknowledgement_cancellation_is_isolated_from_protocol(
+        self,
+    ) -> None:
+        game = FakeGame(self.path)
+        original_snapshot = game.snapshot
+
+        def diagnostic_snapshot() -> BridgeSnapshot:
+            return replace(
+                original_snapshot(),
+                diagnostic_next_sequence=1,
+                diagnostic_events=(
+                    GoalDiagnosticRecord(0, 1, 1, 100, 0, 0, 1, 0, 0, 0, 0),
+                ),
+            )
+
+        game.snapshot = diagnostic_snapshot  # type: ignore[method-assign]
+
+        class CancellingAckRepl(FakeRepl):
+            async def send_form(self, form: str, timeout: float = 10.0) -> str:
+                if form.startswith("(ap-diagnostic-ack!"):
+                    raise asyncio.CancelledError
+                return await super().send_form(form, timeout)
+
+        bridge = BridgeProtocol(
+            CancellingAckRepl(game),
+            self.path,
+            "ack-cancellation",
+            command_timeout=0.03,
+            poll_interval=0.001,
+            goal_event_sink=lambda records, dropped: max(
+                record.source_sequence for record in records
+            ),
+        )
+
+        snapshot = await bridge.initialize(ClientStatus.AP_DISCONNECTED)
+        await asyncio.sleep(0)
+
+        self.assertTrue(snapshot.connection_ready)
+
+    async def test_slow_goal_acknowledgement_does_not_delay_protocol_result(
+        self,
+    ) -> None:
+        game = FakeGame(self.path)
+        original_snapshot = game.snapshot
+
+        def diagnostic_snapshot() -> BridgeSnapshot:
+            return replace(
+                original_snapshot(),
+                diagnostic_next_sequence=1,
+                diagnostic_events=(
+                    GoalDiagnosticRecord(0, 1, 1, 100, 0, 0, 1, 0, 0, 0, 0),
+                ),
+            )
+
+        game.snapshot = diagnostic_snapshot  # type: ignore[method-assign]
+        acknowledgement_started = asyncio.Event()
+        acknowledgement_release = asyncio.Event()
+
+        class SlowAckRepl(FakeRepl):
+            async def send_form_unacknowledged(
+                self, form: str, timeout: float = 0.25
+            ) -> None:
+                self.assert_diagnostic_form(form)
+                acknowledgement_started.set()
+                await acknowledgement_release.wait()
+
+            @staticmethod
+            def assert_diagnostic_form(form: str) -> None:
+                if not form.startswith("(ap-diagnostic-ack!"):
+                    raise AssertionError(form)
+
+        bridge = BridgeProtocol(
+            SlowAckRepl(game),
+            self.path,
+            "slow-ack",
+            command_timeout=0.03,
+            poll_interval=0.001,
+            goal_event_sink=lambda records, dropped: max(
+                record.source_sequence for record in records
+            ),
+        )
+        started = asyncio.get_running_loop().time()
+
+        snapshot = await bridge.initialize(ClientStatus.AP_DISCONNECTED)
+        elapsed = asyncio.get_running_loop().time() - started
+
+        self.assertTrue(snapshot.connection_ready)
+        self.assertLess(elapsed, 0.1)
+        await asyncio.wait_for(acknowledgement_started.wait(), timeout=0.1)
+        acknowledgement_release.set()
+        await asyncio.sleep(0)
 
     async def test_save_identity_entropy_requires_authenticated_slot(self) -> None:
         game = FakeGame(self.path)
@@ -1082,6 +1457,46 @@ class SnapshotContractTest(unittest.TestCase):
             "snapshot_end", "future_optional_field value\nsnapshot_end"
         )
         self.assertIsNotNone(parse_snapshot_text(text))
+
+    def test_optional_goal_diagnostics_round_trip(self) -> None:
+        event = GoalDiagnosticRecord(7, 100, 1, 100, 0, 0, 1, 0, 3, 4, 5)
+        snapshot = BridgeSnapshot(
+            diagnostic_dropped_count=2,
+            diagnostic_next_sequence=8,
+            diagnostic_events=(event,),
+        )
+        self.assertEqual(parse_snapshot_text(format_snapshot(snapshot)), snapshot)
+
+    def test_malformed_optional_goal_record_does_not_break_protocol_snapshot(
+        self,
+    ) -> None:
+        text = format_snapshot(
+            BridgeSnapshot(
+                diagnostic_next_sequence=2,
+                diagnostic_events=(
+                    GoalDiagnosticRecord(1, 10, 1, 100, 0, 0, 1, 0, 0, 0, 0),
+                ),
+            )
+        ).replace(
+            "diagnostic_event_0 1 10 1 100 0 0 1 0 0 0 0",
+            "diagnostic_event_0 malformed",
+        )
+        parsed = parse_snapshot_text(text)
+        self.assertIsNotNone(parsed)
+        assert parsed is not None
+        self.assertTrue(parsed.diagnostic_malformed)
+        self.assertEqual(parsed.diagnostic_events, ())
+
+    def test_missing_diagnostic_activation_is_an_optional_capture_gap(self) -> None:
+        text = format_snapshot(BridgeSnapshot()).replace(
+            "diagnostic_activation_generation 1\n", ""
+        )
+        parsed = parse_snapshot_text(text)
+        self.assertIsNotNone(parsed)
+        assert parsed is not None
+        self.assertTrue(parsed.diagnostic_malformed)
+        self.assertIsNone(parsed.diagnostic_activation_generation)
+        self.assertEqual(parsed.diagnostic_events, ())
 
     def test_torn_duplicate_and_malformed_snapshots_are_ignored(self) -> None:
         complete = format_snapshot(BridgeSnapshot())

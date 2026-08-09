@@ -51,9 +51,22 @@ jobs:
             worlds/jak3/registry.py `
             worlds/jak3/slot_data.py `
             worlds/jak3/persistence.py `
+            worlds/jak3/client.py `
+            worlds/jak3/agents/bridge_manifest.py `
+            worlds/jak3/agents/diagnostics.py `
+            worlds/jak3/agents/launcher.py `
+            worlds/jak3/agents/protocol.py `
+            worlds/jak3/agents/repl_client.py `
             tests/test_registry.py `
             tests/test_slot_data.py `
             tests/test_persistence.py `
+            tests/test_bridge_manifest.py `
+            tests/test_client.py `
+            tests/test_diagnostics.py `
+            tests/test_launcher.py `
+            tests/test_package.py `
+            tests/test_protocol_v3.py `
+            tests/test_tools.py `
             tests/test_ci.py
 
       - name: Type check compatibility modules
@@ -68,6 +81,11 @@ jobs:
           worlds/jak3/registry.py
           worlds/jak3/slot_data.py
           worlds/jak3/persistence.py
+          worlds/jak3/client.py
+          worlds/jak3/agents/bridge_manifest.py
+          worlds/jak3/agents/diagnostics.py
+          worlds/jak3/agents/launcher.py
+          worlds/jak3/agents/protocol.py
 
       - name: Build APWorld package
         shell: pwsh

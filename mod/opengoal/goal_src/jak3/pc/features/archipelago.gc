@@ -82,6 +82,29 @@
 (defconstant AP-WIRE-INT32-MIN -2147483648)
 (defconstant AP-WIRE-INT32-MAX 2147483647)
 
+;; Stable diagnostic registry codes. The sibling module owns all buffering;
+;; control-plane code only emits bounded integer facts through these hooks.
+(defconstant AP-DIAG-SEVERITY-INFO 1)
+(defconstant AP-DIAG-SEVERITY-WARNING 2)
+(defconstant AP-DIAG-SEVERITY-ERROR 3)
+(defconstant AP-DIAG-EVENT-SAVE-IDENTITY-PROPOSED 200)
+(defconstant AP-DIAG-EVENT-SAVE-IDENTITY-PUBLISHED 202)
+(defconstant AP-DIAG-EVENT-SAVE-IDENTITY-INVALIDATED 203)
+(defconstant AP-DIAG-EVENT-SAVE-STARTED 210)
+(defconstant AP-DIAG-EVENT-SAVE-SUCCEEDED 211)
+(defconstant AP-DIAG-EVENT-SAVE-FAILED 212)
+(defconstant AP-DIAG-EVENT-HANDSHAKE-ACCEPTED 400)
+(defconstant AP-DIAG-EVENT-HANDSHAKE-REJECTED 401)
+(defconstant AP-DIAG-EVENT-COMMAND-APPLIED 411)
+(defconstant AP-DIAG-EVENT-COMMAND-REPLAYED 412)
+(defconstant AP-DIAG-EVENT-COMMAND-UNSAFE 413)
+(defconstant AP-DIAG-EVENT-COMMAND-REJECTED 414)
+(defconstant AP-DIAG-EVENT-COMMAND-FAILED 415)
+(defconstant AP-DIAG-EVENT-CLIENT-DISCONNECTED 420)
+(defconstant AP-DIAG-NATIVE-OP-NONE 0)
+(defconstant AP-DIAG-NATIVE-OP-SAVE 1)
+(defconstant AP-DIAG-NATIVE-OP-LOAD 2)
+
 (deftype ap-runtime-state (basic)
   ((connection-ready int32)
    (client-heartbeat int32)
@@ -138,8 +161,6 @@
 (define-extern *ap3-activation-generation* int)
 (define-perm *ap3-activation-generation* int 0)
 (define *ap3-state-path* (new 'global 'string 512 "jak3-ap-state.tmp"))
-(define *ap3-log-path* (new 'global 'string 512 (the-as string #f)))
-(define *ap3-log-enabled* #f)
 (define *ap3-last-client-contact-frame* -1)
 (define *ap3-expected-protocol* 0)
 (define *ap3-expected-integration* 0)
@@ -170,8 +191,18 @@
   (function game-info symbol game-save string resetter-spec game-info))
 (define-extern *ap3-native-auto-save-done-code* function)
 (define-extern *ap3-native-auto-save-error-code* function)
+(define-extern *ap3-native-auto-save-restore-code* function)
 (define-extern *ap3-installed-auto-save-done-code* function)
 (define-extern *ap3-installed-auto-save-error-code* function)
+(define-extern *ap3-installed-auto-save-restore-code* function)
+
+;; Diagnostic-only operation metadata is independent of the binding candidate
+;; below. It must never affect native save/load or AP state decisions.
+(define-extern *ap3-diagnostic-native-operation-kind* int)
+(define-extern *ap3-diagnostic-native-operation-process* handle)
+(define-perm *ap3-diagnostic-native-operation-kind* int AP-DIAG-NATIVE-OP-NONE)
+(define-perm *ap3-diagnostic-native-operation-process* handle
+  (the-as handle #f))
 
 ;; This descriptor also survives an (ml) reload. The bridge-owned runtime and
 ;; AP acknowledgement bits are rebuilt on reload, but an already published
@@ -187,9 +218,10 @@
 (define-perm *ap3-reload-save-eligibility* int
   AP-SAVE-ELIGIBILITY-UNKNOWN)
 
-;; Native memory-card I/O continues asynchronously after the save/load method
-;; wrapper returns. These candidates must therefore survive an (ml) bridge
-;; reload until the matching auto-save done/error behavior resolves them.
+;; Native save I/O continues asynchronously after the save method wrapper
+;; returns. A restored game-save reaches load-game only after mc-load succeeds.
+;; These AP binding candidates must survive an (ml) bridge reload until the
+;; matching auto-save done/error behavior resolves them.
 (define-extern *ap3-pending-save-identity* string)
 (define-extern *ap3-pending-save-valid* int)
 (define-extern *ap3-pending-save-succeeded* int)
@@ -210,12 +242,40 @@
 (define-extern ap-export-state! (function none))
 
 (defmacro ap3-log (control &rest args)
-  `(begin
-     (format #t ,control ,@args)
-     (when *ap3-log-enabled*
-       (let ((file (new 'stack 'file-stream *ap3-log-path* 'append)))
-         (format file ,control ,@args)
-         (file-stream-close file)))))
+  ;; Emergency traces remain visible on captured stdout. Python is the sole
+  ;; writer of support-facing human logs, JSONL, and ZIP files.
+  `(format #t ,control ,@args))
+
+(defun ap3-diagnostic-noop-emit ((event-code int)
+                                 (severity-correlation-kind int)
+                                 (correlation-value int)
+                                 (result int) (error int)
+                                 (arg0 int) (arg1 int) (arg2 int))
+  0)
+
+(defun ap3-diagnostic-noop-export ((file file-stream)) 0)
+(defun ap3-diagnostic-noop-ack ((activation-generation int)
+                                (source-sequence int))
+  source-sequence)
+
+;; Reloading control first resets these to safe no-ops. Diagnostics registers
+;; the real hooks immediately after its manifest-ordered load.
+(define *ap3-diagnostic-emit-hook* ap3-diagnostic-noop-emit)
+(define *ap3-diagnostic-export-hook* ap3-diagnostic-noop-export)
+(define *ap3-diagnostic-ack-hook* ap3-diagnostic-noop-ack)
+
+(defmacro ap-diagnostic-emit! (event-code severity
+                               correlation-kind correlation-value
+                               result error arg0 arg1 arg2)
+  ;; GOAL real functions accept at most eight arguments. Preserve the public
+  ;; nine-field emission API as a macro and pack the two small classification
+  ;; integers for the internal hook; the diagnostics module unpacks them.
+  `(*ap3-diagnostic-emit-hook*
+     ,event-code (+ ,severity (* ,correlation-kind 16))
+     ,correlation-value ,result ,error ,arg0 ,arg1 ,arg2))
+
+(defun ap-diagnostic-ack! ((activation-generation int) (source-sequence int))
+  (*ap3-diagnostic-ack-hook* activation-generation source-sequence))
 
 (defun ap3-copy-string! ((destination string) (source string) (limit int))
   (let ((src (-> source data)) (dst (-> destination data)) (count 0))
@@ -376,11 +436,34 @@
   (set! (-> *ap-runtime* ap-state-bound) 0)
   (ap3-set-native-save-error!
     AP-ERROR-SAVE-NOT-LOADED "native-save-not-loaded")
+  (ap-diagnostic-emit! AP-DIAG-EVENT-SAVE-IDENTITY-INVALIDATED
+                       AP-DIAG-SEVERITY-WARNING 0 0
+                       AP-RESULT-NONE AP-ERROR-SAVE-NOT-LOADED 0 0 0)
   0)
 
 (defun ap3-stage-native-operation! ()
   (set! *ap3-pending-save-succeeded* 0)
   (set! *ap3-pending-save-process* (-> *game-info* auto-save-proc))
+  0)
+
+(defun ap3-diagnostic-clear-native-operation! ()
+  (set! *ap3-diagnostic-native-operation-kind* AP-DIAG-NATIVE-OP-NONE)
+  (set! *ap3-diagnostic-native-operation-process* (the-as handle #f))
+  0)
+
+(defun ap3-diagnostic-native-operation-matches? ((self auto-save))
+  (and (!= *ap3-diagnostic-native-operation-kind* AP-DIAG-NATIVE-OP-NONE)
+       (= (handle->process *ap3-diagnostic-native-operation-process*) self)))
+
+(defun ap3-diagnostic-stage-native-operation! ((kind int))
+  ;; This records only that native I/O began. It does not authorize, validate,
+  ;; or mutate the Milestone 7 save/binding candidate.
+  (set! *ap3-diagnostic-native-operation-kind* kind)
+  (set! *ap3-diagnostic-native-operation-process*
+        (-> *game-info* auto-save-proc))
+  (ap-diagnostic-emit! AP-DIAG-EVENT-SAVE-STARTED AP-DIAG-SEVERITY-INFO
+                       1 (-> *game-info* auto-save-which)
+                       AP-RESULT-NONE AP-ERROR-NONE kind 0 0)
   0)
 
 (defun ap3-note-save-eligibility! ((save game-save))
@@ -489,6 +572,7 @@
   0))
 
 (defun ap3-save-game-wrapper ((this game-info) (save game-save) (name string))
+  (ap3-diagnostic-stage-native-operation! AP-DIAG-NATIVE-OP-SAVE)
   (let* ((result (*ap3-native-save-game* this save name))
          (identity
           (if (= (-> result new-game) 1)
@@ -510,6 +594,13 @@
 (defun ap3-load-game-wrapper ((this game-info) (save game-save))
   (ap3-read-native-save-tag! save)
   (*ap3-native-load-game* this save))
+
+(defbehavior ap3-auto-save-restore-code auto-save ()
+  ;; restore executes before mc-load; load-game is called only after successful
+  ;; I/O. Staging here makes both native read success and failure observable.
+  (ap3-diagnostic-stage-native-operation! AP-DIAG-NATIVE-OP-LOAD)
+  ((the (function object :behavior auto-save)
+        *ap3-native-auto-save-restore-code*)))
 
 (defun ap3-game-info-initialize-wrapper ((this game-info) (mode symbol)
                                          (save game-save) (continue-name string)
@@ -574,6 +665,11 @@
       (ap3-copy-string! *ap3-consumed-save-identity*
                         *ap3-native-save-identity* 96)
       (ap3-copy-string! *ap3-proposed-save-identity* "-" 96))
+    (ap-diagnostic-emit! AP-DIAG-EVENT-SAVE-IDENTITY-PUBLISHED
+                         AP-DIAG-SEVERITY-INFO
+                         1 (-> *ap-runtime* native-save-slot)
+                         AP-RESULT-OK AP-ERROR-NONE
+                         (-> *ap-runtime* native-save-eligibility) 0 0)
     (set! *ap3-pending-save-valid* 0)
     (ap3-clear-pending-native-operation!)
     (ap3-clear-native-save-error!))
@@ -593,6 +689,13 @@
     (let ((result
             ((the (function object :behavior auto-save)
                    *ap3-native-auto-save-done-code*))))
+      (when (ap3-diagnostic-native-operation-matches? self)
+        (ap-diagnostic-emit! AP-DIAG-EVENT-SAVE-SUCCEEDED
+                             AP-DIAG-SEVERITY-INFO
+                             1 (-> *game-info* auto-save-which)
+                             AP-RESULT-OK AP-ERROR-NONE
+                             *ap3-diagnostic-native-operation-kind* 0 0)
+        (ap3-diagnostic-clear-native-operation!))
       (when (and matches
                  (= *ap3-pending-save-valid* 1)
                  (ap3-pending-operation-matches? self))
@@ -601,6 +704,13 @@
       result)))
 
 (defbehavior ap3-auto-save-error-code auto-save ((status mc-status-code))
+  (when (ap3-diagnostic-native-operation-matches? self)
+    (ap-diagnostic-emit! AP-DIAG-EVENT-SAVE-FAILED AP-DIAG-SEVERITY-ERROR
+                         1 (-> *game-info* auto-save-which)
+                         AP-RESULT-FAILED AP-ERROR-INTERNAL-FAILURE
+                         *ap3-diagnostic-native-operation-kind*
+                         (the-as int status) 0)
+    (ap3-diagnostic-clear-native-operation!))
   (when (and (= *ap3-pending-save-valid* 1)
              (ap3-pending-operation-matches? self))
     (set! *ap3-pending-save-valid* 0)
@@ -815,6 +925,7 @@
               (-> *ap-runtime* receipt-result index))
       (format file "recent_command_~D_error ~D~%" index
               (-> *ap-runtime* receipt-error index)))
+    (*ap3-diagnostic-export-hook* file)
     (format file "snapshot_end ~D~%" revision)
     (file-stream-close file))
   (none))
@@ -822,13 +933,6 @@
 (defun ap-set-state-path! ((source string))
   (ap3-copy-string! *ap3-state-path* source 511)
   (ap-export-state!)
-  0)
-
-(defun ap-set-log-path! ((source string))
-  (ap3-copy-string! *ap3-log-path* source 511)
-  (set! *ap3-log-enabled* #t)
-  (ap3-log "[JAK3-AP] log configured protocol=~D integration=~D~%"
-           AP-PROTOCOL-VERSION AP-GAME-INTEGRATION-VERSION)
   0)
 
 (defun ap3-apply-sidecar-state! ((state-flags int) (state-save-slot int)
@@ -873,7 +977,12 @@
            (ap3-valid-uuid-shape? proposed-save)
            (not (string= proposed-save *ap3-native-save-identity*))
            (not (string= proposed-save *ap3-consumed-save-identity*)))
-      (ap3-copy-string! *ap3-proposed-save-identity* proposed-save 96)
+      (begin
+        (when (not (string= proposed-save *ap3-proposed-save-identity*))
+          (ap-diagnostic-emit! AP-DIAG-EVENT-SAVE-IDENTITY-PROPOSED
+                               AP-DIAG-SEVERITY-INFO 0 0
+                               AP-RESULT-OK AP-ERROR-NONE 0 0 0))
+        (ap3-copy-string! *ap3-proposed-save-identity* proposed-save 96))
       (ap3-copy-string! *ap3-proposed-save-identity* "-" 96))
   0)
 
@@ -923,6 +1032,14 @@
        (set! (-> *ap-runtime* game-status) AP-GAME-STATUS-READY)
        (set! (-> *ap-runtime* last-command-result) AP-RESULT-OK)
        (ap3-clear-error!))))
+  (ap-diagnostic-emit!
+    (if (= (-> *ap-runtime* last-command-result) AP-RESULT-OK)
+        AP-DIAG-EVENT-HANDSHAKE-ACCEPTED
+        AP-DIAG-EVENT-HANDSHAKE-REJECTED)
+    (if (= (-> *ap-runtime* last-command-result) AP-RESULT-OK)
+        AP-DIAG-SEVERITY-INFO AP-DIAG-SEVERITY-ERROR)
+    0 0 (-> *ap-runtime* last-command-result)
+    (-> *ap-runtime* last-error-code) 0 0 0)
   (ap-export-state!)
   0)
 
@@ -1120,7 +1237,22 @@
        (set! message "applied")
        (ap3-record-receipt! command-id kind payload result error)))
     (set! (-> *ap-runtime* last-command-result) result)
-    (ap3-set-error! error message))
+    (ap3-set-error! error message)
+    (ap-diagnostic-emit!
+      (cond
+        ((= result AP-RESULT-APPLIED) AP-DIAG-EVENT-COMMAND-APPLIED)
+        ((= result AP-RESULT-ALREADY-APPLIED) AP-DIAG-EVENT-COMMAND-REPLAYED)
+        ((= result AP-RESULT-UNSAFE-NOW) AP-DIAG-EVENT-COMMAND-UNSAFE)
+        ((or (= result AP-RESULT-INCOMPATIBLE)
+             (= result AP-RESULT-INVALID-PAYLOAD))
+         AP-DIAG-EVENT-COMMAND-REJECTED)
+        (else AP-DIAG-EVENT-COMMAND-FAILED))
+      (if (or (= result AP-RESULT-APPLIED)
+              (= result AP-RESULT-ALREADY-APPLIED))
+          AP-DIAG-SEVERITY-INFO
+          (if (= result AP-RESULT-UNSAFE-NOW)
+              AP-DIAG-SEVERITY-WARNING AP-DIAG-SEVERITY-ERROR))
+      2 command-id result error kind payload 0))
   (ap-export-state!)
   0)
 
@@ -1147,6 +1279,9 @@
      (set! (-> *ap-runtime* game-status) AP-GAME-STATUS-CLIENT-DISCONNECTED)
      (set! (-> *ap-runtime* last-command-result) AP-RESULT-OK)
      (ap3-clear-error!)))
+  (ap-diagnostic-emit! AP-DIAG-EVENT-CLIENT-DISCONNECTED AP-DIAG-SEVERITY-INFO
+                       0 0 (-> *ap-runtime* last-command-result)
+                       (-> *ap-runtime* last-error-code) 0 0 0)
   (ap-export-state!)
   0)
 
@@ -1160,10 +1295,12 @@
          (current-load
            (the-as (function game-info game-save game-save)
                    (method-of-type game-info load-game)))
-         (done-state (method-of-type auto-save done))
-         (error-state (method-of-type auto-save error))
-         (current-done-code (-> done-state code))
-         (current-error-code (-> error-state code)))
+          (done-state (method-of-type auto-save done))
+          (error-state (method-of-type auto-save error))
+          (restore-state (method-of-type auto-save restore))
+          (current-done-code (-> done-state code))
+          (current-error-code (-> error-state code))
+          (current-restore-code (-> restore-state code)))
     (when (or (not *ap3-installed-game-info-initialize-wrapper*)
               (!= current-initialize *ap3-installed-game-info-initialize-wrapper*))
       (set! *ap3-native-game-info-initialize* current-initialize))
@@ -1179,17 +1316,22 @@
     (when (or (not *ap3-installed-auto-save-error-code*)
               (!= current-error-code *ap3-installed-auto-save-error-code*))
       (set! *ap3-native-auto-save-error-code* current-error-code))
+    (when (or (not *ap3-installed-auto-save-restore-code*)
+              (!= current-restore-code *ap3-installed-auto-save-restore-code*))
+      (set! *ap3-native-auto-save-restore-code* current-restore-code))
     (set! *ap3-installed-game-info-initialize-wrapper*
           ap3-game-info-initialize-wrapper)
     (set! *ap3-installed-save-wrapper* ap3-save-game-wrapper)
     (set! *ap3-installed-load-wrapper* ap3-load-game-wrapper)
     (set! *ap3-installed-auto-save-done-code* ap3-auto-save-done-code)
     (set! *ap3-installed-auto-save-error-code* ap3-auto-save-error-code)
+    (set! *ap3-installed-auto-save-restore-code* ap3-auto-save-restore-code)
     (method-set! game-info 9 ap3-game-info-initialize-wrapper)
     (method-set! game-info 22 ap3-save-game-wrapper)
     (method-set! game-info 23 ap3-load-game-wrapper)
     (set! (-> done-state code) ap3-auto-save-done-code)
-    (set! (-> error-state code) ap3-auto-save-error-code))
+    (set! (-> error-state code) ap3-auto-save-error-code)
+    (set! (-> restore-state code) ap3-auto-save-restore-code))
   0)
 
 (defun ap3-init! ()

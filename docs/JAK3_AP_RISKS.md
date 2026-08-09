@@ -185,8 +185,13 @@ Owners are deliberately role-based until maintainers assign people.
   nREPL acknowledged the GOAL forms; the corrected exporter then passed hello,
   duplicate ping, and next-ping checks. The client still does not
   parse/classify full compiler output.
-- Mitigation: Preserve raw `gk`/`goalc` output, require snapshot acknowledgement
-  for protocol commands, and tell users to provide both paired logs.
+- Mitigation: Preserve sanitized `gk`/`goalc` output, require snapshot
+  acknowledgement for protocol commands, record the source-set/module context
+  in schema-1 diagnostics, and use `/diagnostics export` for a same-session
+  checksummed bundle. Output now reaches the managed log through bounded pipes
+  without an unbounded raw spool; missing/read-failed pipes and nREPL
+  timeout/close failures have distinct events. Compiler classification remains
+  future work.
 - Exit criteria: Inject representative syntax, type, missing-file, and target
   attach failures; client fails promptly with source/form context and never
   claims readiness.
@@ -199,7 +204,13 @@ Owners are deliberately role-based until maintainers assign people.
   exit. Reusing an old process also prevents the current diagnostic session
   from capturing its earlier output.
 - Current evidence: The client records which processes it starts but does not
-  stop them on exit; old windows remained after a prior smoke test.
+  stop them on exit; old windows remained after a prior smoke test. Milestone
+  7.1 now records a structured capture gap whenever a process predates the
+  client, and the support bundle includes the gap list. Processes started by
+  the client stream through bounded pipes, so a client-side raw spool cannot
+  grow after exit; a pipe read failure is now retained as a capture gap instead
+  of being indistinguishable from EOF. Child-process ownership policy remains
+  unresolved.
 - Mitigation: Start tests with no stale process, record PIDs, and close only
   processes opened for that test using the maintained runbook.
 - Exit criteria: Define user-facing ownership policy and implement/test clean
@@ -249,10 +260,11 @@ Owners are deliberately role-based until maintainers assign people.
   separately writes a durable pending-reload marker before source replacement,
   forcing an activation-attested live reload across client restarts and
   covering same-version bug-fix builds without resetting ordinary reconnects.
-  The bridge exports a reload-persistent positive activation generation that
-  increments only from `ap3-init!`; Python requires it to differ in a current
-  compatible snapshot before hello or marker removal. A mere nREPL completion
-  response is insufficient. Python and GOAL reject protocol, integration,
+  The control and diagnostics modules export independent reload-persistent
+  positive activation generations after successful initialization; Python
+  requires both to differ in a current compatible snapshot before hello or
+  marker removal. A mere nREPL completion response is insufficient. Python and
+  GOAL reject protocol, integration,
   schema, slot-data,
   item, location, and mission mismatches with distinct stable codes before the
   harmless target can change. Explicit command-ID responses also advance the
@@ -330,8 +342,9 @@ Owners are deliberately role-based until maintainers assign people.
 - Current evidence: The same session contains zero `goalc` error-level lines,
   no matched nREPL/compiler-failure marker, a successful 1,165-target build,
   bridge verification, and a loaded title level.
-- Mitigation: Keep the raw lines in the paired log and distinguish process,
-  subsystem, message, and final readiness state in diagnostics.
+- Mitigation: Keep sanitized lines in the paired log and distinguish process,
+  subsystem, message, exit classification, capture gaps, and final readiness
+  state in the structured timeline.
 - Exit criteria: Classify each message against a clean unmodified Jak 3 debug
   launch on every supported OpenGOAL version; document an exact allowlist only
   for proven-benign messages and fail on any new/unexpected error signature.
@@ -432,6 +445,11 @@ Owners are deliberately role-based until maintainers assign people.
   uncleanly, releases its writer lease, and clears the sidecar acknowledgement
   before closing nREPL.
   Python binding/switch/copy rejection and source contracts are automated.
+  Milestone 7.1 adds failure-isolated persistence events for path selection,
+  lock, create/load/bind/close, revisioned commits, backup recovery,
+  quarantine, typed rejection, and clean/unclean shutdown. Correlations hash
+  native identities, seeds, and slot names; bundles exclude sidecar and native
+  save contents.
   Python now writes a separate checksummed version-1 authorization record with
   each proposed UUID's authenticated seed/team/slot/name before the protocol
   can publish it. Live first binding requires an exact match when state is

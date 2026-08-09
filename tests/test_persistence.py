@@ -456,8 +456,11 @@ class PersistentStateRepositoryTest(unittest.TestCase):
         )
         for mismatch in mismatches:
             with self.subTest(mismatch=mismatch):
-                with self.assertRaises(StateBindingError):
+                with self.assertRaises(StateBindingError) as rejection:
                     self.repository.open(native_save(fresh=False), mismatch)
+                rendered = str(rejection.exception)
+                for identity in ("AP_M6_SEED", "OTHER_SEED", "Other Jak"):
+                    self.assertNotIn(identity, rendered)
                 self.assertEqual(original, path.read_bytes())
                 self.assertEqual([], list(self.root.glob("*.corrupt.*")))
 
@@ -618,6 +621,38 @@ class PersistentStateRepositoryTest(unittest.TestCase):
             )
         finally:
             session.close()
+
+    def test_recoverable_primary_corruption_emits_detection_before_recovery(
+        self,
+    ) -> None:
+        events: list[str] = []
+
+        def collect(event_name: str, **fields: object) -> None:
+            events.append(event_name)
+
+        repository = StateRepository(
+            self.root,
+            state_id_factory=lambda: "00000000-0000-4000-8000-000000000090",
+            event_sink=collect,
+        )
+        with repository.open(self.native, self.auth):
+            pass
+        paths = repository.paths_for(self.native.identity)
+        paths.primary.write_bytes(b'{"truncated":')
+        events.clear()
+
+        with repository.open(native_save(fresh=False), self.auth) as session:
+            self.assertEqual(StateOpenStatus.RECOVERED_BACKUP, session.status)
+
+        self.assertEqual(events.count("persistence.corruption.detected"), 1)
+        self.assertLess(
+            events.index("persistence.corruption.detected"),
+            events.index("persistence.quarantine.performed"),
+        )
+        self.assertLess(
+            events.index("persistence.quarantine.performed"),
+            events.index("persistence.backup.restored"),
+        )
 
     def test_noncanonical_payload_recovers_and_quarantines_instead_of_leaking_type_error(
         self,
@@ -795,6 +830,88 @@ class PersistentStateRepositoryTest(unittest.TestCase):
             pass
         self.assertEqual([], list(self.root.glob(f".{paths.primary.name}.*.tmp")))
         self.assertEqual(1, len(list(self.root.glob("*.interrupted.*"))))
+
+    def test_diagnostic_sink_failure_cannot_change_persistence_results(self) -> None:
+        calls: list[str] = []
+
+        class SyntheticDiagnosticFailure(BaseException):
+            pass
+
+        def failing_sink(event_name: str, **fields: object) -> None:
+            calls.append(event_name)
+            raise SyntheticDiagnosticFailure("synthetic diagnostics failure")
+
+        repository = StateRepository(
+            self.root,
+            state_id_factory=lambda: "00000000-0000-4000-8000-000000000088",
+            event_sink=failing_sink,
+        )
+        with repository.open(self.native, self.auth) as session:
+            before = session.state.state_revision
+            committed = session.commit(
+                replace(session.state, local_earned_precursor_orbs=1)
+            )
+            self.assertEqual(committed.state_revision, before + 1)
+            self.assertEqual(committed.local_earned_precursor_orbs, 1)
+        inspected = repository.inspect(native_save(fresh=False), self.auth)
+        self.assertEqual(inspected.state.local_earned_precursor_orbs, 1)
+        self.assertTrue(calls)
+
+    def test_persistence_lifecycle_emits_revisioned_registered_events(self) -> None:
+        events: list[tuple[str, dict[str, object]]] = []
+
+        def collect(event_name: str, **fields: object) -> None:
+            events.append((event_name, fields))
+
+        repository = StateRepository(
+            self.root,
+            state_id_factory=lambda: "00000000-0000-4000-8000-000000000089",
+            event_sink=collect,
+        )
+        with repository.open(self.native, self.auth) as session:
+            session.commit(replace(session.state, local_earned_precursor_orbs=1))
+        names = [name for name, _fields in events]
+        for required in (
+            "persistence.writer_lock.acquired",
+            "persistence.path.selected",
+            "persistence.state.created",
+            "persistence.state.bound",
+            "persistence.commit.attempted",
+            "persistence.commit.succeeded",
+            "persistence.backup.refreshed",
+            "persistence.shutdown.clean",
+            "persistence.writer_lock.released",
+        ):
+            self.assertIn(required, names)
+        revisions = [
+            fields["persistent_state_revision"]
+            for name, fields in events
+            if name == "persistence.commit.succeeded"
+        ]
+        self.assertEqual(revisions, sorted(revisions))
+        succeeded = [
+            fields for name, fields in events if name == "persistence.commit.succeeded"
+        ]
+        self.assertEqual(
+            [fields["context"]["category"] for fields in succeeded],
+            ["binding+session_open", "state_update", "clean_shutdown"],
+        )
+        self.assertTrue(
+            all(
+                fields["context"]["new_revision"]
+                == fields["context"]["old_revision"] + 1
+                for fields in succeeded
+            )
+        )
+        backup_revisions = [
+            fields["persistent_state_revision"]
+            for name, fields in events
+            if name == "persistence.backup.refreshed"
+        ]
+        self.assertEqual(
+            backup_revisions,
+            [fields["context"]["old_revision"] for fields in succeeded],
+        )
 
 
 if __name__ == "__main__":

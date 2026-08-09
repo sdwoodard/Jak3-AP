@@ -6,7 +6,7 @@ normative first-release default in
 and
 [`../../config/templates/Jak3.yaml`](../../config/templates/Jak3.yaml).
 
-Snapshot date: **2026-08-07**
+Snapshot date: **2026-08-08**
 
 ## Status vocabulary
 
@@ -42,7 +42,8 @@ still absent.
 
 | Requirement | Current state | Status | Risk |
 | --- | --- | --- | --- |
-| Self-contained `.apworld` | Builder packages world, client, icon, bridge, and startup overlay. | Implemented | — |
+| Self-contained `.apworld` | Builder validates and packages the world, client, icon, explicit bridge manifest, and every declared source. | Implemented | — |
+| Deterministic bridge lifecycle | Manifest version 1 drives package/install/repair/object order/runtime load/source-set hashing without wildcard discovery. | Implemented and automated | `R-009` |
 | Native launcher registration | Manifest registers Jak 3 Client and transparent 256×256 logo. | Implemented | — |
 | Automatic OpenGOAL discovery | Launcher v2/v3 settings and paired environment overrides supported. | Implemented | — |
 | Automatic debug game/compiler startup | Missing `gk`/`goalc` processes are launched with diagnostic commands. | Implemented | `R-010` |
@@ -148,9 +149,12 @@ notes must keep that distinction explicit.
 
 | Requirement | Current state | Status | Risk |
 | --- | --- | --- | --- |
-| Client support log | Structured lifecycle, handshake, heartbeat, and exception events recorded. | Implemented | — |
-| Game/compiler support log | `gk`, `goalc`, client markers, and bridge events combined. | Implemented | `R-009` |
-| State snapshot on demand | `/diagnostics` distinguishes the temporary GOAL snapshot from the persistent root and records contract, binding, recovery, quarantine, and read-only status. | Implemented | — |
+| Client support log | The existing text log is preserved with bounded rotation and redaction. | Implemented | — |
+| Game/compiler support log | Captured `gk`, `goalc`, emergency GOAL stdout, and client markers remain combined through bounded sanitized pipes; there is no raw spool and GOAL no longer opens a support file. | Implemented | `R-009` |
+| Structured event timeline | Python owns one schema-1 JSONL stream with stable registered names, global ordering, GOAL source sequences/reload generations, sticky ring readiness, top-level and nested event allowlists, exception capture, and event-derived capture-gap summaries. Duplicate GOAL observations do not repeat drain-completion events. | Implemented and automated | — |
+| State snapshot on demand | `/diagnostics` and `/diagnostics summary` retain the current snapshot UX without dumping raw identities or forms. | Implemented | — |
+| Sanitized support export | `/diagnostics export` runs off the heartbeat loop and writes a checksummed local ZIP with merged timeline, paired logs, schema-validated summaries, cross-generation storage failover, missing/truncated-artifact declarations, newest-evidence retention, and no native save or sidecar. Startup and export reserve every leased live session's remaining rotation budget under the hard managed cap; remote leases expire after 30 minutes. | Implemented and automated | — |
+| Diagnostic failure isolation | Injected event-sink and writer failures leave persistence revisions, command results, safety decisions, and state mutation unchanged. | Implemented and automated | — |
 | Received/sent HUD messages | Deliberately absent from protocol 2. | Missing | `R-011` |
 | Compile-wait text | Flashing overlay during compile path. | Implemented/Smoke verified | — |
 | Sufficient failure classification | Typed persistence compatibility/binding/corruption/eligibility/lock/stale errors and client contract diagnostics exist; compiler-error detection and live save provenance remain incomplete. | Partial | `R-009`, `R-012`, `R-019` |

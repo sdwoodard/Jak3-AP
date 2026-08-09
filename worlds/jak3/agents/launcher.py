@@ -7,20 +7,25 @@ process creation independent of Archipelago networking for unit testing.
 from __future__ import annotations
 
 import codecs
-import hashlib
 import json
 import os
-import pkgutil
 import re
 import subprocess
 import sys
 import tempfile
 import threading
-import time
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
+from typing import Mapping
 
-from .diagnostics import DiagnosticSession
+from .bridge_manifest import (
+    MANIFEST_DESTINATION,
+    BridgeManifest,
+    load_packaged_manifest,
+    load_packaged_modules,
+)
+from .diagnostics import DiagnosticSession, interprocess_directory_lock
 from .protocol import (
     BRIDGE_RUNTIME_VERSION,
     GAME_INTEGRATION_VERSION,
@@ -28,16 +33,14 @@ from .protocol import (
 )
 
 
-BRIDGE_RESOURCE = "assets/opengoal/archipelago.gc"
-BRIDGE_DESTINATION = Path("goal_src/jak3/pc/features/archipelago.gc")
 BRIDGE_RELOAD_MARKER = Path("goal_src/jak3/pc/features/.archipelago-reload-required")
-STARTUP_RESOURCE = "assets/opengoal/archipelago-startup.gc"
-STARTUP_DESTINATION = Path("goal_src/jak3/pc/features/archipelago-startup.gc")
+BRIDGE_INSTALL_LOCK = Path("goal_src/jak3/pc/features/.archipelago-install.lock")
 BOOTSTRAP_TYPES_SOURCE = Path("decompiler/config/jak3/all-types.gc")
 BOOTSTRAP_TYPES_DESTINATION = Path(
     "goal_src/jak3/pc/features/archipelago-bootstrap-types.gc"
 )
 GAME_DGO = Path("goal_src/jak3/dgos/game.gd")
+PROCESS_OUTPUT_LINE_LIMIT = 16 * 1024
 
 
 @dataclass(frozen=True)
@@ -81,9 +84,14 @@ class BridgeInstallResult:
     project_updated: bool
     startup_updated: bool
     bootstrap_types_updated: bool
+    manifest_updated: bool
+    modules_updated: tuple[str, ...]
+    source_set_hash: str
     source_path: Path
+    source_paths: tuple[Path, ...]
     reload_marker_path: Path
     startup_path: Path
+    manifest_path: Path
     bootstrap_types_path: Path
     project_path: Path
 
@@ -117,34 +125,54 @@ def _validate_bridge_payload(payload: bytes) -> None:
         )
 
 
+def load_packaged_bridge_set() -> tuple[BridgeManifest, Mapping[str, bytes]]:
+    """Read and validate the complete deterministic bridge source set."""
+
+    manifest = load_packaged_manifest()
+    payloads = load_packaged_modules(manifest)
+    _validate_module_payloads(manifest, payloads)
+    manifest.source_set_sha256(payloads)
+    return manifest, payloads
+
+
 def load_packaged_bridge() -> bytes:
     """Read the GOAL bridge carried inside the installed APWorld."""
 
-    package = __package__.rsplit(".", 1)[0]
-    payload = pkgutil.get_data(package, BRIDGE_RESOURCE)
-    if not payload:
-        raise FileNotFoundError(
-            f"The installed Jak 3 APWorld is missing {BRIDGE_RESOURCE}; reinstall the APWorld."
-        )
-    _validate_bridge_payload(payload)
-    return payload
+    manifest, payloads = load_packaged_bridge_set()
+    module = next(module for module in manifest.modules if module.name == "control")
+    return payloads[str(module.resource)]
 
 
 def load_packaged_startup() -> bytes:
     """Read the pre-compile wait overlay carried inside the APWorld."""
 
-    package = __package__.rsplit(".", 1)[0]
-    payload = pkgutil.get_data(package, STARTUP_RESOURCE)
-    if not payload:
-        raise FileNotFoundError(
-            f"The installed Jak 3 APWorld is missing {STARTUP_RESOURCE}; reinstall the APWorld."
-        )
-    if (
-        b"(in-package goal)" not in payload
-        or b"ap-bootstrap-show-startup-wait!" not in payload
-    ):
-        raise ValueError("The bundled OpenGOAL startup overlay payload is invalid.")
-    return payload
+    manifest, payloads = load_packaged_bridge_set()
+    module = next(module for module in manifest.modules if module.name == "startup")
+    return payloads[str(module.resource)]
+
+
+def _validate_module_payloads(
+    manifest: BridgeManifest, payloads: Mapping[str, bytes]
+) -> None:
+    for module in manifest.modules:
+        payload = payloads.get(str(module.resource))
+        if not payload:
+            raise ValueError(f"Missing bridge payload for module {module.name}.")
+        if module.name == "control":
+            _validate_bridge_payload(payload)
+        elif module.name == "startup":
+            if (
+                b"(in-package goal)" not in payload
+                or b"ap-bootstrap-show-startup-wait!" not in payload
+            ):
+                raise ValueError("The OpenGOAL startup overlay payload is invalid.")
+        elif module.name == "diagnostics":
+            if (
+                b"(in-package goal)" not in payload
+                or b"ap-diagnostic-emit!" not in payload
+                or b"AP-DIAGNOSTIC-RING-CAPACITY 64" not in payload
+            ):
+                raise ValueError("The OpenGOAL diagnostic module payload is invalid.")
 
 
 def _atomic_write(path: Path, payload: bytes) -> None:
@@ -199,28 +227,45 @@ def _build_bootstrap_type_database(install: OpenGoalInstall) -> bytes:
     return header + source[:line_end]
 
 
-def install_packaged_bridge(
+def _install_packaged_bridge_locked(
     install: OpenGoalInstall,
     payload: bytes | None = None,
     startup_payload: bytes | None = None,
+    *,
+    manifest: BridgeManifest | None = None,
+    module_payloads: Mapping[str, bytes] | None = None,
 ) -> BridgeInstallResult:
-    """Install/repair the APWorld's bridge and pre-compile overlay."""
+    """Transactionally install/repair the manifest-declared bridge source set."""
 
-    bridge_payload = payload if payload is not None else load_packaged_bridge()
-    compile_overlay_payload = (
-        startup_payload if startup_payload is not None else load_packaged_startup()
+    if manifest is None or module_payloads is None:
+        packaged_manifest, packaged_payloads = load_packaged_bridge_set()
+        manifest = manifest or packaged_manifest
+        resolved_payloads = dict(module_payloads or packaged_payloads)
+    else:
+        resolved_payloads = dict(module_payloads)
+    control_module = next(
+        module for module in manifest.modules if module.name == "control"
     )
+    startup_module = next(
+        module for module in manifest.modules if module.name == "startup"
+    )
+    if payload is not None:
+        resolved_payloads[str(control_module.resource)] = payload
+    if startup_payload is not None:
+        resolved_payloads[str(startup_module.resource)] = startup_payload
+    payloads: Mapping[str, bytes] = MappingProxyType(resolved_payloads)
+    _validate_module_payloads(manifest, payloads)
+    source_set_hash = manifest.source_set_sha256(payloads)
     bootstrap_types_payload = _build_bootstrap_type_database(install)
-    _validate_bridge_payload(bridge_payload)
-    if (
-        b"(in-package goal)" not in compile_overlay_payload
-        or b"ap-bootstrap-show-startup-wait!" not in compile_overlay_payload
-    ):
-        raise ValueError("The OpenGOAL startup overlay payload is invalid.")
 
-    source_path = install.project_directory / BRIDGE_DESTINATION
+    module_paths = {
+        module.name: install.project_directory / Path(str(module.destination))
+        for module in manifest.modules
+    }
+    source_path = module_paths["control"]
     reload_marker_path = install.project_directory / BRIDGE_RELOAD_MARKER
-    startup_path = install.project_directory / STARTUP_DESTINATION
+    startup_path = module_paths["startup"]
+    manifest_path = install.project_directory / MANIFEST_DESTINATION
     bootstrap_types_path = install.project_directory / BOOTSTRAP_TYPES_DESTINATION
     project_path = install.project_directory / GAME_DGO
     if not project_path.is_file():
@@ -232,62 +277,117 @@ def install_packaged_bridge(
     task_entries = list(
         re.finditer(r'(?m)^[ \t]*"task-control\.o"[ \t]*(?=\r?$)', project_text)
     )
-    bridge_entries = list(
-        re.finditer(r'(?m)^[ \t]*"archipelago\.o"[ \t]*(?=\r?$)', project_text)
-    )
     if len(task_entries) != 1:
         raise ValueError(
             f"Expected one task-control.o entry in {project_path}; found {len(task_entries)}."
         )
-    if len(bridge_entries) > 1:
-        raise ValueError(
-            f"Expected at most one archipelago.o entry in {project_path}; found {len(bridge_entries)}."
-        )
-    if bridge_entries and bridge_entries[0].start() < task_entries[0].end():
-        raise ValueError(
-            "archipelago.o must load after task-control.o in the Jak 3 project."
-        )
-
-    project_updated = not bridge_entries
-    if project_updated:
-        marker = task_entries[0].group(0)
-        indent_match = re.match(r"[ \t]*", marker)
-        assert indent_match is not None
-        indent = indent_match.group(0)
-        newline = "\r\n" if "\r\n" in project_text else "\n"
-        project_text = (
-            project_text[: task_entries[0].end()]
-            + newline
-            + indent
-            + '"archipelago.o"'
-            + project_text[task_entries[0].end() :]
-        )
-
-    source_updated = (
-        not source_path.is_file() or source_path.read_bytes() != bridge_payload
+    objects = tuple(
+        module.object_name for module in manifest.runtime_modules if module.object_name
     )
-    startup_updated = (
-        not startup_path.is_file()
-        or startup_path.read_bytes() != compile_overlay_payload
+    object_matches = {
+        object_name: list(
+            re.finditer(
+                rf'(?m)^[ \t]*"{re.escape(object_name)}"[ \t]*(?=\r?$)',
+                project_text,
+            )
+        )
+        for object_name in objects
+    }
+    for object_name, entries in object_matches.items():
+        if len(entries) > 1:
+            raise ValueError(
+                f"Expected at most one {object_name} entry in {project_path}; found {len(entries)}."
+            )
+        if entries and entries[0].start() < task_entries[0].end():
+            raise ValueError(
+                f"{object_name} must load after {manifest.object_anchor} in the Jak 3 project."
+            )
+    newline = "\r\n" if "\r\n" in project_text else "\n"
+    indent_match = re.match(r"[ \t]*", task_entries[0].group(0))
+    assert indent_match is not None
+    indent = indent_match.group(0)
+    lines = project_text.splitlines(keepends=True)
+    anchor_line = next(
+        index
+        for index, line in enumerate(lines)
+        if re.fullmatch(r'[ \t]*"task-control\.o"[ \t]*\r?\n?', line)
+    )
+    current_after_anchor_list: list[str] = []
+    for line in lines[anchor_line + 1 : anchor_line + 1 + len(objects)]:
+        line_match = re.fullmatch(r'[ \t]*"([^\"]+\.o)"[ \t]*\r?\n?', line)
+        if line_match:
+            current_after_anchor_list.append(line_match.group(1))
+    current_after_anchor = tuple(current_after_anchor_list)
+    project_updated = current_after_anchor != objects
+    if project_updated:
+        object_set = set(objects)
+        lines = [
+            line
+            for line in lines
+            if not (
+                (match := re.fullmatch(r'[ \t]*"([^\"]+\.o)"[ \t]*\r?\n?', line))
+                and match.group(1) in object_set
+            )
+        ]
+        anchor_line = next(
+            index
+            for index, line in enumerate(lines)
+            if re.fullmatch(r'[ \t]*"task-control\.o"[ \t]*\r?\n?', line)
+        )
+        object_lines = [f'{indent}"{object_name}"{newline}' for object_name in objects]
+        lines[anchor_line + 1 : anchor_line + 1] = object_lines
+        project_text = "".join(lines)
+
+    module_updates = tuple(
+        module.name
+        for module in manifest.modules
+        if not module_paths[module.name].is_file()
+        or module_paths[module.name].read_bytes() != payloads[str(module.resource)]
+    )
+    source_updated = "control" in module_updates
+    startup_updated = "startup" in module_updates
+    manifest_updated = (
+        not manifest_path.is_file() or manifest_path.read_bytes() != manifest.raw
     )
     bootstrap_types_updated = (
         not bootstrap_types_path.is_file()
         or bootstrap_types_path.read_bytes() != bootstrap_types_payload
     )
-    if source_updated:
-        # Record the live-reload obligation before replacing the installed
-        # source. If this client exits before a snapshot proves a new
-        # activation generation, a later client must still reload the
-        # corrected same-contract object.
-        marker_payload = hashlib.sha256(bridge_payload).hexdigest().encode("ascii")
-        _atomic_write(reload_marker_path, marker_payload + b"\n")
-        _atomic_write(source_path, bridge_payload)
-    if startup_updated:
-        _atomic_write(startup_path, compile_overlay_payload)
+    changed_paths = [module_paths[name] for name in module_updates]
+    if manifest_updated:
+        changed_paths.append(manifest_path)
     if bootstrap_types_updated:
-        _atomic_write(bootstrap_types_path, bootstrap_types_payload)
+        changed_paths.append(bootstrap_types_path)
     if project_updated:
-        _atomic_write(project_path, project_text.encode("utf-8"))
+        changed_paths.append(project_path)
+    originals = {
+        path: path.read_bytes() if path.is_file() else None for path in changed_paths
+    }
+    reload_obligation = bool(module_updates or manifest_updated)
+    if reload_obligation:
+        # Persist before replacing any declared source. Ordinary failures roll
+        # back files but intentionally keep this crash-safe obligation.
+        _atomic_write(reload_marker_path, source_set_hash.encode("ascii") + b"\n")
+    try:
+        for module in manifest.modules:
+            if module.name in module_updates:
+                _atomic_write(module_paths[module.name], payloads[str(module.resource)])
+        if manifest_updated:
+            _atomic_write(manifest_path, manifest.raw)
+        if bootstrap_types_updated:
+            _atomic_write(bootstrap_types_path, bootstrap_types_payload)
+        if project_updated:
+            _atomic_write(project_path, project_text.encode("utf-8"))
+    except Exception:
+        for path, original in originals.items():
+            try:
+                if original is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    _atomic_write(path, original)
+            except OSError:
+                pass
+        raise
 
     return BridgeInstallResult(
         source_updated=source_updated,
@@ -295,12 +395,38 @@ def install_packaged_bridge(
         project_updated=project_updated,
         startup_updated=startup_updated,
         bootstrap_types_updated=bootstrap_types_updated,
+        manifest_updated=manifest_updated,
+        modules_updated=module_updates,
+        source_set_hash=source_set_hash,
         source_path=source_path,
+        source_paths=tuple(module_paths[module.name] for module in manifest.modules),
         reload_marker_path=reload_marker_path,
         startup_path=startup_path,
+        manifest_path=manifest_path,
         bootstrap_types_path=bootstrap_types_path,
         project_path=project_path,
     )
+
+
+def install_packaged_bridge(
+    install: OpenGoalInstall,
+    payload: bytes | None = None,
+    startup_payload: bytes | None = None,
+    *,
+    manifest: BridgeManifest | None = None,
+    module_payloads: Mapping[str, bytes] | None = None,
+) -> BridgeInstallResult:
+    """Install one coherent bridge source set under a cross-process lock."""
+
+    lock_directory = install.project_directory / BRIDGE_INSTALL_LOCK
+    with interprocess_directory_lock(lock_directory):
+        return _install_packaged_bridge_locked(
+            install,
+            payload,
+            startup_payload,
+            manifest=manifest,
+            module_payloads=module_payloads,
+        )
 
 
 def _settings_path() -> Path:
@@ -411,45 +537,102 @@ def build_launch_commands(
 def _mirror_process_output(
     process: subprocess.Popen,
     label: str,
-    raw_path: Path,
     diagnostics: DiagnosticSession,
 ) -> None:
+    """Drain one bounded pipe without retaining unsanitized process output."""
+
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
-    offset = 0
     pending = ""
+    discarding_oversized_line = False
+    stream = process.stdout
+    if stream is None:
+        diagnostics.emit(
+            "process.capture_gap",
+            message="Launched process output pipe was unavailable.",
+            source_component="launcher",
+            context={"process": label, "capture": "pipe_unavailable"},
+        )
+        return
     while True:
         try:
-            with raw_path.open("rb") as raw_stream:
-                raw_stream.seek(offset)
-                payload = raw_stream.read()
-        except FileNotFoundError:
-            payload = b""
-        if payload:
-            offset += len(payload)
-            pending += decoder.decode(payload).replace("\r\n", "\n").replace("\r", "\n")
-            last_newline = pending.rfind("\n")
-            if last_newline >= 0:
-                diagnostics.append_process_output(
-                    label.upper(), pending[: last_newline + 1]
-                )
-                pending = pending[last_newline + 1 :]
-        if process.poll() is not None and not payload:
+            read_chunk = getattr(stream, "read1", stream.read)
+            payload = read_chunk(16 * 1024)
+        except OSError as exc:
+            diagnostics.emit(
+                "process.capture_gap",
+                message="Launched process output pipe failed while being read.",
+                source_component="launcher",
+                context={
+                    "process": label,
+                    "capture": "pipe_read_failed",
+                    "reason": type(exc).__name__,
+                },
+            )
             break
-        time.sleep(0.05)
+        if not payload:
+            break
+        decoded = decoder.decode(payload).replace("\r\n", "\n").replace("\r", "\n")
+        if discarding_oversized_line:
+            newline = decoded.find("\n")
+            if newline < 0:
+                continue
+            decoded = decoded[newline + 1 :]
+            discarding_oversized_line = False
+        pending += decoded
+        while True:
+            newline = pending.find("\n")
+            if newline >= 0:
+                line = pending[: newline + 1]
+                pending = pending[newline + 1 :]
+                if len(line) <= PROCESS_OUTPUT_LINE_LIMIT:
+                    diagnostics.append_process_output(label.upper(), line)
+                else:
+                    diagnostics.append_process_output(
+                        label.upper(),
+                        "[oversized process output line omitted before storage]\n",
+                    )
+                    diagnostics.emit(
+                        "process.capture_gap",
+                        message="Oversized process output line was omitted safely.",
+                        source_component="launcher",
+                        context={"process": label, "capture": "oversized_line"},
+                    )
+                continue
+            if len(pending) > PROCESS_OUTPUT_LINE_LIMIT:
+                diagnostics.append_process_output(
+                    label.upper(),
+                    "[oversized process output line omitted before storage]\n",
+                )
+                diagnostics.emit(
+                    "process.capture_gap",
+                    message="Oversized process output line was omitted safely.",
+                    source_component="launcher",
+                    context={"process": label, "capture": "oversized_line"},
+                )
+                pending = ""
+                discarding_oversized_line = True
+            break
 
     pending += decoder.decode(b"", final=True)
-    if pending:
+    if pending and not discarding_oversized_line:
         diagnostics.append_process_output(label.upper(), pending)
+    return_code = process.poll()
+    if return_code is None:
+        return_code = process.wait()
     diagnostics.note_opengoal(
         "CLIENT",
-        f"{label} process exited: pid={process.pid} return_code={process.returncode}",
+        f"{label} process exited: pid={process.pid} return_code={return_code}",
     )
-    try:
-        raw_path.unlink()
-    except OSError as exc:
-        diagnostics.note_opengoal(
-            "CLIENT", f"could not remove {label} spool file: {exc}"
-        )
+    diagnostics.emit(
+        "process.crashed" if return_code else "process.exited",
+        message=f"{label} process exited.",
+        source_component="launcher",
+        context={
+            "process": label,
+            "pid": process.pid,
+            "return_code": return_code,
+        },
+    )
 
 
 def _launch_logged_process(
@@ -458,21 +641,17 @@ def _launch_logged_process(
     label: str,
     diagnostics: DiagnosticSession,
 ) -> subprocess.Popen:
-    # Each process gets an internal spool file. A single-writer collector then
-    # prefixes/sanitizes both streams into the support-facing OpenGOAL log,
-    # avoiding cross-process file offsets that could overwrite GOAL events.
-    raw_path = diagnostics.raw_output_path(label)
-    raw_path.unlink(missing_ok=True)
-    with raw_path.open("wb", buffering=0) as log_stream:
-        process = subprocess.Popen(
-            command,
-            stdout=log_stream,
-            stderr=subprocess.STDOUT,
-            creationflags=creationflags,
-        )
+    # A bounded pipe is sanitized and serialized directly into the managed log.
+    # No unbounded unsanitized spool survives the client process.
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        creationflags=creationflags,
+    )
     threading.Thread(
         target=_mirror_process_output,
-        args=(process, label, raw_path, diagnostics),
+        args=(process, label, diagnostics),
         name=f"Jak3-{label}-log-collector",
         daemon=True,
     ).start()
@@ -510,10 +689,28 @@ def launch_missing_processes(
         )
         game_pid = game_process.pid
         diagnostics.note_opengoal("CLIENT", f"gk started: pid={game_pid}")
+        diagnostics.emit(
+            "process.started",
+            message="OpenGOAL game process started with captured output.",
+            source_component="launcher",
+            context={"process": "gk", "pid": game_pid, "capture": "complete"},
+        )
     else:
         diagnostics.note_opengoal(
             "CLIENT",
             f"gk already running: pid={game_pid}; pre-existing stdout is not captured",
+        )
+        diagnostics.emit(
+            "process.already_running",
+            message="OpenGOAL game process was already running.",
+            source_component="launcher",
+            context={"process": "gk", "pid": game_pid},
+        )
+        diagnostics.emit(
+            "process.capture_gap",
+            message="Pre-existing game stdout cannot be captured retroactively.",
+            source_component="launcher",
+            context={"process": "gk", "capture": "pre_existing_process"},
         )
 
     compiler_started = compiler_pid is None
@@ -523,10 +720,32 @@ def launch_missing_processes(
         )
         compiler_pid = compiler_process.pid
         diagnostics.note_opengoal("CLIENT", f"goalc started: pid={compiler_pid}")
+        diagnostics.emit(
+            "process.started",
+            message="OpenGOAL compiler process started with captured output.",
+            source_component="launcher",
+            context={
+                "process": "goalc",
+                "pid": compiler_pid,
+                "capture": "complete",
+            },
+        )
     else:
         diagnostics.note_opengoal(
             "CLIENT",
             f"goalc already running: pid={compiler_pid}; pre-existing stdout is not captured",
+        )
+        diagnostics.emit(
+            "process.already_running",
+            message="OpenGOAL compiler process was already running.",
+            source_component="launcher",
+            context={"process": "goalc", "pid": compiler_pid},
+        )
+        diagnostics.emit(
+            "process.capture_gap",
+            message="Pre-existing compiler stdout cannot be captured retroactively.",
+            source_component="launcher",
+            context={"process": "goalc", "capture": "pre_existing_process"},
         )
 
     return ProcessLaunchResult(

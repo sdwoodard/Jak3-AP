@@ -25,6 +25,9 @@ class PackagedWorldRegistrationTest(unittest.TestCase):
         self.assertIsNotNone(Jak3World.zip_path)
         with ZipFile(Path(Jak3World.zip_path)) as archive:
             manifest = json.loads(archive.read("jak3/archipelago.json"))
+            bridge_manifest = json.loads(
+                archive.read("jak3/assets/opengoal/bridge-modules.json")
+            )
             entries = set(archive.namelist())
 
         self.assertEqual("Jak 3", manifest["game"])
@@ -39,14 +42,28 @@ class PackagedWorldRegistrationTest(unittest.TestCase):
                 "jak3/client.py",
                 "jak3/persistence.py",
                 "jak3/agents/launcher.py",
+                "jak3/agents/bridge_manifest.py",
+                "jak3/agents/diagnostics.py",
                 "jak3/agents/protocol.py",
+                "jak3/assets/opengoal/bridge-modules.json",
                 "jak3/assets/opengoal/archipelago.gc",
                 "jak3/assets/opengoal/archipelago-startup.gc",
+                "jak3/assets/opengoal/archipelago-diagnostics.gc",
                 "jak3/icons/jak3-logo.png",
             }.issubset(entries)
         )
         self.assertFalse(any("__pycache__" in entry for entry in entries))
         self.assertFalse(any(entry.endswith((".pyc", ".pyo")) for entry in entries))
+        declared = {
+            f"jak3/{module['resource']}" for module in bridge_manifest["modules"]
+        }
+        packaged_modules = {
+            entry
+            for entry in entries
+            if entry.startswith("jak3/assets/opengoal/archipelago")
+            and entry.endswith(".gc")
+        }
+        self.assertEqual(packaged_modules, declared)
 
     def test_world_metadata_matches_the_loaded_manifest(self) -> None:
         self.assertEqual("0.1.0", Jak3World.world_version.as_simple_string())

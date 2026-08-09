@@ -51,6 +51,11 @@ _ITEM_IDS = frozenset(record.code for record in FIRST_RELEASE_ITEMS)
 _LOCATION_IDS = frozenset(record.code for record in FIRST_RELEASE_LOCATIONS)
 _PROCESS_LOCK_GUARD = threading.Lock()
 _PROCESS_LOCKED_ROOTS: set[Path] = set()
+DiagnosticEventSink = Callable[..., None]
+
+
+def _diagnostic_hash(value: object) -> str:
+    return hashlib.sha256(str(value).encode("utf-8", errors="replace")).hexdigest()[:16]
 
 
 class StateError(RuntimeError):
@@ -552,9 +557,12 @@ class StateInspection:
 
 
 class _StateWriterLease:
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self, root: Path, event_sink: DiagnosticEventSink | None = None
+    ) -> None:
         self.root = root.resolve()
         self.path = self.root / ".writer.lock"
+        self._event_sink = event_sink
         self._stream: Any = None
         self._locked = False
 
@@ -562,6 +570,7 @@ class _StateWriterLease:
         self.root.mkdir(parents=True, exist_ok=True)
         with _PROCESS_LOCK_GUARD:
             if self.root in _PROCESS_LOCKED_ROOTS:
+                self._emit("persistence.writer_lock.refused", "process_lock")
                 raise StateWriterLockedError(
                     f"Another Jak 3 state writer already owns {self.root}."
                 )
@@ -586,13 +595,16 @@ class _StateWriterLease:
                     fcntl.LOCK_EX | fcntl.LOCK_NB,  # type: ignore[attr-defined]
                 )
             self._locked = True
+            self._emit("persistence.writer_lock.acquired", "acquired")
         except (OSError, PermissionError) as exc:
             self.release()
+            self._emit("persistence.writer_lock.refused", type(exc).__name__)
             raise StateWriterLockedError(
                 f"Could not acquire the Jak 3 state writer lock at {self.path}: {exc}"
             ) from exc
 
     def release(self) -> None:
+        was_locked = self._locked
         try:
             if self._locked and self._stream is not None:
                 if os.name == "nt":
@@ -614,6 +626,23 @@ class _StateWriterLease:
                 self._stream = None
             with _PROCESS_LOCK_GUARD:
                 _PROCESS_LOCKED_ROOTS.discard(self.root)
+            if was_locked:
+                self._emit("persistence.writer_lock.released", "released")
+
+    def _emit(self, event_name: str, status: str) -> None:
+        if self._event_sink is None:
+            return
+        try:
+            self._event_sink(
+                event_name,
+                message="Persistent writer lock transition.",
+                context={
+                    "path_hash": _diagnostic_hash(self.path),
+                    "status": status,
+                },
+            )
+        except BaseException:
+            pass
 
 
 class StateRepository:
@@ -623,10 +652,20 @@ class StateRepository:
         *,
         fault_injector: Callable[[str], None] | None = None,
         state_id_factory: Callable[[], str] | None = None,
+        event_sink: DiagnosticEventSink | None = None,
     ) -> None:
         self.root = (root or default_state_root()).expanduser().resolve()
         self._fault_injector = fault_injector
         self._state_id_factory = state_id_factory or (lambda: str(uuid.uuid4()))
+        self._event_sink = event_sink
+
+    def _emit(self, event_name: str, **fields: object) -> None:
+        if self._event_sink is None:
+            return
+        try:
+            self._event_sink(event_name, source_component="persistence", **fields)
+        except BaseException:
+            pass
 
     def paths_for(self, native_save_identity: str) -> StatePaths:
         _validate_identity_text(
@@ -634,6 +673,15 @@ class StateRepository:
         )
         digest = hashlib.sha256(native_save_identity.encode("utf-8")).hexdigest()
         primary = self.root / f"{digest}.json"
+        self._emit(
+            "persistence.path.selected",
+            message="Persistent state path selected from native-save identity hash.",
+            correlation_id=digest[:16],
+            context={
+                "native_save_hash": digest[:16],
+                "path_hash": _diagnostic_hash(primary),
+            },
+        )
         return StatePaths(primary=primary, backup=primary.with_suffix(".json.bak"))
 
     def save_identity_authorization_path_for(self, native_save_identity: str) -> Path:
@@ -675,10 +723,32 @@ class StateRepository:
             _validate_save_identity_authorization(
                 existing, native_save_identity, authenticated_slot
             )
+            self._emit(
+                "save.identity.authorized",
+                message="Existing save-identity authorization validated.",
+                context={"native_save_hash": _diagnostic_hash(native_save_identity)},
+            )
             return
         try:
             _write_new_primary(path, serialized)
+            self._emit(
+                "save.identity.authorized",
+                message="Save-identity authorization persisted.",
+                context={
+                    "native_save_hash": _diagnostic_hash(native_save_identity),
+                    "seed_hash": _diagnostic_hash(authenticated_slot.seed_identifier),
+                    "slot_hash": _diagnostic_hash(authenticated_slot.slot_name),
+                },
+            )
         except OSError as exc:
+            self._emit(
+                "persistence.commit.failed",
+                message="Save-identity authorization persistence failed.",
+                context={
+                    "category": "save_identity_authorization",
+                    "reason": type(exc).__name__,
+                },
+            )
             raise StateCorruptionError(
                 f"Could not persist native-save identity authorization: {exc}"
             ) from exc
@@ -728,8 +798,16 @@ class StateRepository:
         *,
         require_save_identity_authorization: bool,
     ) -> "StateSession":
-        lease = _StateWriterLease(self.root)
-        lease.acquire()
+        lease = _StateWriterLease(self.root, self._emit)
+        try:
+            lease.acquire()
+        except StateWriterLockedError as exc:
+            self._emit(
+                "persistence.concurrent_writer.rejected",
+                message="Persistent writer lease was refused.",
+                context={"reason": type(exc).__name__},
+            )
+            raise
         try:
             paths = self.paths_for(native_save.identity)
             if require_save_identity_authorization and authenticated_slot is not None:
@@ -738,6 +816,7 @@ class StateRepository:
                 )
             state, status = self._load_or_create(paths, native_save, authenticated_slot)
             changed = False
+            commit_categories: list[str] = []
             binding_performed = False
             if authenticated_slot is not None and not state.is_bound:
                 if require_save_identity_authorization:
@@ -746,9 +825,21 @@ class StateRepository:
                     )
                 state = state.bind(authenticated_slot)
                 binding_performed = True
+                self._emit(
+                    "persistence.state.bound",
+                    message="Persistent state bound to authenticated slot.",
+                    persistent_state_revision=state.state_revision,
+                    context={
+                        "seed_hash": _diagnostic_hash(
+                            authenticated_slot.seed_identifier
+                        ),
+                        "slot_hash": _diagnostic_hash(authenticated_slot.slot_name),
+                    },
+                )
                 if status is not StateOpenStatus.RECOVERED_BACKUP:
                     status = StateOpenStatus.BOUND
                 changed = True
+                commit_categories.append("binding")
             validate_state(
                 state,
                 native_save=native_save,
@@ -757,9 +848,24 @@ class StateRepository:
             if state.last_clean_shutdown:
                 state = replace(state, last_clean_shutdown=False)
                 changed = True
+                commit_categories.append("session_open")
+                self._emit(
+                    "persistence.shutdown.clean",
+                    message="Prior persistent session closed cleanly.",
+                    persistent_state_revision=state.state_revision,
+                )
+            elif status is not StateOpenStatus.CREATED:
+                self._emit(
+                    "persistence.shutdown.unclean",
+                    message="Persistent state indicates a prior unclean shutdown.",
+                    persistent_state_revision=state.state_revision,
+                )
             if changed:
                 state = self._commit(
-                    paths, state, expected_revision=state.state_revision
+                    paths,
+                    state,
+                    expected_revision=state.state_revision,
+                    category="+".join(commit_categories) or "session_open",
                 )
             self._quarantine_orphan_temps(paths)
             return StateSession(
@@ -772,7 +878,26 @@ class StateRepository:
                 status=status,
                 binding_performed=binding_performed,
             )
-        except BaseException:
+        except BaseException as exc:
+            rejection = (
+                "persistence.compatibility.rejected"
+                if isinstance(exc, StateCompatibilityError)
+                else "persistence.binding.rejected"
+                if isinstance(exc, StateBindingError)
+                else "persistence.eligibility.rejected"
+                if isinstance(exc, StateEligibilityError)
+                else "persistence.concurrent_writer.rejected"
+                if isinstance(exc, StateWriterLockedError)
+                else "persistence.corruption.detected"
+                if isinstance(exc, StateCorruptionError)
+                else None
+            )
+            if rejection is not None:
+                self._emit(
+                    rejection,
+                    message="Persistent state open was rejected.",
+                    context={"reason": type(exc).__name__},
+                )
             lease.release()
             raise
 
@@ -852,6 +977,12 @@ class StateRepository:
                         f"is corrupt: {backup_error}."
                     ) from backup_error
                 self._restore_backup(paths)
+                self._emit(
+                    "persistence.state.loaded",
+                    message="Persistent state loaded from backup.",
+                    persistent_state_revision=state.state_revision,
+                    context={"status": "recovered_backup"},
+                )
                 return state, StateOpenStatus.RECOVERED_BACKUP
             if self._quarantine_candidates(paths):
                 raise StateCorruptionError(
@@ -862,6 +993,12 @@ class StateRepository:
                 native_save, state_instance_id=self._state_id_factory()
             )
             _write_new_primary(paths.primary, serialize_state(state))
+            self._emit(
+                "persistence.state.created",
+                message="New unbound persistent state created.",
+                persistent_state_revision=state.state_revision,
+                context={"state_id_hash": _diagnostic_hash(state.state_instance_id)},
+            )
             return state, StateOpenStatus.CREATED
         except StateCompatibilityError:
             raise
@@ -887,8 +1024,19 @@ class StateRepository:
                     f"Primary and backup Jak 3 AP state are corrupt: "
                     f"primary={primary_error}; backup={backup_error}."
                 ) from backup_error
+            self._emit(
+                "persistence.corruption.detected",
+                message="Primary persistent state corruption was detected.",
+                context={"reason": "primary_corrupt", "status": "recoverable"},
+            )
             self._quarantine(paths.primary, "corrupt")
             self._restore_backup(paths)
+            self._emit(
+                "persistence.state.loaded",
+                message="Persistent state recovered after primary corruption.",
+                persistent_state_revision=state.state_revision,
+                context={"status": "recovered_backup"},
+            )
             return state, StateOpenStatus.RECOVERED_BACKUP
 
         validate_state(
@@ -896,9 +1044,76 @@ class StateRepository:
             native_save=native_save,
             authenticated_slot=authenticated_slot,
         )
+        self._emit(
+            "persistence.state.loaded",
+            message="Persistent state loaded.",
+            persistent_state_revision=state.state_revision,
+            context={"status": "loaded"},
+        )
         return state, StateOpenStatus.LOADED
 
     def _commit(
+        self,
+        paths: StatePaths,
+        state: PersistentState,
+        *,
+        expected_revision: int,
+        category: str = "state_update",
+    ) -> PersistentState:
+        self._emit(
+            "persistence.commit.attempted",
+            message="Persistent state commit attempted.",
+            persistent_state_revision=expected_revision,
+            context={
+                "category": category,
+                "revision": expected_revision,
+                "old_revision": expected_revision,
+                "new_revision": expected_revision + 1,
+            },
+        )
+        try:
+            committed = self._commit_impl(
+                paths, state, expected_revision=expected_revision
+            )
+        except BaseException as exc:
+            if isinstance(exc, StaleStateRevisionError):
+                self._emit(
+                    "persistence.revision.stale",
+                    message="Persistent state revision was stale.",
+                    persistent_state_revision=expected_revision,
+                    context={
+                        "revision": expected_revision,
+                        "old_revision": expected_revision,
+                        "new_revision": expected_revision + 1,
+                        "reason": type(exc).__name__,
+                    },
+                )
+            self._emit(
+                "persistence.commit.failed",
+                message="Persistent state commit failed.",
+                persistent_state_revision=expected_revision,
+                context={
+                    "category": category,
+                    "old_revision": expected_revision,
+                    "new_revision": expected_revision + 1,
+                    "reason": type(exc).__name__,
+                },
+            )
+            raise
+        self._emit(
+            "persistence.commit.succeeded",
+            message="Persistent state commit succeeded.",
+            persistent_state_revision=committed.state_revision,
+            context={
+                "category": category,
+                "revision": committed.state_revision,
+                "old_revision": expected_revision,
+                "new_revision": committed.state_revision,
+            },
+        )
+        return committed
+
+    def _commit_impl(
         self,
         paths: StatePaths,
         state: PersistentState,
@@ -931,11 +1146,21 @@ class StateRepository:
             )
         committed = replace(state, state_revision=expected_revision + 1)
         validate_state(committed)
-        self._write_state(paths, committed, previous=previous)
+        self._write_state(
+            paths,
+            committed,
+            previous=previous,
+            previous_revision=current.state_revision,
+        )
         return committed
 
     def _write_state(
-        self, paths: StatePaths, state: PersistentState, *, previous: bytes
+        self,
+        paths: StatePaths,
+        state: PersistentState,
+        *,
+        previous: bytes,
+        previous_revision: int,
     ) -> None:
         payload = serialize_state(state)
         temporary = _write_temporary(paths.primary, payload)
@@ -943,6 +1168,15 @@ class StateRepository:
         try:
             self._fault("after_temp_sync")
             _atomic_replace_bytes(paths.backup, previous)
+            self._emit(
+                "persistence.backup.refreshed",
+                message="Persistent state backup refreshed.",
+                persistent_state_revision=previous_revision,
+                context={
+                    "path_hash": _diagnostic_hash(paths.backup),
+                    "revision": previous_revision,
+                },
+            )
             self._fault("after_backup_replace")
             self._fault("before_primary_replace")
             os.replace(temporary, paths.primary)
@@ -956,6 +1190,14 @@ class StateRepository:
     def _restore_backup(self, paths: StatePaths) -> None:
         backup_bytes = paths.backup.read_bytes()
         _write_new_primary(paths.primary, backup_bytes)
+        self._emit(
+            "persistence.backup.restored",
+            message="Persistent state backup restored.",
+            context={
+                "path_hash": _diagnostic_hash(paths.primary),
+                "status": "restored",
+            },
+        )
 
     def _quarantine(self, path: Path, reason: str) -> Path | None:
         if not path.exists():
@@ -966,6 +1208,14 @@ class StateRepository:
         )
         os.replace(path, target)
         _sync_directory(path.parent)
+        self._emit(
+            "persistence.quarantine.performed",
+            message="Unsafe persistence artifact quarantined.",
+            context={
+                "path_hash": _diagnostic_hash(path),
+                "reason": reason,
+            },
+        )
         return target
 
     def _quarantine_candidates(self, paths: StatePaths) -> tuple[Path, ...]:
@@ -1009,7 +1259,9 @@ class StateSession:
         self.binding_performed = binding_performed
         self._closed = False
 
-    def commit(self, state: PersistentState) -> PersistentState:
+    def commit(
+        self, state: PersistentState, *, category: str = "state_update"
+    ) -> PersistentState:
         self._require_open()
         if state.state_instance_id != self.state.state_instance_id:
             raise StaleStateRevisionError(
@@ -1025,13 +1277,25 @@ class StateSession:
             authenticated_slot=self.authenticated_slot,
         )
         self.state = self.repository._commit(
-            self.paths, state, expected_revision=self.state.state_revision
+            self.paths,
+            state,
+            expected_revision=self.state.state_revision,
+            category=category,
         )
         return self.state
 
     def bind(self, authenticated_slot: AuthenticatedSlot) -> PersistentState:
         self._require_open()
-        bound = self.state.bind(authenticated_slot)
+        try:
+            bound = self.state.bind(authenticated_slot)
+        except StateBindingError as exc:
+            self.repository._emit(
+                "persistence.binding.rejected",
+                message="Open persistent state binding was rejected.",
+                persistent_state_revision=self.state.state_revision,
+                context={"reason": type(exc).__name__},
+            )
+            raise
         if bound == self.state:
             self.authenticated_slot = authenticated_slot
             return self.state
@@ -1041,10 +1305,22 @@ class StateSession:
             authenticated_slot=authenticated_slot,
         )
         self.state = self.repository._commit(
-            self.paths, bound, expected_revision=self.state.state_revision
+            self.paths,
+            bound,
+            expected_revision=self.state.state_revision,
+            category="binding",
         )
         self.authenticated_slot = authenticated_slot
         self.binding_performed = True
+        self.repository._emit(
+            "persistence.state.bound",
+            message="Open persistent session bound to authenticated slot.",
+            persistent_state_revision=self.state.state_revision,
+            context={
+                "seed_hash": _diagnostic_hash(authenticated_slot.seed_identifier),
+                "slot_hash": _diagnostic_hash(authenticated_slot.slot_name),
+            },
+        )
         return self.state
 
     def switch(
@@ -1054,17 +1330,42 @@ class StateSession:
     ) -> "StateSession":
         repository = self.repository
         self.close(clean=True)
-        return repository.open(native_save, authenticated_slot)
+        switched = repository.open(native_save, authenticated_slot)
+        repository._emit(
+            "persistence.state.switched",
+            message="Persistent state session switched native-save identity.",
+            persistent_state_revision=switched.state.state_revision,
+            context={"native_save_hash": _diagnostic_hash(native_save.identity)},
+        )
+        return switched
 
     def close(self, *, clean: bool = True) -> None:
         if self._closed:
             return
+        clean_commit = False
         try:
             if clean and not self.state.last_clean_shutdown:
-                self.commit(replace(self.state, last_clean_shutdown=True))
+                self.commit(
+                    replace(self.state, last_clean_shutdown=True),
+                    category="clean_shutdown",
+                )
+            clean_commit = clean
         finally:
             self._closed = True
             self._lease.release()
+            self.repository._emit(
+                "persistence.shutdown.clean"
+                if clean_commit
+                else "persistence.shutdown.unclean",
+                message="Persistent state session closed.",
+                persistent_state_revision=self.state.state_revision,
+                context={"status": "clean" if clean_commit else "unclean"},
+            )
+            self.repository._emit(
+                "persistence.state.closed",
+                message="Persistent state writer session closed.",
+                persistent_state_revision=self.state.state_revision,
+            )
 
     def _require_open(self) -> None:
         if self._closed:
@@ -1362,8 +1663,8 @@ def _validate_authenticated_binding(
         found = getattr(state, field_name)
         if found != expected_value:
             raise StateBindingError(
-                f"Bound Jak 3 AP state `{field_name}` mismatch: "
-                f"expected {found!r}, authenticated as {expected_value!r}."
+                f"Bound Jak 3 AP state `{field_name}` does not match the "
+                "authenticated slot."
             )
     state_contract = {
         "protocol_version": state.protocol_version,

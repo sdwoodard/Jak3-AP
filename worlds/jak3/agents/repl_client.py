@@ -2,11 +2,20 @@
 
 import asyncio
 from contextlib import suppress
+import hashlib
 import logging
+import re
 import struct
 
 
 logger = logging.getLogger("Client")
+
+
+def _form_summary(form: str) -> str:
+    match = re.match(r"\s*\(([^\s()]+)", form)
+    operation = match.group(1) if match else "unknown"
+    digest = hashlib.sha256(form.encode("utf-8", errors="replace")).hexdigest()[:12]
+    return f"operation={operation} bytes={len(form.encode('utf-8'))} sha256={digest}"
 
 
 class OpenGoalRepl:
@@ -23,15 +32,21 @@ class OpenGoalRepl:
 
     async def connect(self) -> None:
         if self.connected:
-            logger.debug("nREPL connection already open at %s:%d.", self.host, self.port)
+            logger.debug(
+                "nREPL connection already open at %s:%d.", self.host, self.port
+            )
             return
-        logger.debug("Opening OpenGOAL nREPL connection to %s:%d.", self.host, self.port)
+        logger.debug(
+            "Opening OpenGOAL nREPL connection to %s:%d.", self.host, self.port
+        )
         self.reader, self.writer = await asyncio.open_connection(self.host, self.port)
         try:
             welcome_data = await asyncio.wait_for(self.reader.read(1024), timeout=10.0)
         except asyncio.TimeoutError as exc:
             await self.close()
-            raise ConnectionError("Timed out waiting for the OpenGOAL nREPL greeting") from exc
+            raise ConnectionError(
+                "Timed out waiting for the OpenGOAL nREPL greeting"
+            ) from exc
         if not welcome_data:
             await self.close()
             raise ConnectionError("OpenGOAL nREPL closed before sending its greeting")
@@ -40,7 +55,9 @@ class OpenGoalRepl:
             await self.close()
             raise ConnectionError(f"Unexpected OpenGOAL nREPL greeting: {welcome!r}")
         logger.info("Connected to the Jak 3 OpenGOAL nREPL socket.")
-        logger.debug("nREPL greeting bytes=%d text=%r.", len(welcome_data), welcome[:500])
+        logger.debug(
+            "nREPL greeting bytes=%d text=%r.", len(welcome_data), welcome[:500]
+        )
 
     async def attach(self) -> None:
         response = await self.send_form("(lt)", timeout=30.0)
@@ -59,36 +76,63 @@ class OpenGoalRepl:
         ping_packet = struct.pack("<II", 0, 0)
         async with self.lock:
             started = asyncio.get_running_loop().time()
-            logger.debug("nREPL SEND timeout=%gs form=%s", timeout, form)
+            summary = _form_summary(form)
+            logger.debug("nREPL SEND timeout=%gs %s", timeout, summary)
             # OpenGOAL processes requests serially. The PING greeting therefore
             # acts as a completion barrier for the preceding evaluation.
             try:
                 self.writer.write(eval_packet + ping_packet)
                 await self.writer.drain()
-                response = await asyncio.wait_for(self.reader.read(4096), timeout=timeout)
+                response = await asyncio.wait_for(
+                    self.reader.read(4096), timeout=timeout
+                )
             except asyncio.TimeoutError as exc:
                 raise ConnectionError(
-                    f"OpenGOAL did not acknowledge this command within {timeout:g} seconds: {form}"
+                    f"OpenGOAL did not acknowledge this command within {timeout:g} seconds ({summary})"
                 ) from exc
             except (ConnectionError, OSError) as exc:
                 raise ConnectionError(
-                    f"OpenGOAL communication failed while sending {form}: {exc}"
+                    f"OpenGOAL communication failed while sending {summary}: {exc}"
                 ) from exc
             if not response:
-                raise ConnectionError(f"OpenGOAL closed the nREPL connection while sending {form}")
+                raise ConnectionError(
+                    f"OpenGOAL closed the nREPL connection while sending {summary}"
+                )
             decoded = response.decode(errors="replace")
             if "nREPL" not in decoded:
                 raise ConnectionError(
-                    f"Unexpected OpenGOAL completion-barrier response for {form}: {decoded!r}"
+                    f"Unexpected OpenGOAL completion-barrier response for {summary}"
                 )
             logger.debug(
-                "nREPL ACK elapsed=%.3fs bytes=%d response=%r form=%s",
+                "nREPL ACK elapsed=%.3fs bytes=%d %s",
                 asyncio.get_running_loop().time() - started,
                 len(response),
-                decoded[:500],
-                form,
+                summary,
             )
             return decoded
+
+    async def send_form_unacknowledged(self, form: str, timeout: float = 0.25) -> None:
+        """Queue a bounded diagnostic form without adding a response barrier."""
+
+        if not self.connected or self.writer is None:
+            raise ConnectionError("OpenGOAL nREPL is not connected")
+        encoded = form.encode("utf-8")
+        eval_packet = struct.pack("<II", len(encoded), 10) + encoded
+        async with self.lock:
+            summary = _form_summary(form)
+            logger.debug("nREPL SEND-NO-BARRIER timeout=%gs %s", timeout, summary)
+            try:
+                self.writer.write(eval_packet)
+                await asyncio.wait_for(self.writer.drain(), timeout=timeout)
+            except asyncio.TimeoutError as exc:
+                raise ConnectionError(
+                    "OpenGOAL did not accept a diagnostic acknowledgement within "
+                    f"{timeout:g} seconds ({summary})"
+                ) from exc
+            except (ConnectionError, OSError) as exc:
+                raise ConnectionError(
+                    f"OpenGOAL communication failed while queueing {summary}: {exc}"
+                ) from exc
 
     async def close(self) -> None:
         if self.writer:

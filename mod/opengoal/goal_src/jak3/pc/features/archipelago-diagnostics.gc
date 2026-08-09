@@ -1,0 +1,231 @@
+;; Jak 3 Archipelago bounded diagnostic producer.
+;; This module never writes a support file. Python drains these integer-only
+;; records from the existing temporary protocol snapshot channel.
+(in-package goal)
+
+(defconstant AP-DIAGNOSTIC-SCHEMA-VERSION 1)
+(defconstant AP-DIAGNOSTIC-MANIFEST-VERSION 1)
+(defconstant AP-DIAGNOSTIC-RING-CAPACITY 64)
+(defconstant AP-DIAG-EVENT-SOURCE-LOADED 100)
+(defconstant AP-DIAG-EVENT-CHANNEL-READY 101)
+(defconstant AP-DIAG-EVENT-RUNTIME-STATE 300)
+(defconstant AP-DIAG-EVENT-RUNTIME-SAFETY 301)
+
+(define-extern *ap-diagnostic-activation-generation* int)
+(define-perm *ap-diagnostic-activation-generation* int 0)
+
+(deftype ap-diagnostic-ring-state (basic)
+  ((head int32)
+   (count int32)
+   (next-sequence int32)
+   (dropped-total int32)
+   (source-loaded-pending int32)
+   (source-loaded-sequence int32)
+   (source-loaded-tick int32)
+   (channel-ready-pending int32)
+   (channel-ready-sequence int32)
+   (channel-ready-tick int32)
+   (last-connection int32)
+   (last-game-status int32)
+   (last-save-loaded int32)
+   (last-state-loaded int32)
+   (last-state-bound int32)
+   (last-safety int32)
+   (source-sequence int32 64)
+   (game-tick int32 64)
+   (severity int32 64)
+   (event-code int32 64)
+   (correlation-kind int32 64)
+   (correlation-value int32 64)
+   (result int32 64)
+   (error int32 64)
+   (arg0 int32 64)
+   (arg1 int32 64)
+   (arg2 int32 64)))
+
+(define *ap-diagnostic-ring* (new 'global 'ap-diagnostic-ring-state))
+
+(defun ap-diagnostic-game-tick ()
+  (if *display*
+      (the-as int (-> *display* real-clock frame-counter))
+      -1))
+
+(defun ap-diagnostic-ring-emit! ((event-code int)
+                                 (severity-correlation-kind int)
+                                 (correlation-value int)
+                                 (result int) (error int)
+                                 (arg0 int) (arg1 int) (arg2 int))
+  ;; Drop the oldest entry on overflow. Runtime and command behavior never
+  ;; branches on diagnostic capacity or results.
+  (let ((reserved (+ (-> *ap-diagnostic-ring* source-loaded-pending)
+                     (-> *ap-diagnostic-ring* channel-ready-pending))))
+    (when (= (-> *ap-diagnostic-ring* count)
+             (- AP-DIAGNOSTIC-RING-CAPACITY reserved))
+    (set! (-> *ap-diagnostic-ring* head)
+          (mod (+ (-> *ap-diagnostic-ring* head) 1)
+               AP-DIAGNOSTIC-RING-CAPACITY))
+    (-! (-> *ap-diagnostic-ring* count) 1)
+      (+! (-> *ap-diagnostic-ring* dropped-total) 1)))
+  (let ((severity (logand severity-correlation-kind 15))
+        (correlation-kind
+          (the-as int (/ (the-as int severity-correlation-kind) 16)))
+        (index
+          (mod (+ (-> *ap-diagnostic-ring* head)
+                  (-> *ap-diagnostic-ring* count))
+               AP-DIAGNOSTIC-RING-CAPACITY))
+        (sequence (-> *ap-diagnostic-ring* next-sequence)))
+    (set! (-> *ap-diagnostic-ring* source-sequence index) sequence)
+    (set! (-> *ap-diagnostic-ring* game-tick index) (ap-diagnostic-game-tick))
+    (set! (-> *ap-diagnostic-ring* severity index) severity)
+    (set! (-> *ap-diagnostic-ring* event-code index) event-code)
+    (set! (-> *ap-diagnostic-ring* correlation-kind index) correlation-kind)
+    (set! (-> *ap-diagnostic-ring* correlation-value index) correlation-value)
+    (set! (-> *ap-diagnostic-ring* result index) result)
+    (set! (-> *ap-diagnostic-ring* error index) error)
+    (set! (-> *ap-diagnostic-ring* arg0 index) arg0)
+    (set! (-> *ap-diagnostic-ring* arg1 index) arg1)
+    (set! (-> *ap-diagnostic-ring* arg2 index) arg2)
+    (+! (-> *ap-diagnostic-ring* next-sequence) 1)
+    (+! (-> *ap-diagnostic-ring* count) 1))
+  0)
+
+(defun ap-diagnostic-observe-transitions! ()
+  (let ((connection (-> *ap-runtime* connection-ready))
+        (game-status (-> *ap-runtime* game-status))
+        (save-loaded (-> *ap-runtime* save-loaded))
+        (state-loaded (-> *ap-runtime* ap-state-loaded))
+        (state-bound (-> *ap-runtime* ap-state-bound))
+        (safety (+ (-> *ap-runtime* safe-permanent)
+                   (* (-> *ap-runtime* safe-consumable) 2)
+                   (* (-> *ap-runtime* safe-mission) 4))))
+    (when (or (!= connection (-> *ap-diagnostic-ring* last-connection))
+              (!= game-status (-> *ap-diagnostic-ring* last-game-status))
+              (!= save-loaded (-> *ap-diagnostic-ring* last-save-loaded))
+              (!= state-loaded (-> *ap-diagnostic-ring* last-state-loaded))
+              (!= state-bound (-> *ap-diagnostic-ring* last-state-bound)))
+      (ap-diagnostic-emit!
+        AP-DIAG-EVENT-RUNTIME-STATE AP-DIAG-SEVERITY-INFO
+        0 0 AP-RESULT-NONE AP-ERROR-NONE
+        connection game-status
+        (+ save-loaded (* state-loaded 2) (* state-bound 4)))
+      (set! (-> *ap-diagnostic-ring* last-connection) connection)
+      (set! (-> *ap-diagnostic-ring* last-game-status) game-status)
+      (set! (-> *ap-diagnostic-ring* last-save-loaded) save-loaded)
+      (set! (-> *ap-diagnostic-ring* last-state-loaded) state-loaded)
+      (set! (-> *ap-diagnostic-ring* last-state-bound) state-bound))
+    (when (!= safety (-> *ap-diagnostic-ring* last-safety))
+      (ap-diagnostic-emit!
+        AP-DIAG-EVENT-RUNTIME-SAFETY AP-DIAG-SEVERITY-INFO
+        0 0 AP-RESULT-NONE AP-ERROR-NONE safety 0 0)
+      (set! (-> *ap-diagnostic-ring* last-safety) safety)))
+  0)
+
+(defun ap-diagnostic-ring-export! ((file file-stream))
+  (ap-diagnostic-observe-transitions!)
+  (format file "diagnostic_schema_version ~D~%" AP-DIAGNOSTIC-SCHEMA-VERSION)
+  (format file "diagnostic_manifest_version ~D~%"
+          AP-DIAGNOSTIC-MANIFEST-VERSION)
+  (format file "diagnostic_activation_generation ~D~%"
+          *ap-diagnostic-activation-generation*)
+  (format file "diagnostic_dropped_count ~D~%"
+          (-> *ap-diagnostic-ring* dropped-total))
+  (format file "diagnostic_next_sequence ~D~%"
+          (-> *ap-diagnostic-ring* next-sequence))
+  (format file "diagnostic_event_count ~D~%"
+          (+ (-> *ap-diagnostic-ring* count)
+             (-> *ap-diagnostic-ring* source-loaded-pending)
+             (-> *ap-diagnostic-ring* channel-ready-pending)))
+  (let ((output-offset 0))
+    ;; Readiness records are sticky until Python acknowledges them. A burst of
+    ;; later runtime events can never evict the only proof that this source and
+    ;; channel initialized.
+    (when (= (-> *ap-diagnostic-ring* source-loaded-pending) 1)
+      (format file "diagnostic_event_~D ~D ~D ~D ~D ~D"
+        output-offset
+        (-> *ap-diagnostic-ring* source-loaded-sequence)
+        (-> *ap-diagnostic-ring* source-loaded-tick)
+        AP-DIAG-SEVERITY-INFO AP-DIAG-EVENT-SOURCE-LOADED 0)
+      (format file " ~D ~D ~D ~D ~D ~D~%"
+        0 AP-RESULT-OK AP-ERROR-NONE
+        AP-DIAGNOSTIC-SCHEMA-VERSION 0 0)
+      (+! output-offset 1))
+    (when (= (-> *ap-diagnostic-ring* channel-ready-pending) 1)
+      (format file "diagnostic_event_~D ~D ~D ~D ~D ~D"
+        output-offset
+        (-> *ap-diagnostic-ring* channel-ready-sequence)
+        (-> *ap-diagnostic-ring* channel-ready-tick)
+        AP-DIAG-SEVERITY-INFO AP-DIAG-EVENT-CHANNEL-READY 0)
+      (format file " ~D ~D ~D ~D ~D ~D~%"
+        0 AP-RESULT-OK AP-ERROR-NONE
+        AP-DIAGNOSTIC-RING-CAPACITY 0 0)
+      (+! output-offset 1))
+    (dotimes (offset (-> *ap-diagnostic-ring* count))
+      (let ((index
+              (mod (+ (-> *ap-diagnostic-ring* head) offset)
+                   AP-DIAGNOSTIC-RING-CAPACITY)))
+      ;; Keep each real format call within OpenGOAL's eight-argument ABI.
+      (format file "diagnostic_event_~D ~D ~D ~D ~D ~D"
+        (+ output-offset offset)
+        (-> *ap-diagnostic-ring* source-sequence index)
+        (-> *ap-diagnostic-ring* game-tick index)
+        (-> *ap-diagnostic-ring* severity index)
+        (-> *ap-diagnostic-ring* event-code index)
+        (-> *ap-diagnostic-ring* correlation-kind index))
+      (format file " ~D ~D ~D ~D ~D ~D~%"
+        (-> *ap-diagnostic-ring* correlation-value index)
+        (-> *ap-diagnostic-ring* result index)
+        (-> *ap-diagnostic-ring* error index)
+        (-> *ap-diagnostic-ring* arg0 index)
+        (-> *ap-diagnostic-ring* arg1 index)
+        (-> *ap-diagnostic-ring* arg2 index)))))
+  0)
+
+(defun ap-diagnostic-ring-ack! ((activation-generation int)
+                                (source-sequence int))
+  ;; A delayed acknowledgement from a previous module activation must never
+  ;; drain the new producer's reset sequence space. Within one activation,
+  ;; acknowledging the same sequence twice remains intentionally harmless.
+  (when (= activation-generation *ap-diagnostic-activation-generation*)
+    (when (and (= (-> *ap-diagnostic-ring* source-loaded-pending) 1)
+               (<= (-> *ap-diagnostic-ring* source-loaded-sequence)
+                   source-sequence))
+      (set! (-> *ap-diagnostic-ring* source-loaded-pending) 0))
+    (when (and (= (-> *ap-diagnostic-ring* channel-ready-pending) 1)
+               (<= (-> *ap-diagnostic-ring* channel-ready-sequence)
+                   source-sequence))
+      (set! (-> *ap-diagnostic-ring* channel-ready-pending) 0))
+    (while (and (> (-> *ap-diagnostic-ring* count) 0)
+                (<= (-> *ap-diagnostic-ring* source-sequence
+                        (-> *ap-diagnostic-ring* head))
+                    source-sequence))
+      (set! (-> *ap-diagnostic-ring* head)
+            (mod (+ (-> *ap-diagnostic-ring* head) 1)
+                 AP-DIAGNOSTIC-RING-CAPACITY))
+      (-! (-> *ap-diagnostic-ring* count) 1)))
+  source-sequence)
+
+;; Initial values ensure the first observation is retained even when every
+;; runtime flag starts at zero.
+(set! (-> *ap-diagnostic-ring* last-connection) -1)
+(set! (-> *ap-diagnostic-ring* last-game-status) -1)
+(set! (-> *ap-diagnostic-ring* last-save-loaded) -1)
+(set! (-> *ap-diagnostic-ring* last-state-loaded) -1)
+(set! (-> *ap-diagnostic-ring* last-state-bound) -1)
+(set! (-> *ap-diagnostic-ring* last-safety) -1)
+(set! (-> *ap-diagnostic-ring* source-loaded-pending) 1)
+(set! (-> *ap-diagnostic-ring* source-loaded-sequence)
+      (-> *ap-diagnostic-ring* next-sequence))
+(set! (-> *ap-diagnostic-ring* source-loaded-tick) (ap-diagnostic-game-tick))
+(+! (-> *ap-diagnostic-ring* next-sequence) 1)
+(set! (-> *ap-diagnostic-ring* channel-ready-pending) 1)
+(set! (-> *ap-diagnostic-ring* channel-ready-sequence)
+      (-> *ap-diagnostic-ring* next-sequence))
+(set! (-> *ap-diagnostic-ring* channel-ready-tick) (ap-diagnostic-game-tick))
+(+! (-> *ap-diagnostic-ring* next-sequence) 1)
+(set! *ap3-diagnostic-emit-hook* ap-diagnostic-ring-emit!)
+(set! *ap3-diagnostic-export-hook* ap-diagnostic-ring-export!)
+(set! *ap3-diagnostic-ack-hook* ap-diagnostic-ring-ack!)
+(+! *ap-diagnostic-activation-generation* 1)
+(ap-export-state!)
+(format #t "[JAK3-AP] diagnostics initialized schema=~D capacity=~D~%"
+        AP-DIAGNOSTIC-SCHEMA-VERSION AP-DIAGNOSTIC-RING-CAPACITY)

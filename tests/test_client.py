@@ -5,8 +5,11 @@ from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
+from CommonClient import CommonContext
+
+from worlds.jak3.agents.diagnostics import BundleExportResult
 from worlds.jak3.agents.protocol import (
     BridgeSnapshot,
     CommandReceipt,
@@ -17,13 +20,22 @@ from worlds.jak3.agents.protocol import (
     ProtocolVersionMismatch,
 )
 from worlds.jak3.client import (
+    BACKGROUND_TASKS,
+    Jak3CommandProcessor,
     Jak3Context,
     _goal_path_literal,
     _goal_string_literal,
     _loaded_bridge_matches_current_contract,
+    _loaded_diagnostics_matches_current_contract,
 )
 from worlds.jak3.option_resolution import SUPPORTED_FIRST_RELEASE_OPTIONS
-from worlds.jak3.persistence import AuthenticatedSlot, StateRepository
+from worlds.jak3.persistence import (
+    AuthenticatedSlot,
+    NativeSaveDescriptor,
+    NativeSaveEligibility,
+    StateError,
+    StateRepository,
+)
 from worlds.jak3.slot_data import build_slot_data
 
 
@@ -92,6 +104,48 @@ class ClientProtocolTest(unittest.TestCase):
     def test_client_requests_no_received_items(self) -> None:
         self.assertEqual(Jak3Context.items_handling, 0)
 
+    def test_server_rejection_disconnect_and_nrepl_timeout_are_distinct(self) -> None:
+        emitted: list[str] = []
+        context = object.__new__(Jak3Context)
+        context.diagnostics = SimpleNamespace(
+            emit=lambda event_name, **_fields: emitted.append(event_name)
+        )
+        context.server = object()
+        with patch.object(
+            CommonContext, "connection_closed", new_callable=AsyncMock
+        ) as parent_close:
+            asyncio.run(context.connection_closed())
+            parent_close.assert_awaited_once()
+        with self.assertRaisesRegex(Exception, "Invalid Slot"):
+            context.event_invalid_slot()
+
+        class TimeoutRepl:
+            writer = object()
+            connected = True
+
+            async def close(self) -> None:
+                self.writer = None
+                self.connected = False
+
+        context.repl = TimeoutRepl()
+        context.state_session = None
+        context.protocol = None
+        context.bridge_ready = True
+        context.source_loaded = True
+        context.game_attached = True
+        context.last_bridge_error = ""
+        context._communication_lost = False
+        asyncio.run(
+            context.mark_bridge_unavailable(
+                ConnectionError("Timed out waiting for nREPL")
+            )
+        )
+        self.assertIn("server.disconnected", emitted)
+        self.assertIn("server.rejected", emitted)
+        self.assertIn("nrepl.timeout", emitted)
+        self.assertIn("nrepl.closed", emitted)
+        self.assertIn("runtime.communication.lost", emitted)
+
     def test_connected_uses_authenticated_seed_team_slot_and_canonical_name(
         self,
     ) -> None:
@@ -153,6 +207,17 @@ class ClientProtocolTest(unittest.TestCase):
     def test_loaded_bridge_probe_requires_the_complete_contract(self) -> None:
         snapshot = BridgeSnapshot()
         self.assertTrue(_loaded_bridge_matches_current_contract(snapshot))
+        self.assertTrue(_loaded_diagnostics_matches_current_contract(snapshot))
+        diagnostic_mismatch = replace(snapshot, diagnostic_schema_version=None)
+        self.assertTrue(_loaded_bridge_matches_current_contract(diagnostic_mismatch))
+        self.assertFalse(
+            _loaded_diagnostics_matches_current_contract(diagnostic_mismatch)
+        )
+        self.assertFalse(
+            _loaded_diagnostics_matches_current_contract(
+                replace(snapshot, diagnostic_activation_generation=None)
+            )
+        )
         self.assertFalse(
             _loaded_bridge_matches_current_contract(
                 replace(snapshot, item_table_hash="0" * 64)
@@ -169,6 +234,108 @@ class ClientProtocolTest(unittest.TestCase):
             )
         )
 
+    def test_steady_heartbeats_do_not_emit_info_noise(self) -> None:
+        emitted: list[str] = []
+        context = object.__new__(Jak3Context)
+        context.diagnostics = SimpleNamespace(
+            emit=lambda event_name, **_fields: emitted.append(event_name)
+        )
+        snapshot = BridgeSnapshot(snapshot_revision=1)
+        for revision in range(1, 10_001):
+            context.observe_runtime_diagnostics(
+                replace(snapshot, snapshot_revision=revision)
+            )
+        self.assertEqual(emitted, ["runtime.state.changed", "runtime.safety.changed"])
+
+    def test_deferred_binding_condition_emits_only_on_transition(self) -> None:
+        emitted: list[str] = []
+        context = self.connected_context()
+        context.diagnostics = SimpleNamespace(
+            emit=lambda event_name, **_fields: emitted.append(event_name)
+        )
+        context._last_native_descriptor = None
+        context._binding_deferred_projection = None
+        context._binding_rejection_projection = None
+        snapshot = BridgeSnapshot(
+            save_loaded=True,
+            native_save_slot=0,
+            native_save_identity=LIVE_SAVE_ID,
+        )
+
+        for revision in range(1, 10_001):
+            context.sync_persistence(replace(snapshot, snapshot_revision=revision))
+
+        self.assertEqual(emitted, ["binding.deferred"])
+
+    def test_client_persistence_sink_suppresses_identical_retry_noise(self) -> None:
+        emitted: list[str] = []
+        context = object.__new__(Jak3Context)
+        context.diagnostics = SimpleNamespace(
+            event_sink=lambda event_name, **_fields: emitted.append(event_name)
+        )
+        context._persistence_event_projections = {}
+        fields = {
+            "persistent_state_revision": 4,
+            "context": {"path_hash": "safe-hash", "status": "acquired"},
+        }
+
+        context._persistence_event_sink("persistence.writer_lock.acquired", **fields)
+        context._persistence_event_sink("persistence.writer_lock.acquired", **fields)
+        context._persistence_event_sink("persistence.state.loaded")
+        context._persistence_event_sink("persistence.writer_lock.acquired", **fields)
+
+        self.assertEqual(
+            emitted,
+            [
+                "persistence.writer_lock.acquired",
+                "persistence.state.loaded",
+                "persistence.writer_lock.acquired",
+            ],
+        )
+
+    def test_closed_persistence_summary_retains_revision_and_clean_state(self) -> None:
+        with TemporaryDirectory() as directory:
+            context = self.connected_context()
+            context.diagnostics = SimpleNamespace(emit=lambda *_args, **_fields: None)
+            repository = StateRepository(Path(directory))
+            context.state_session = repository.open(
+                NativeSaveDescriptor(
+                    slot=0,
+                    identity=LIVE_SAVE_ID,
+                    eligibility=NativeSaveEligibility.FRESH_UNPROGRESSED,
+                )
+            )
+
+            context.close_persistence(clean=True)
+            summary = context._diagnostic_persistence()
+
+            self.assertFalse(summary["open"])
+            self.assertEqual(summary["binding_status"], "closed cleanly")
+            self.assertIsInstance(summary["revision"], int)
+            self.assertTrue(summary["last_clean_shutdown"])
+
+    def test_diagnostics_export_command_reports_partial_bundle(self) -> None:
+        output: list[str] = []
+        processor = object.__new__(Jak3CommandProcessor)
+        processor.ctx = SimpleNamespace(
+            log_diagnostic_snapshot=lambda _reason: True,
+            diagnostics=SimpleNamespace(
+                export_bundle=lambda: BundleExportResult(
+                    "partial", Path("Jak3Support_test.zip"), ("runtime.json",)
+                )
+            ),
+        )
+        processor.output = output.append
+
+        async def run_export() -> None:
+            processor._cmd_diagnostics("export")
+            await asyncio.gather(*tuple(BACKGROUND_TASKS))
+
+        asyncio.run(run_export())
+        self.assertIn("started in the background", output[0])
+        self.assertIn("Diagnostic export partial", output[1])
+        self.assertIn("runtime.json", output[2])
+
     def test_packaged_source_update_survives_failed_client_and_forces_reload(
         self,
     ) -> None:
@@ -178,12 +345,15 @@ class ClientProtocolTest(unittest.TestCase):
                 *,
                 fail_reload: bool = False,
                 activates_reload: bool = True,
+                activates_diagnostics: bool = True,
                 initial_generation: int = 10,
             ) -> None:
                 self.forms: list[str] = []
                 self.fail_reload = fail_reload
                 self.activates_reload = activates_reload
+                self.activates_diagnostics = activates_diagnostics
                 self.activation_generation = initial_generation
+                self.diagnostic_activation_generation = initial_generation
 
             async def connect(self) -> None:
                 return None
@@ -195,15 +365,21 @@ class ClientProtocolTest(unittest.TestCase):
                 self.forms.append(form)
                 if self.fail_reload and form.startswith('(ml "goal_src/jak3'):
                     raise ConnectionError("simulated interrupted source reload")
-                if self.activates_reload and form.startswith('(ml "goal_src/jak3'):
+                if self.activates_reload and form == (
+                    '(ml "goal_src/jak3/pc/features/archipelago.gc")'
+                ):
                     self.activation_generation += 1
+                if self.activates_diagnostics and form == (
+                    '(ml "goal_src/jak3/pc/features/archipelago-diagnostics.gc")'
+                ):
+                    self.diagnostic_activation_generation += 1
                 return "nREPL"
 
             async def close(self) -> None:
                 return None
 
         class CompatibleProtocol:
-            def __init__(self, *args: object) -> None:
+            def __init__(self, *args: object, **kwargs: object) -> None:
                 self.last_snapshot = None
                 self.repl = args[0]
 
@@ -217,6 +393,9 @@ class ClientProtocolTest(unittest.TestCase):
                 return BridgeSnapshot(
                     connection_ready=True,
                     bridge_activation_generation=self.repl.activation_generation,
+                    diagnostic_activation_generation=(
+                        self.repl.diagnostic_activation_generation
+                    ),
                 )
 
         with TemporaryDirectory() as directory:
@@ -257,7 +436,10 @@ class ClientProtocolTest(unittest.TestCase):
                 if active_repl.activation_generation == 0:
                     return None
                 return BridgeSnapshot(
-                    bridge_activation_generation=active_repl.activation_generation
+                    bridge_activation_generation=active_repl.activation_generation,
+                    diagnostic_activation_generation=(
+                        active_repl.diagnostic_activation_generation
+                    ),
                 )
 
             with (
@@ -279,9 +461,19 @@ class ClientProtocolTest(unittest.TestCase):
                 self.assertTrue(reload_marker.is_file())
                 self.assertTrue(not_activated.bridge_source_reload_required)
                 self.assertIn(
-                    "without publishing a new compatible bridge activation generation",
+                    "without publishing new compatible bridge module activation generations",
                     not_activated.last_bridge_error,
                 )
+
+                diagnostic_not_activated = make_context(
+                    FakeRepl(activates_diagnostics=False)
+                )
+                connected = asyncio.run(
+                    diagnostic_not_activated.connect_repl(report_errors=False)
+                )
+                self.assertFalse(connected)
+                self.assertTrue(reload_marker.is_file())
+                self.assertTrue(diagnostic_not_activated.bridge_source_reload_required)
 
                 context = make_context(FakeRepl())
                 connected = asyncio.run(context.connect_repl(report_errors=False))
@@ -305,6 +497,104 @@ class ClientProtocolTest(unittest.TestCase):
                 )
                 self.assertFalse(first_install.bridge_source_reload_required)
                 self.assertFalse(reload_marker.exists())
+
+    def test_compatible_bridge_resets_goal_source_only_for_a_restarted_game(
+        self,
+    ) -> None:
+        class FakeRepl:
+            def __init__(self) -> None:
+                self.forms: list[str] = []
+                self.connected = True
+
+            async def connect(self) -> None:
+                return None
+
+            async def attach(self) -> None:
+                return None
+
+            async def send_form(self, form: str, timeout: float = 10.0) -> str:
+                self.forms.append(form)
+                return "nREPL"
+
+            async def close(self) -> None:
+                return None
+
+        class CompatibleProtocol:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                self.last_snapshot = None
+
+            def set_save_identity_authorized(self, authorized: bool) -> None:
+                return None
+
+            def set_ap_state_status(self, *, loaded: bool, bound: bool) -> None:
+                return None
+
+            async def initialize(self, status: object) -> BridgeSnapshot:
+                return BridgeSnapshot(connection_ready=True, session_nonce="new-game")
+
+        def connect(
+            candidate_nonce: str | None, *, diagnostics_ready: bool = True
+        ) -> tuple[Jak3Context, list[str]]:
+            resets: list[str] = []
+            context = object.__new__(Jak3Context)
+            context.repl = FakeRepl()
+            context.state_path = Path(directory) / "restart-bridge.tmp"
+            context.diagnostics = SimpleNamespace(
+                session_id="goal-generation-test",
+                note_opengoal=lambda source, message: None,
+                reset_goal_event_source=lambda: resets.append("reset"),
+                emit=lambda event_name, **fields: None,
+            )
+            context.authenticated_slot = None
+            context.server = object()
+            context.auth = "slot"
+            context._stopping = False
+            context.protocol = None
+            context.state_session = None
+            context.source_loaded = False
+            context.bridge_ready = False
+            context.compatibility_error = False
+            context.last_bridge_error = ""
+            context.game_attached = False
+            context.bridge_source_reload_required = False
+            context.bridge_source_reload_marker = None
+            context.bridge_source_set_hash = "current"
+            context._goal_game_session_nonce = "old-game"
+            context._communication_lost = False
+            context.sync_persistence = lambda snapshot: None
+            candidate = BridgeSnapshot(
+                session_nonce=candidate_nonce,
+                diagnostic_schema_version=1 if diagnostics_ready else None,
+                diagnostic_manifest_version=1 if diagnostics_ready else None,
+            )
+            with (
+                patch("worlds.jak3.client.read_snapshot", return_value=candidate),
+                patch("worlds.jak3.client.BridgeProtocol", CompatibleProtocol),
+            ):
+                self.assertTrue(asyncio.run(context.connect_repl(report_errors=False)))
+            return context, resets
+
+        with TemporaryDirectory() as directory:
+            restarted, restarted_resets = connect(None)
+            transient, transient_resets = connect("old-game")
+            diagnostic_repair, diagnostic_resets = connect(
+                "old-game", diagnostics_ready=False
+            )
+
+        self.assertEqual(restarted_resets, ["reset"])
+        self.assertEqual(restarted._goal_game_session_nonce, "new-game")
+        self.assertEqual(transient_resets, [])
+        self.assertEqual(transient._goal_game_session_nonce, "new-game")
+        self.assertFalse(any(form.startswith('(ml "') for form in restarted.repl.forms))
+        self.assertEqual(diagnostic_resets, [])
+        self.assertIn(
+            '(ml "goal_src/jak3/pc/features/archipelago-diagnostics.gc")',
+            diagnostic_repair.repl.forms,
+        )
+        self.assertNotIn(
+            '(ml "goal_src/jak3/pc/features/archipelago.gc")',
+            diagnostic_repair.repl.forms,
+        )
 
     def test_incompatible_connected_contract_refuses_binding_read_only(self) -> None:
         context = self.connected_context()
@@ -668,6 +958,36 @@ class ClientProtocolTest(unittest.TestCase):
         self.assertIn('"-"', new_game_branch)
         self.assertNotIn("*ap3-native-save-identity*", new_game_branch)
 
+    def test_goal_native_restore_records_io_outcomes_at_state_boundaries(self) -> None:
+        source = BRIDGE_SOURCE.read_text(encoding="utf-8")
+        load_wrapper = source.split("(defun ap3-load-game-wrapper", 1)[1].split(
+            "(defbehavior ap3-auto-save-restore-code", 1
+        )[0]
+        restore_wrapper = source.split("(defbehavior ap3-auto-save-restore-code", 1)[
+            1
+        ].split("(defun ap3-game-info-initialize-wrapper", 1)[0]
+        done_wrapper = source.split("(defbehavior ap3-auto-save-done-code", 1)[1].split(
+            "(defbehavior ap3-auto-save-error-code", 1
+        )[0]
+        error_wrapper = source.split("(defbehavior ap3-auto-save-error-code", 1)[
+            1
+        ].split("(defun ap3-set-contract-versions!", 1)[0]
+
+        self.assertNotIn("AP-DIAG-EVENT-SAVE-STARTED", load_wrapper)
+        self.assertNotIn("AP-DIAG-EVENT-SAVE-SUCCEEDED", load_wrapper)
+        self.assertIn("AP-DIAG-NATIVE-OP-LOAD", restore_wrapper)
+        self.assertLess(
+            restore_wrapper.index("ap3-diagnostic-stage-native-operation!"),
+            restore_wrapper.index("*ap3-native-auto-save-restore-code*"),
+        )
+        self.assertEqual(done_wrapper.count("AP-DIAG-EVENT-SAVE-SUCCEEDED"), 1)
+        self.assertIn("*ap3-diagnostic-native-operation-kind*", done_wrapper)
+        self.assertIn("AP-DIAG-EVENT-SAVE-FAILED", error_wrapper)
+        self.assertLess(
+            error_wrapper.index("AP-DIAG-EVENT-SAVE-FAILED"),
+            error_wrapper.index("*ap3-pending-save-valid*"),
+        )
+
     def test_goal_uuid_validation_checks_length_before_reading_bytes(self) -> None:
         source = BRIDGE_SOURCE.read_text(encoding="utf-8")
         validator = source.split("(defun ap3-valid-uuid-shape?", 1)[1].split(
@@ -844,7 +1164,7 @@ class ClientProtocolTest(unittest.TestCase):
                 self.closed = True
 
         class IncompatibleProtocol:
-            def __init__(self, *args: object) -> None:
+            def __init__(self, *args: object, **kwargs: object) -> None:
                 self.last_snapshot = incompatible_snapshot
 
             def set_save_identity_authorized(self, authorized: bool) -> None:
@@ -871,7 +1191,9 @@ class ClientProtocolTest(unittest.TestCase):
             context._stopping = False
             context.protocol = None
             context.state_session = SimpleNamespace(
-                close=lambda *, clean: closed_clean.append(clean)
+                close=lambda *, clean: closed_clean.append(clean),
+                native_save=SimpleNamespace(identity=LIVE_SAVE_ID),
+                state=SimpleNamespace(state_revision=1),
             )
             context.source_loaded = False
             context.bridge_ready = True
@@ -985,6 +1307,66 @@ class ClientProtocolTest(unittest.TestCase):
             self.assertIsNone(context.state_session)
             self.assertEqual("refused read-only", context.persistence_binding_status)
             self.assertIn("slot 0", context.persistence_read_only_failure)
+
+    def test_binding_open_switch_and_close_events_follow_live_sessions(self) -> None:
+        with TemporaryDirectory() as directory:
+            emitted: list[str] = []
+            context = self.connected_context()
+            context.diagnostics = SimpleNamespace(
+                emit=lambda event_name, **_fields: emitted.append(event_name)
+            )
+            context.authenticated_slot = self.authenticated_slot()
+            context.state_repository = StateRepository(Path(directory))
+            for identity in (LIVE_SAVE_ID, SWITCHED_SAVE_ID):
+                context.state_repository.authorize_save_identity(
+                    identity, context.authenticated_slot
+                )
+            context.protocol = SimpleNamespace(
+                set_ap_state_status=lambda **_status: None
+            )
+            first = BridgeSnapshot(
+                save_loaded=True,
+                native_save_slot=0,
+                native_save_identity=LIVE_SAVE_ID,
+                native_save_eligibility=SnapshotSaveEligibility.FRESH_UNPROGRESSED,
+            )
+            context.sync_persistence(first)
+            context.sync_persistence(
+                replace(
+                    first,
+                    native_save_slot=1,
+                    native_save_identity=SWITCHED_SAVE_ID,
+                )
+            )
+            context.close_persistence(clean=True)
+            self.assertIn("binding.opened", emitted)
+            self.assertIn("binding.switched", emitted)
+            self.assertEqual(emitted.count("binding.closed"), 2)
+
+    def test_failed_clean_close_is_reported_as_unclean(self) -> None:
+        emitted: list[tuple[str, dict[str, object]]] = []
+        context = self.connected_context()
+        context.diagnostics = SimpleNamespace(
+            emit=lambda event_name, **fields: emitted.append((event_name, fields))
+        )
+
+        def fail_close(*, clean: bool) -> None:
+            self.assertTrue(clean)
+            raise StateError("synthetic clean-close failure")
+
+        context.state_session = SimpleNamespace(
+            native_save=SimpleNamespace(identity=LIVE_SAVE_ID),
+            state=SimpleNamespace(state_revision=7),
+            close=fail_close,
+        )
+        context.protocol = SimpleNamespace(set_ap_state_status=lambda **_status: None)
+
+        context.close_persistence(clean=True)
+
+        closed = next(fields for name, fields in emitted if name == "binding.closed")
+        self.assertEqual(closed["persistent_state_revision"], 7)
+        self.assertEqual(closed["context"]["binding_state"], "unclean")
+        self.assertEqual(context.persistence_binding_status, "refused read-only")
 
     def test_crashed_proposal_cannot_first_bind_after_ap_slot_switch(self) -> None:
         with TemporaryDirectory() as directory:

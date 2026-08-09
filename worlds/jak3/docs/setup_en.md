@@ -43,7 +43,9 @@ rooms or slots is refused read-only.
 
 Useful recovery commands in Jak 3 Client are:
 
-- `/diagnostics` — record current handshake state and show both log paths.
+- `/diagnostics` — record current handshake state and show all diagnostic paths.
+- `/diagnostics export` — create a local sanitized support ZIP without blocking
+  the game heartbeat; the client reports whether it is complete or partial.
 - `/repl status` — show transport, source, versions, session, and heartbeat.
 - `/repl connect` — retry compilation and bridge attachment.
 
@@ -62,14 +64,16 @@ fresh-save, restore, copy, quarantine, and concurrent-writer policy.
 
 ## Troubleshooting
 
-Every launch creates two matching files in Archipelago's `logs` directory:
-`Jak3Client_<session-id>.txt` and `Jak3OpenGOAL_<session-id>.txt`. Close old
-Jak 3/client/compiler processes before reproducing an issue, run `/diagnostics`
-afterward, and provide both files with the same session ID. The client log
-contains AP connection and handshake state; the OpenGOAL log combines
-the verbose game and compiler output with in-game `[JAK3-AP]` events. The logs
-do not intentionally include the room password, but may contain slot/player
-names, room seed, server address, and local paths.
+Every launch creates two matching human-readable logs and one versioned event
+timeline in Archipelago's `logs` directory: `Jak3Client_<session-id>.txt`,
+`Jak3OpenGOAL_<session-id>.txt`, and `Jak3Events_<session-id>.jsonl`. Close old
+Jak 3/client/compiler processes before reproducing an issue, run
+`/diagnostics export` afterward, and provide the resulting `Jak3Support_*.zip`.
+The archive validates and sanitizes the timeline, both logs, runtime and
+persistence summaries, recent harmless-command results, capture gaps, and
+checksums. It never includes a native save or AP sidecar and is never uploaded
+automatically. A `partial` export is still useful; its README lists what was
+unavailable.
 
 - If automatic discovery fails, set `JAK3_OPENGOAL_BIN` to the versioned
   OpenGOAL binary directory and `JAK3_OPENGOAL_PROJECT` to the active Jak 3

@@ -1,6 +1,6 @@
 # Milestone status
 
-Snapshot date: **2026-08-07**
+Snapshot date: **2026-08-09**
 
 The revised roadmap in
 [`Project-Milestones-Revised.md`](Project-Milestones-Revised.md) is the status
@@ -14,6 +14,8 @@ later gameplay work is not credited early.
 | 5 — Activate the exact default static APWorld pool | **Complete** | The active APWorld consumes the Milestone 4 registry and generates exactly 147 network locations, 26 progression instances, 28 useful instances, 93 weighted filler instances, zero traps, 65 hidden completion events, and one code-less Victory event. |
 | 6 — Add atomic persistent AP state and seed/save binding | **Complete** | Accepted Python-writer ADR, schema-1 atomic sidecar/binding engine, slot-data version 2 authenticated seed identity, recovery/quarantine/lock tests, and explicit Milestone 7 live-save deferral. |
 | 7 — Add a runtime state model and idempotent command transport | **Implementation complete; live gate pending** | Protocol 3/game integration 2 snapshot, native tag 900 identity wrappers, live safety observation, sidecar switching, game-session nonces, and eight duplicate-safe harmless receipts are implemented and automated. The required real save/copy/both-restart matrix is not yet recorded, so this row is not marked complete. |
+| 7.1 — Structured diagnostics and support bundles | **Complete** | The paired logs remain; diagnostic schema 1 JSONL, the stable event registry, 64-record GOAL ring/drain, manifest-driven bridge lifecycle/hash, persistence/protocol instrumentation, exception capture, bounded retention, allowlist redaction, and local support-bundle export are implemented and automated. The cross-component forensic test drives the real launcher, persistence, protocol, and reconnect instrumentation to reconstruct startup/capture, recovery/rejection, harmless command replay/timeout/failure, and reconnect without native-save or sidecar contents. |
+| 7.2 — Native-save acceptance matrix | **Pending** | Deliberately not performed by Milestone 7.1. Milestone 7 remains gated on the real save/copy/both-process-restart scenarios. |
 | 8–26 | Not started | Deliberately outside this change. |
 
 ## Milestone 4 completion evidence
@@ -191,6 +193,90 @@ later gameplay work is not credited early.
 - The 30-entry packaged APWorld passed all 195 tests from the disposable
   Archipelago environment with bytecode/cache writes disabled; the final
   artifact hash is recorded in the verification matrix.
+
+## Milestone 7.1 completion evidence
+
+- `diagnostics.py` is the sole support-file writer and preserves the paired
+  client/OpenGOAL text logs while adding one schema-1 JSONL timeline.
+- The immutable registry documents stable names, severities, GOAL codes, and
+  allowlists. Concurrent-source ordering, UTF-8/UTC serialization, ANSI and
+  multiline normalization, malformed-event isolation, exception deduplication,
+  rotation/retention, and write failure are covered by focused tests.
+- `archipelago-diagnostics.gc` owns only a 64-record integer ring, transition
+  observation, temporary-snapshot export, and idempotent acknowledgement.
+  Source/channel readiness remains reserved until acknowledged, and Python
+  preserves GOAL source sequences with explicit reload generations.
+  Control retains all Protocol 3, save, binding, and safety decisions and no
+  longer opens a support log.
+- Manifest version 1 drives APWorld contents, transactional installed-client
+  repair, the standalone installer, exact object order, runtime source load,
+  and canonical source-set hashing without wildcard discovery.
+- Persistence and protocol sinks are optional and failure-isolated. Synthetic
+  sink exceptions do not alter commit revisions, stored state, harmless command
+  results, or game test-target mutation.
+- `/diagnostics export` writes a local allowlisted ZIP with validated event
+  segments, sanitized human logs, checksums, runtime/version/persistence/command
+  summaries, capture gaps, and an explicit missing-artifact status. A forensic
+  test reconstructs the required startup-to-reconnect failure sequence from the
+  bundle alone and proves UUID/password/token/native-state data is absent.
+- Diagnostic-only compatibility repair leaves the live Protocol 3 control
+  nonce, receipt ring, and test target intact. Process capture uses bounded
+  sanitized pipes without raw spools; console-only logging, provider schemas,
+  archive failover, support retention, actual server/nREPL/binding lifecycle,
+  and categorized revision/backup events have focused regression coverage.
+- Export requires every registered schema-1 field and validates known values
+  while ignoring unknown future optional fields. Abandoned archive temporary
+  files are removed on startup, exception handlers are restored only while
+  still owned, and a failed requested clean persistence close is reported as
+  unclean. Archive publication is atomic, and capacity is reserved before an
+  export can report completion. Live source replacement requires independent
+  control and diagnostic activation generations before clearing its durable
+  marker.
+- Native load instrumentation begins at `auto-save.restore` before `mc-load`,
+  so failures that never call `game-info.load-game` still receive one terminal
+  diagnostic event without changing Milestone 7 binding semantics.
+- Diagnostic hardening treats quoted, spaced, structured, separator-free
+  mixed-case, and Digest credentials as complete redaction units and omits
+  oversized unbroken process lines before storage. GOAL drain state now follows
+  activation/sequence resets across reconnects, persistent optional-channel
+  failures are transition-latched, and repeated duplicate records produce no
+  repeated drain-completion noise. The bundle's bounded capture-gap summary is
+  derived from emitted launcher, pipe, protocol, and collector events.
+- Atomic process-aware markers prevent concurrent clients from misclassifying
+  or pruning one another's live sessions. Writer-renewed local and remote
+  leases expire after 30 minutes, local markers also require a live PID, and
+  each live marker advertises its remaining rotation reservation. Support ZIP
+  capacity publication is process-wide, so concurrent sessions cannot
+  overcommit the managed cap.
+- Event validation now enforces explicit nested runtime/safety schemas at emit
+  and export-read time. Startup/fallback/export pruning reserves every live
+  active rotation footprint, invalid over-cap policies fail early, Archipelago `NoFile` /
+  `NoStream` and progress routing are preserved, pipe read failures become
+  capture gaps, and oversized bundle logs retain and declare their newest
+  sanitized evidence. Both PowerShell manifest consumers behaviorally reject
+  extra root/module fields, noncanonical phases, and coercible wrong scalar
+  types. Python and standalone bridge installation now share a cross-process
+  transaction lock. GOAL ring acknowledgements run off the Protocol 3 result
+  path, and persistence binding failures no longer render identity values.
+- The capacity lease is now published before startup pruning under the same
+  process-wide transaction used by fallback and export, and an initial primary
+  marker-publication failure rehomes all support artifacts to temporary storage.
+  Same-host live lock owners cannot be evicted by age, while process-start
+  identities safely recover PID-reused owners across Python and PowerShell.
+  Packaged undeclared bridge sources are rejected anywhere in the staged world,
+  and GOAL acknowledgements carry their producer activation generation so a
+  delayed old acknowledgement cannot drain a newly loaded ring.
+- All **287** packaged tests pass from the deterministic 33-entry APWorld;
+  SHA-256 is
+  `bbd3a08916a74988ee5043cec4d929e8e51ec022eddf271aeabf8fb0bf658c69`.
+- The separate active OpenGOAL v0.3.5 project installed the manifest, built all
+  required `(mi)` targets from source set
+  `2f806f6817d28bb20522eb8dab60f66bc22b7dbda3404f991a38bccae5a9bc90`,
+  loaded control then diagnostics, and exported diagnostic activation
+  generation `2` with retained source sequences `0` through `3`. A synthetic
+  generation-`1` acknowledgement left all four records intact; the matching
+  generation-`2` acknowledgement and its duplicate drained idempotently to
+  zero. No native-save acceptance scenario was run.
 
 ## Explicitly deferred
 

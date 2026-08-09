@@ -8,10 +8,35 @@ game-session nonce, bridge runtime implementation version, last result/error,
 reload-persistent bridge activation generation, and up to eight receipts.
 Readers ignore unknown additional fields.
 
+Milestone 7.1 adds an optional diagnostic-schema-1 section to that same
+temporary snapshot. It contains the bounded GOAL producer's dropped count,
+next sequence, positive reload-persistent diagnostic activation generation,
+and at most 64 integer-only records. A malformed or
+unacknowledged diagnostic section is discarded and recorded as a capture gap;
+it never invalidates the required Protocol 3 snapshot or changes a command
+result. Python drains and acknowledges records idempotently and remains the
+only writer of the versioned JSONL timeline and support archive.
+Source/channel readiness is reserved until acknowledged, and Python records
+the original GOAL sequence plus a generation that advances on intentional
+diagnostic reload. Every acknowledgement carries that activation generation;
+the GOAL ring ignores a delayed acknowledgement for any earlier generation.
+
+Bridge installation, compilation, and load order are declared by
+`mod/opengoal/bridge-modules.json` version 1. The startup overlay loads before
+`mi`; `archipelago.o` and then `archipelago-diagnostics.o` are registered
+immediately after `task-control.o`. The canonical source-set SHA-256 covers the
+raw manifest plus each declared payload digest in manifest order, so changing
+either the manifest bytes or any declared source retains the reload marker
+until both manifest-ordered runtime modules publish new compatible activation
+generations. Packaging rejects undeclared matching bridge sources recursively,
+not only at the expected asset-directory depth.
+
 The game-session nonce is created from Python-supplied UUID entropy on the first
 hello after the bridge starts. It survives client reconnects because the client
-probes an already loaded bridge and reuses it only when the complete
-protocol/integration/schema/table version-and-hash contract matches. A game or
+probes an already loaded bridge and reuses the control module only when the
+protocol/integration/schema/table version-and-hash contract matches. Optional
+diagnostic incompatibility repairs only `archipelago-diagnostics.gc`, leaving
+the control nonce, receipts, and test target intact. A game or
 bridge restart creates a new nonce. Control-plane hello, ping, query, and
 disconnect do not enter the mutating-command receipt ring; query is valid at
 the title menu. AP authentication changes wake the serialized heartbeat loop,
@@ -23,9 +48,11 @@ same-contract live object even when corrected source was already installed on
 disk. The installer also records an actual packaged-source byte change in a
 durable marker beside the installed source. The bridge activation generation
 is a positive reload-persistent counter incremented by `ap3-init!` after a
-successful source evaluation. A forced reload records the pre-load generation,
-then requires a current compatible snapshot with a different generation before
-protocol hello and before clearing the marker. If no comparable generation
+successful source evaluation, and the diagnostics module publishes an
+independent positive counter after its hooks and initial records are installed.
+A forced reload records both pre-load generations, then requires a current
+compatible snapshot with both values changed before protocol hello and before
+clearing the marker. If no comparable generation
 exists on a first or legacy install, the client establishes a current-source
 baseline and performs one additional load to prove activation. Transport-level
 nREPL completion alone never clears the marker. Ordinary client reconnects
@@ -80,6 +107,11 @@ The bridge also wraps the native auto-save `done`/`error` code pointers so a
 staged identity is committed or discarded by the matching I/O operation. Hook
 installation preserves the real native targets across bridge-only reloads and
 recaptures rebuilt native targets after a full game compile.
+Diagnostic load tracking starts independently in the native auto-save `restore`
+behavior before `mc-load`; this records both successful reads and failures that
+never invoke method slot 23. The matching `done`/`error` wrapper clears this
+diagnostic-only operation without changing the binding candidate or native
+result.
 The last successfully published identity, native slot, and monotonic
 eligibility use OpenGOAL's reload-persistent globals. A bridge-only reload
 restores that descriptor for the next native save, but deliberately resets the

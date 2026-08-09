@@ -21,10 +21,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build_apworld.ps1
 The result is `dist\jak3.apworld`. Install it through Archipelago Launcher and
 restart all Archipelago processes after replacing an installed APWorld.
 
-The package contains the launcher icon, Python client, and exact OpenGOAL
-bridge source. Starting the client installs or repairs the bridge in the active
-Jak 3 project before compilation, including the idempotent `game.gd`
-registration.
+The package contains the launcher icon, Python client, and the explicit
+`bridge-modules.json` source set. Starting the client validates and repairs the
+complete set before compilation, including deterministic `game.gd` ordering.
 
 ## Manual bridge recovery
 
@@ -37,10 +36,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\install_opengoal_bri
   -OpenGoalRepository D:\OpenGOAL\active\jak3\data
 ```
 
-It copies `archipelago.gc` to
-`goal_src\jak3\pc\features` and registers `archipelago.o` immediately after
-`task-control.o` in `goal_src\jak3\dgos\game.gd`. The next normal client launch
-will restore the bridge version carried by the installed APWorld.
+It copies the manifest-declared startup, control, and diagnostics sources plus
+the manifest itself. It registers `archipelago.o` then
+`archipelago-diagnostics.o` immediately after `task-control.o`. The next normal
+client launch restores the exact source set carried by the installed APWorld.
 
 ## Launch path
 
@@ -54,7 +53,9 @@ There is no routine need to type `(mi)`, `(lt)`, or `(ml ...)` manually. The
 client console keeps these recovery commands:
 
 - `/diagnostics` writes and flushes the current handshake snapshot and
-  prints the paired client/OpenGOAL log paths.
+  prints the paired client/OpenGOAL log and structured timeline paths.
+- `/diagnostics export` builds a local sanitized, checksummed support ZIP off
+  the heartbeat loop and falls back to temporary storage on archive I/O failure.
 - `/repl status` reports server, compiler, game, source, versions, session,
   heartbeat, and last command/result state.
 - `/repl connect` retries the full compile/connect operation.
@@ -68,9 +69,9 @@ The exact normal retail-style command supplied for local smoke testing is:
 
 The client uses the required debug equivalent by adding `-debug` after
 `-fakeiso` and also starting the matching `goalc` process. Both commands request
-disabled ANSI colors; internal collectors strip remaining control sequences
-and append prefixed stdout/stderr to the same session-specific OpenGOAL
-diagnostic log. Detailed usage and privacy guidance is in
+disabled ANSI colors; internal collectors drain bounded pipes, strip remaining
+control sequences, and append prefixed stdout/stderr to the same
+session-specific OpenGOAL diagnostic log without a raw spool. Detailed usage and privacy guidance is in
 `docs/troubleshooting.md`.
 
 ## Release packages
@@ -102,9 +103,9 @@ is statically provable; those require runtime acceptance tests.
 4. Compile the GOAL overlay against the active Jak 3 project.
 5. Perform the client-first, game-first, both-restart, mismatch, duplicate-ping,
    and communication-loss protocol scenarios. Record a real `N -> N + 1` pong.
-6. Confirm the session creates exactly one matched Jak3 client/OpenGOAL support
-   pair, compiler and bridge events are present, and `/diagnostics` flushes a
-   parseable state snapshot.
+6. Confirm the session creates the matched human logs plus one JSONL timeline,
+   compiler/bridge events are present, and `/diagnostics export` creates a
+   validated sanitized bundle.
 
 The checked-in generator now creates the exact versioned 147-location static
 pool. Its regions and events are deliberately always reachable until Milestone
