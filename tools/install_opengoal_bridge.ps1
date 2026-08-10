@@ -27,6 +27,18 @@ function Assert-ExactJsonFields {
     }
 }
 
+function Test-JsonIntegerScalar {
+    param(
+        [AllowNull()]
+        [object] $Value
+    )
+
+    # ConvertFrom-Json uses Int32 in Windows PowerShell 5.1 and Int64 in the
+    # PowerShell Core host used by CI. Accept only those integral JSON number
+    # representations; strings, booleans, and fractional numbers still fail.
+    return ($Value -is [int] -or $Value -is [long])
+}
+
 $repository = (Resolve-Path -LiteralPath $OpenGoalRepository).Path
 $projectFile = Join-Path $repository "goal_src\jak3\dgos\game.gd"
 $destinationDirectory = Join-Path $repository "goal_src\jak3\pc\features"
@@ -261,7 +273,7 @@ $manifest = Get-Content -LiteralPath $manifestSource -Raw | ConvertFrom-Json
 Assert-ExactJsonFields $manifest `
     @("manifest_version", "source_set_format", "object_anchor", "modules") `
     "Bridge module manifest"
-if ($manifest.manifest_version -isnot [int] -or
+if (-not (Test-JsonIntegerScalar $manifest.manifest_version) -or
     $manifest.source_set_format -isnot [string] -or
     $manifest.object_anchor -isnot [string] -or
     $manifest.modules -isnot [System.Array]) {
@@ -277,7 +289,8 @@ foreach ($module in $declaredModules) {
     Assert-ExactJsonFields $module `
         @("name", "order", "phase", "source", "resource", "destination", "object") `
         "Bridge module"
-    if ($module.name -isnot [string] -or $module.order -isnot [int] -or
+    if ($module.name -isnot [string] -or
+        -not (Test-JsonIntegerScalar $module.order) -or
         $module.phase -isnot [string] -or $module.source -isnot [string] -or
         $module.resource -isnot [string] -or $module.destination -isnot [string] -or
         ($null -ne $module.object -and $module.object -isnot [string])) {

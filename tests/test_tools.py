@@ -341,6 +341,8 @@ class DeveloperInstallerTest(unittest.TestCase):
 
         for script in (builder, installer):
             self.assertIn("function Assert-ExactJsonFields", script)
+            self.assertIn("function Test-JsonIntegerScalar", script)
+            self.assertIn("$Value -is [int] -or $Value -is [long]", script)
             self.assertIn(
                 '@("manifest_version", "source_set_format", "object_anchor", "modules")',
                 script,
@@ -382,6 +384,16 @@ class DeveloperInstallerTest(unittest.TestCase):
                 "scalar types",
             ),
             (
+                "fractional manifest version",
+                lambda document: document.update({"manifest_version": 1.5}),
+                "scalar types",
+            ),
+            (
+                "int64 manifest version",
+                lambda document: document.update({"manifest_version": 2147483648}),
+                "Unsupported",
+            ),
+            (
                 "string module order",
                 lambda document: document["modules"][0].update({"order": "10"}),
                 "scalar types",
@@ -390,6 +402,16 @@ class DeveloperInstallerTest(unittest.TestCase):
                 "boolean module order",
                 lambda document: document["modules"][0].update({"order": True}),
                 "scalar types",
+            ),
+            (
+                "fractional module order",
+                lambda document: document["modules"][0].update({"order": 10.5}),
+                "scalar types",
+            ),
+            (
+                "int64 module order",
+                lambda document: document["modules"][0].update({"order": 2147483648}),
+                "canonical",
             ),
         )
         for label, mutate, expected_error in mutations:
