@@ -1,5 +1,19 @@
 # Protocol 3 runtime and harmless command contract
 
+## First-release semantic freeze
+
+Protocol 3/game integration 2 is frozen for the first-release boundary as of
+Milestone 7.2. The freeze covers native tag 900/version 1, authorization record
+version 1, descriptor-qualified loaded/bound acknowledgement, the current
+command/result/error meanings, signed-32-bit command fields, and the eight
+newest receipts scoped to one game-session nonce. Later gameplay milestones
+must consume this contract without reinterpreting it. Any semantic change
+requires a protocol bump and an explicit compatibility and migration decision.
+
+The optional diagnostic-schema-1 projection remains outside command semantics:
+it may be repaired or extended compatibly without changing the control nonce,
+receipt ring, persistence decisions, or Protocol 3 result.
+
 Protocol 3/game integration 2 is the Milestone 7 control boundary. The GOAL
 bridge rewrites one framed text snapshot; matching `snapshot_begin` and
 `snapshot_end` revisions reject torn reads. Required fields include the full
@@ -172,3 +186,24 @@ persists harmless receipts as `<game nonce>:<command ID>`. Protocol-2
 sidecars fail compatibility read-only and are not migrated. Transport loss or
 an incompatible reconnect closes any live writer session uncleanly and clears
 the game's sidecar acknowledgement before the nREPL connection is released.
+
+## Update and restart policy
+
+Installing a changed APWorld or bridge is never a live player update. Finish
+native memory-card I/O, close the client, `gk`, and `goalc`, install through the
+normal Archipelago Launcher path, then start a clean game session. The durable
+pending-reload marker must be cleared only by the normal compatible activation
+attestation; deleting it manually is unsupported.
+
+An unchanged-source client/server reconnect is intended to keep the game open
+and preserve the game nonce, receipt ring, descriptor, and binding. Milestone
+7.2 rows 3 and 4 found that official OpenGOAL v0.3.5 cannot accept the required
+replacement compiler connection after the original connection is lost. Until
+that prerequisite is repaired or an approved safe limitation is recorded, the
+safe operational workaround is to restart the client, `gk`, and `goalc`
+together. This keeps Milestones 7/7.2 pending; it does not redefine the frozen
+Protocol 3 semantics.
+
+Manual `(ml)` remains a developer/recovery aid only. It is unsupported during
+native save/load or any other memory-card I/O, and future gameplay milestones
+must not rely on arbitrary hot reload across such an operation.

@@ -19,7 +19,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build_apworld.ps1
 ```
 
 The result is `dist\jak3.apworld`. Install it through Archipelago Launcher and
-restart all Archipelago processes after replacing an installed APWorld.
+follow the update/restart policy below after replacing an installed APWorld.
 
 The package contains the launcher icon, Python client, and the explicit
 `bridge-modules.json` source set. Starting the client validates and repairs the
@@ -40,6 +40,24 @@ It copies the manifest-declared startup, control, and diagnostics sources plus
 the manifest itself. It registers `archipelago.o` then
 `archipelago-diagnostics.o` immediately after `task-control.o`. The next normal
 client launch restores the exact source set carried by the installed APWorld.
+
+## Supported update and restart policy
+
+Before installing a changed APWorld or bridge, let native save/load finish,
+then close the Jak 3 client, `gk`, and `goalc`. Install through Archipelago
+Launcher and perform a clean game restart. Do not delete the durable
+pending-reload marker: the compatible activation handshake clears it after the
+installed source actually runs.
+
+Manual `(ml)` is developer/recovery-only and unsupported during memory-card
+I/O. It is not a player-facing hot-update workflow.
+
+An unchanged-source client reconnect is intended to leave the game open.
+Milestone 7.2 found that official OpenGOAL v0.3.5 cannot reconnect a replacement
+compiler after the original compiler connection is lost. Until that release
+blocker is repaired or explicitly accepted, close and restart the client,
+`gk`, and `goalc` together even for recovery. See
+`docs/development/milestone-7.2-acceptance.md`.
 
 ## Launch path
 
@@ -106,6 +124,9 @@ is statically provable; those require runtime acceptance tests.
 6. Confirm the session creates the matched human logs plus one JSONL timeline,
    compiler/bridge events are present, and `/diagnostics export` creates a
    validated sanitized bundle.
+7. For Protocol 3 release evidence, run the native-save matrix and performance
+   gates recorded in `docs/development/milestone-7.2-acceptance.md`. A mandatory
+   failed row keeps Milestones 7/7.2 pending.
 
 The checked-in generator now creates the exact versioned 147-location static
 pool. Its regions and events are deliberately always reachable until Milestone

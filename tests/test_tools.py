@@ -11,6 +11,7 @@ from zipfile import ZipFile
 
 from worlds.jak3.agents.bridge_manifest import parse_bridge_manifest
 from worlds.jak3.agents.diagnostics import _process_start_identity
+from worlds.jak3.agents.protocol import BridgeSnapshot, format_snapshot
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -27,9 +28,172 @@ BRIDGE_SOURCE = (
     / "archipelago.gc"
 )
 BRIDGE_MANIFEST = REPOSITORY_ROOT / "mod" / "opengoal" / "bridge-modules.json"
+MILESTONE_7_2_RECORDER = REPOSITORY_ROOT / "tools" / "milestone_7_2_recorder.ps1"
+MILESTONE_7_2_METRICS = REPOSITORY_ROOT / "tests" / "milestone_7_2_metrics.jsonl"
+MILESTONE_7_2_FRAMES = REPOSITORY_ROOT / "tests" / "milestone_7_2_frames.jsonl"
 
 
 class DeveloperInstallerTest(unittest.TestCase):
+    def run_milestone_7_2_recorder(
+        self, output: Path, action: str, *arguments: str
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            (
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(MILESTONE_7_2_RECORDER),
+                "-Action",
+                action,
+                "-OutputDirectory",
+                str(output),
+                *arguments,
+            ),
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+
+    def test_milestone_7_2_recorder_sanitizes_snapshot_identity(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            snapshot_path = root / "bridge.snapshot"
+            save_identity = "11111111-2222-3333-4444-555555555555"
+            snapshot_path.write_text(
+                format_snapshot(
+                    BridgeSnapshot(
+                        snapshot_revision=17,
+                        client_session_id="test-client-session",
+                        session_nonce="test-game-nonce",
+                        native_save_identity=save_identity,
+                        native_save_slot=2,
+                        save_loaded=True,
+                    )
+                ),
+                encoding="utf-8",
+            )
+
+            result = self.run_milestone_7_2_recorder(
+                root, "Capture", "-SnapshotPath", str(snapshot_path)
+            )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            record_text = (root / "recorder.jsonl").read_text(encoding="utf-8")
+            record = json.loads(record_text)
+            self.assertNotIn(save_identity, record_text)
+            self.assertEqual(record["kind"], "snapshot.capture")
+            self.assertEqual(record["data"]["snapshot"]["snapshot_revision"], 17)
+            self.assertEqual(record["data"]["snapshot"]["native_save_slot"], 2)
+            self.assertEqual(
+                len(record["data"]["snapshot"]["native_save_identity_hash"]), 16
+            )
+
+    def test_milestone_7_2_analyzer_applies_practical_gates(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            result = self.run_milestone_7_2_recorder(
+                root,
+                "Analyze",
+                "-MetricsPath",
+                str(MILESTONE_7_2_METRICS),
+                "-FrameMetricsPath",
+                str(MILESTONE_7_2_FRAMES),
+            )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            report = json.loads((root / "analysis.json").read_text(encoding="utf-8"))
+            self.assertTrue(report["gates"]["frame_p95_within_1_ms"])
+            self.assertTrue(report["gates"]["normalized_cpu_within_2_points"])
+            self.assertTrue(report["gates"]["connected_memory_within_32_mib"])
+            self.assertTrue(report["gates"]["connected_client_heartbeat_near_1_hz"])
+            connected = next(
+                group for group in report["groups"] if group["label"] == "connected"
+            )
+            self.assertGreater(
+                connected["files"][0]["positive_growth_bytes_per_hour"], 0
+            )
+
+    def test_milestone_7_2_recorder_extracts_opengoal_frame_times(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            trace_path = root / "prof.json"
+            frame_path = root / "frames.jsonl"
+            trace_path.write_text(
+                json.dumps(
+                    {
+                        "displayTimeUnit": "ms",
+                        "traceEvents": [
+                            {"name": "ROOT", "ph": "i", "tid": 7, "ts": 1000.0},
+                            {
+                                "name": "drawing",
+                                "ph": "B",
+                                "tid": 7,
+                                "ts": 1001.0,
+                            },
+                            {"ph": "E", "tid": 7, "ts": 1002.0},
+                            {
+                                "name": "ROOT",
+                                "ph": "i",
+                                "tid": 7,
+                                "ts": 11000.0,
+                            },
+                            {
+                                "name": "drawing",
+                                "ph": "B",
+                                "tid": 7,
+                                "ts": 11001.0,
+                            },
+                            {"ph": "E", "tid": 7, "ts": 11002.0},
+                            {
+                                "name": "ROOT",
+                                "ph": "i",
+                                "tid": 7,
+                                "ts": 22000.0,
+                            },
+                            {"name": "ROOT", "ph": "i", "tid": 2, "ts": 500.0},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = self.run_milestone_7_2_recorder(
+                root,
+                "ProfilerFrames",
+                "-ProfilerTracePath",
+                str(trace_path),
+                "-MetricsPath",
+                str(frame_path),
+                "-Label",
+                "control",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            frames = [
+                json.loads(line)
+                for line in frame_path.read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual([10.0, 11.0], [frame["duration_ms"] for frame in frames])
+            self.assertTrue(all(frame["label"] == "control" for frame in frames))
+            record = json.loads((root / "recorder.jsonl").read_text(encoding="utf-8"))
+            self.assertEqual(record["kind"], "profiler.frames")
+            self.assertEqual(record["data"]["graphics_thread_id"], 7)
+            self.assertEqual(record["data"]["p95_ms"], 11.0)
+
+    def test_milestone_7_2_command_probe_accepts_durable_receipt_ack(self) -> None:
+        script = MILESTONE_7_2_RECORDER.read_text(encoding="utf-8")
+        command_probe = script.split('    "SetTestTarget" {', 1)[1].split(
+            '    "Sample" {', 1
+        )[0]
+
+        self.assertIn("[DateTime]::UtcNow.AddSeconds(2)", command_probe)
+        self.assertIn('"recent_command_${index}_id"', command_probe)
+        self.assertIn("$afterFields.ContainsKey($receiptIdKey)", command_probe)
+        self.assertIn("-not $acknowledged", command_probe)
+
     def test_apworld_builder_is_byte_deterministic(self) -> None:
         with TemporaryDirectory() as directory:
             command = (

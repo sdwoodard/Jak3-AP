@@ -54,6 +54,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build_apworld.ps1
 The build produces the self-contained `dist\jak3.apworld` and validates its
 manifest, launcher icon, client, and bundled OpenGOAL bridge. Install it with
 Archipelago Launcher's **Install APWorld** action, then restart the launcher.
+Before replacing an installed APWorld, finish any native save/load, close the
+Jak 3 client, `gk`, and `goalc`, then install and start a clean game session.
+Do not manually delete the pending-reload marker. Manual bridge `(ml)` is a
+developer/recovery tool and is unsupported during memory-card I/O.
 
 Starting **Jak 3 Client** from Archipelago Launcher automatically:
 

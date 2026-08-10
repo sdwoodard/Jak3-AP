@@ -13,9 +13,9 @@ later gameplay work is not credited early.
 | 4 — Consolidate normative sources and freeze the versioned data contract | **Complete** | Canonical in-repository sources, literal first-release registries, complete legacy ID retention/reservation, deterministic table/options hashes, versioned JSON-safe slot data, shared Python/GOAL constants, standalone tests, and push/PR CI are present and passing. |
 | 5 — Activate the exact default static APWorld pool | **Complete** | The active APWorld consumes the Milestone 4 registry and generates exactly 147 network locations, 26 progression instances, 28 useful instances, 93 weighted filler instances, zero traps, 65 hidden completion events, and one code-less Victory event. |
 | 6 — Add atomic persistent AP state and seed/save binding | **Complete** | Accepted Python-writer ADR, schema-1 atomic sidecar/binding engine, slot-data version 2 authenticated seed identity, recovery/quarantine/lock tests, and explicit Milestone 7 live-save deferral. |
-| 7 — Add a runtime state model and idempotent command transport | **Implementation complete; live gate pending** | Protocol 3/game integration 2 snapshot, native tag 900 identity wrappers, live safety observation, sidecar switching, game-session nonces, and eight duplicate-safe harmless receipts are implemented and automated. The required real save/copy/both-restart matrix is not yet recorded, so this row is not marked complete. |
+| 7 — Add a runtime state model and idempotent command transport | **Implementation complete; live gate failed/pending** | The full real matrix is recorded in [`milestone-7.2-acceptance.md`](milestone-7.2-acceptance.md): 12 of 15 mandatory rows passed, while clean client-only reconnect, unclean client recovery, and locked-bank native failure handling failed. This row is not complete. |
 | 7.1 — Structured diagnostics and support bundles | **Complete** | The paired logs remain; diagnostic schema 1 JSONL, the stable event registry, 64-record GOAL ring/drain, manifest-driven bridge lifecycle/hash, persistence/protocol instrumentation, exception capture, bounded retention, allowlist redaction, and local support-bundle export are implemented and automated. The cross-component forensic test drives the real launcher, persistence, protocol, and reconnect instrumentation to reconstruct startup/capture, recovery/rejection, harmless command replay/timeout/failure, and reconnect without native-save or sidecar contents. |
-| 7.2 — Native-save acceptance matrix | **Pending** | Deliberately not performed by Milestone 7.1. Milestone 7 remains gated on the real save/copy/both-process-restart scenarios. |
+| 7.2 — Live acceptance and Protocol 3 freeze | **Pending — 12/15 rows pass** | Protocol 3 semantics and the update/restart policy are documented; deterministic artifacts and performance gates pass. Mandatory rows 3, 4, and 13 failed on official OpenGOAL v0.3.5, so Milestone 8 remains blocked. |
 | 8–26 | Not started | Deliberately outside this change. |
 
 ## Milestone 4 completion evidence
@@ -278,6 +278,47 @@ later gameplay work is not credited early.
   generation-`2` acknowledgement and its duplicate drained idempotently to
   zero. No native-save acceptance scenario was run.
 
+## Milestone 7.2 acceptance evidence
+
+- Two independent authoritative APWorld builds were byte-identical at 220,211
+  bytes with SHA-256
+  `f74c13f2b0c24e44cc70be224ca4feefd167590e6ff3b29ed248f0fdb412adc5`.
+  Normal launcher installation activated source set
+  `fb3c2d69071c803fd0132b27bce1412a51f81028a74c2e780a30aed4441ace22`;
+  the pending-reload marker was not manually cleared.
+- After documenting the packaged first-release restart policy and applying the
+  required mechanical formatting, two final 220,510-byte APWorld builds were
+  byte-identical at SHA-256
+  `6ca4ce729e6beed8bd5009ac3341e5e164637cf7ece5c59d85a71ec808d797ed`.
+  Live-tested production semantics are unchanged; only packaged documentation
+  and whitespace formatting account for the final artifact hash change. That
+  exact final package passed all 293 tests in the disposable Archipelago
+  environment.
+- All 15 real native-save/restart/command rows were exercised with disposable
+  saves and isolated AP state. Fresh/repeated load, game restart, both startup
+  orders, A → B → A, copied-slot rejection, vanilla-tag rejection, Continue
+  Without Save, both New Game identity cases, harmless deduplication, title
+  query/unsafe mutation, and unlocked recovery passed.
+- Rows 3 and 4 failed because OpenGOAL v0.3.5 does not accept a replacement
+  compiler connection after its first connection is lost. Row 13 failed
+  because an exclusively locked native bank throws through the upstream card
+  scan and terminates `gk`; the native banks and AP revision remained unchanged
+  and normal save/load recovered after unlock.
+- The recorder retains the row-4 and row-13 bundle names, sizes, and SHA-256
+  values, but the exported ZIP bytes were absent from the ignored evidence root
+  at final audit. This retention gap is recorded in the acceptance report.
+- The matched five-minute samples passed: frame p95 changed by −0.102 ms,
+  normalized CPU p95 by +0.2759 percentage points, and connected warm private
+  memory grew 675,840 bytes. Heartbeats were 0.904 Hz and healthy heartbeats
+  produced no INFO noise. A 30-minute connected gameplay sample retained
+  0.9018 Hz heartbeats; its large `gk` allocation was content-loading growth,
+  while the client shrank and `goalc` grew only 1.8 MiB.
+- Protocol 3/game integration 2, native tag 900/version 1, authorization
+  version 1, descriptor-qualified acknowledgement, result/error meanings, and
+  the eight-entry receipt ring are semantically frozen. Any later change needs
+  a protocol bump and compatibility/migration decision. The freeze does not
+  waive the three failed acceptance rows.
+
 ## Explicitly deferred
 
 The active generator deliberately exposes one always-open, non-playable region
@@ -285,8 +326,8 @@ until Milestone 12 supplies Standard reachability. Protocol 3 now observes
 native identity/freshness and opens the sidecar for a compatible authenticated
 save, but there are still no early placement guarantees, received-item
 handling, location submission, mission hooks/dispatch, reward interception, or
-goal reporting. Milestone 7 remains pending until its real save/copy and both-
-process-restart matrix is captured.
+goal reporting. Milestones 7/7.2 remain pending until rows 3, 4, and 13 are
+repaired or receive an explicitly reviewed safe limitation and are rerun.
 
 Open runtime risks remain recorded in [`../JAK3_AP_RISKS.md`](../JAK3_AP_RISKS.md),
 especially permissive generator logic (`R-003`), runtime goal reporting

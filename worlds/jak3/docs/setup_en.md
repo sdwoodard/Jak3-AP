@@ -17,6 +17,20 @@ playable release. These steps are for protocol and integration testing.
 3. Generate with the supplied `config/templates/Jak3.yaml`. Change the player
    name as needed, but leave every Jak 3-specific supported default unchanged.
 
+## Updates and restarts
+
+An unchanged-source client/server reconnect may keep the game open in principle,
+but official OpenGOAL v0.3.5 did not pass replacement-client attachment in the
+Milestone 7.2 acceptance run. If that reconnect fails, finish native save/load
+activity and cleanly restart the client, `gk`, and `goalc`.
+
+Always use the full clean-restart path when installing a changed APWorld or
+bridge: finish native memory-card I/O, close the client, `gk`, and `goalc`,
+install through Archipelago Launcher, and start a clean game session. Never
+manually delete the pending-reload marker; compatible bridge activation clears
+it. Manual `(ml)` is developer/recovery-only and unsupported during memory-card
+I/O.
+
 ## Connect and launch
 
 Start **Jak 3 Client** from Archipelago Launcher. It automatically discovers

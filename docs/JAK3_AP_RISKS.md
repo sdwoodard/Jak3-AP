@@ -4,7 +4,7 @@ This is the required home for conflicts, unknowns, and evidence gaps discovered
 while implementing the normative design. Do not silently resolve a risk by
 changing logic to match the retained pre-design-default scaffold.
 
-Snapshot date: **2026-08-07**
+Snapshot date: **2026-08-09**
 
 ## Status and severity
 
@@ -183,8 +183,11 @@ Owners are deliberately role-based until maintainers assign people.
   OpenGOAL v0.3.5 runtime and produced command-specific hello/pong snapshots.
   A first live attempt exposed and rejected quoted snapshot strings even though
   nREPL acknowledged the GOAL forms; the corrected exporter then passed hello,
-  duplicate ping, and next-ping checks. The client still does not
-  parse/classify full compiler output.
+  duplicate ping, and next-ping checks. Milestone 7.2 measured a 26.736-second
+  cold full `(mi)`, a 382.986-millisecond unchanged-source full `(mi)`, and a
+  782.841-millisecond manifest-ordered bridge load. Those successful cases do
+  not close the risk: the client still does not parse/classify full compiler
+  output.
 - Mitigation: Preserve sanitized `gk`/`goalc` output, require snapshot
   acknowledgement for protocol commands, record the source-set/module context
   in schema-1 diagnostics, and use `/diagnostics export` for a same-session
@@ -198,7 +201,7 @@ Owners are deliberately role-based until maintainers assign people.
 
 ### R-010 — Process ownership and cleanup are incomplete
 
-- Severity/status: **Medium / Open**
+- Severity/status: **High / Open**
 - Owner: Client/startup maintainer
 - Risk: `gk`, `goalc`, or client windows can remain open after a test/client
   exit. Reusing an old process also prevents the current diagnostic session
@@ -209,10 +212,17 @@ Owners are deliberately role-based until maintainers assign people.
   client, and the support bundle includes the gap list. Processes started by
   the client stream through bounded pipes, so a client-side raw spool cannot
   grow after exit; a pipe read failure is now retained as a capture gap instead
-  of being indistinguishable from EOF. Child-process ownership policy remains
-  unresolved.
+  of being indistinguishable from EOF. Milestone 7.2 then reproduced the
+  user-visible boundary: after either a clean or unclean client-only exit, the
+  existing game retained its nonce, native descriptor, receipts, and safe
+  sidecar state, but a replacement official-v0.3.5 compiler/client could not
+  attach. Restarting the game recovered safely with a new nonce. Child-process
+  ownership and replacement-attachment policy therefore remain unresolved.
 - Mitigation: Start tests with no stale process, record PIDs, and close only
-  processes opened for that test using the maintained runbook.
+  processes opened for that test using the maintained runbook. For the first
+  release, recover a failed client-only reconnect by finishing native I/O and
+  cleanly restarting the client, `gk`, and `goalc`; do not promise that the game
+  can remain open on official v0.3.5 until the lifecycle is fixed.
 - Exit criteria: Define user-facing ownership policy and implement/test clean
   normal exit, crash recovery, “leave game running” behavior if desired, and
   no termination of unrelated processes.
@@ -317,15 +327,25 @@ Owners are deliberately role-based until maintainers assign people.
 
 ### R-015 — OpenGOAL compatibility is pinned only informally
 
-- Severity/status: **High / Watching**
+- Severity/status: **High / Open**
 - Owner: OpenGOAL/release maintainer
 - Risk: Decompiled types, task tables, startup forms, or runtime hooks may
   change across OpenGOAL versions. Auto-installing a bridge against an unknown
   project can fail compilation or, worse, compile against changed semantics.
-- Current evidence: Successful smoke used official OpenGOAL v0.3.5. The source
-  audit checks structural tables but no compatible commit/table hash is stored
+- Current evidence: Compile, ordered bridge load, the 15-row live matrix, and
+  the performance baseline used official OpenGOAL v0.3.5. Rows 3 and 4 exposed
+  replacement-client attachment failure against a still-running game. Row 13
+  exposed a separate native failure boundary: exclusive locks on the two
+  disposable save-bank files caused `gk` to terminate with Windows exception
+  `0xe06d7363` before an operator-requested save or graceful native diagnostic.
+  The audited v0.3.5 path calls `read_binary_file` from `pc_update_card`, whose
+  locked-file open failure throws an uncaught `runtime_error`. Native banks and
+  AP revision stayed unchanged, and unlocked save/load recovered. The source
+  audit checks structural tables, but no compatible commit/table hash is stored
   in the APWorld handshake.
-- Mitigation: Log paths and bridge hashes and retain source-table audit.
+- Mitigation: Log paths and bridge hashes, retain the source-table audit, keep
+  locked-bank injection confined to backed-up disposable saves, and classify
+  the native crash rather than attempting an AP-layer speculative workaround.
 - Exit criteria: Define supported OpenGOAL version/commit range, include a
   deterministic compatibility/table hash, reject known-incompatible projects,
   and test every supported release.
@@ -398,7 +418,7 @@ Owners are deliberately role-based until maintainers assign people.
 
 ### R-019 — Live native-save identity and freshness provenance
 
-- Severity/status: **High / Watching**
+- Severity/status: **High / Open**
 - Owner: Client and OpenGOAL persistence maintainers
 - Risk: The atomic sidecar can bind safely only if native save identity, slot,
   and fresh/unprogressed eligibility come from an audited live source. Guessing
@@ -465,18 +485,23 @@ Owners are deliberately role-based until maintainers assign people.
   before protocol hello, so an `(ml)` request that merely completes at the
   transport layer cannot admit the older running object. Same-contract bug
   fixes therefore cannot remain hidden across client restarts. The active
-  OpenGOAL project
-  compiles, a double-reload runtime smoke passed all
+  OpenGOAL project compiles, and a double-reload runtime smoke passed all
   eight original-versus-installed hook assertions, and a later attached smoke
   preserved the descriptor across repeated reloads while rejecting an expired
-  proposal and clearing one on disconnect. Live nonce behavior passes across
-  client reconnect and game restart. The no-save guard has source-contract and
-  full OpenGOAL compile evidence, but its live title-menu transition has not
-  yet been exercised. The real save/load/copy and clean/unclean client-process
-  matrix has not yet been recorded.
-- Mitigation: Keep Milestone 7 formally incomplete until that live matrix
-  proves identity stability and nonce behavior. Never infer freshness from a
-  missing sidecar or tag, and preserve slot-copy rejection.
+  proposal and clearing one on disconnect. Milestone 7.2 exercised all 15
+  mandatory rows with isolated state and disposable native slots. Twelve rows
+  passed: fresh/repeated identity, game and ordered dual restarts, A to B to A
+  switching, copied-slot and progressed-vanilla rejection, no-save clearing,
+  distinct and overwritten New Game identity, harmless-command duplicate and
+  no-op receipts, and title-menu safety. Descriptor-qualified acknowledgement
+  prevented a false-safe save-switch interval. The three remaining failures
+  are clean and unclean client-only replacement attachment (R-010) and the
+  native locked-bank crash (R-015); neither published an incorrect identity or
+  uncommitted AP revision.
+- Mitigation: Keep Milestones 7 and 7.2 formally incomplete until all three
+  mandatory failures pass. Never infer freshness from a missing sidecar or tag,
+  preserve slot-copy rejection, and use the clean full-process restart policy
+  as the operational fallback without weakening Protocol 3 semantics.
 - Exit criteria: The real bridge supplies stable identity/slot/freshness across
   clean and crashed restarts; new, progressed, copied, deleted, restored, and
   switched native saves pass the documented policy without inventory changes.

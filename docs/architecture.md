@@ -160,8 +160,11 @@ dependencies.
 - A complete snapshot has matching begin/end revisions.
 - nREPL acknowledgement is only a command barrier; readiness requires the
   expected snapshot result.
-- A game-session nonce survives client reconnects and changes on bridge/game
-  restart. Mutating command IDs are nonnegative and monotonic per nonce.
+- A game-session nonce is defined to survive unchanged-source client reconnects
+  and change on bridge/game restart. Official OpenGOAL v0.3.5 did not pass the
+  replacement-compiler lifecycle in Milestone 7.2, so the safe operational
+  fallback currently restarts client, game, and compiler together. Mutating
+  command IDs remain nonnegative and monotonic per nonce.
 - AP-state acknowledgement is authority for one exact native save UUID and
   slot. Stale loaded/bound bits never transfer across a save switch, and every
   mutating command refreshes that acknowledgement before its safety check.

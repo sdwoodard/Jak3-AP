@@ -63,6 +63,30 @@ snapshot channel into this Python-owned file.
 5. Send the ZIP, or all three same-session files if export failed, together with
    a short description of what you expected and what happened.
 
+The export command is exactly `/diagnostics export`. `action=bundle` and
+`action=export` are not client-console commands.
+
+## Restart and update recovery
+
+For a changed APWorld or bridge, wait until native memory-card I/O finishes,
+close the client, `gk`, and `goalc`, install through Archipelago Launcher, and
+start a clean session. Never delete `.archipelago-reload-required` manually;
+the activation handshake clears it only after the new source is running.
+
+An unchanged-source client reconnect is designed to keep the game open, but
+official OpenGOAL v0.3.5 failed the Milestone 7.2 clean and unclean reconnect
+rows after its original compiler connection was lost. If the compiler/client
+closes while the game remains open, preserve/export the session evidence and
+restart all three processes together. Repeated `/repl connect` attempts cannot
+repair the one-connection game process observed in that version.
+
+Manual `(ml)` is developer/recovery-only. Never live-load the bridge while a
+native save/load is active. Do not lock, replace, or externally edit native
+bank files while the game is running: the v0.3.5 native card scan throws on an
+exclusively locked bank and can terminate `gk` before it emits a graceful save
+failure. After such a crash, release the lock, retain the banks and support
+bundle, then perform a clean restart and normal save/load recovery.
+
 Jak 3 diagnostics use 8 MiB segments with three backups, ten sessions,
 fourteen-day retention, and a 256 MiB managed cap. The current session is never
 pruned, and process-aware markers protect every artifact of another live
@@ -108,6 +132,10 @@ preferable.
   `.bak`, and every `.corrupt.*` or `.interrupted.*` file with the logs.
 - Crashes or hangs: use the final OpenGOAL lines, recorded process exit code,
   and any traceback in the client log.
+- `native-save-tag-missing`: the native save remains loadable but AP state is
+  deliberately read-only; no sidecar should be created.
+- Copied-slot rejection: return to the original native slot. Do not edit the
+  tag or sidecar to force a copied UUID into a different slot.
 
 This milestone intentionally adds no item delivery, location checks, mission
 changes, rewards, or victory reporting. Their

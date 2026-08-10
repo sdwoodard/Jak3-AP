@@ -685,7 +685,8 @@ class ClientProtocolTest(unittest.TestCase):
             identity_publish,
         )
         self.assertIn("*ap3-pending-save-identity*", publication)
-        self.assertIn("(-> *game-info* auto-save-which)", publication)
+        self.assertIn("(!= (-> *ap-runtime* native-save-slot) slot)", publication)
+        self.assertIn("(set! (-> *ap-runtime* native-save-slot) slot)", publication)
 
     def test_goal_sidecar_acknowledgement_matches_identity_and_slot(self) -> None:
         source = BRIDGE_SOURCE.read_text(encoding="utf-8")
@@ -707,9 +708,6 @@ class ClientProtocolTest(unittest.TestCase):
 
     def test_goal_identity_publication_requires_matching_native_success(self) -> None:
         source = BRIDGE_SOURCE.read_text(encoding="utf-8")
-        operation_matcher = source.split("(defun ap3-pending-operation-matches?", 1)[
-            1
-        ].split("(defun ap3-publish-pending-native-save!", 1)[0]
         done_hook = source.split("(defbehavior ap3-auto-save-done-code", 1)[1].split(
             "(defbehavior ap3-auto-save-error-code", 1
         )[0]
@@ -724,22 +722,24 @@ class ClientProtocolTest(unittest.TestCase):
         )[0]
 
         self.assertLess(
-            done_hook.index("*ap3-native-auto-save-done-code*"),
             done_hook.index("(set! *ap3-pending-save-succeeded* 1)"),
+            done_hook.index("(ap3-publish-pending-native-save! (-> self which))"),
         )
         self.assertLess(
-            done_hook.index("(set! *ap3-pending-save-succeeded* 1)"),
-            done_hook.index("(ap3-publish-pending-native-save!)"),
+            done_hook.index("(ap3-publish-pending-native-save! (-> self which))"),
+            done_hook.index("*ap3-native-auto-save-done-code*"),
         )
-        self.assertEqual(done_hook.count("(ap3-pending-operation-matches? self)"), 2)
-        self.assertIn("(handle->process *ap3-pending-save-process*)", operation_matcher)
-        self.assertNotIn("*game-info*", operation_matcher)
+        self.assertNotIn("ap3-pending-operation-matches?", done_hook)
         self.assertIn("(set! *ap3-pending-save-valid* 0)", error_hook)
         self.assertIn('"native-save-io-failed"', error_hook)
         self.assertIn("(= *ap3-pending-save-succeeded* 1)", publisher)
+        self.assertIn("((slot int))", publisher)
         self.assertIn("*ap3-reload-save-identity*", publisher)
         self.assertNotIn("auto-save-proc", publisher)
-        self.assertIn("(ap3-publish-pending-native-save!)", observer)
+        self.assertIn(
+            "(ap3-publish-pending-native-save! (-> *game-info* auto-save-which))",
+            observer,
+        )
 
     def test_goal_native_hooks_preserve_originals_across_bridge_reload(self) -> None:
         source = BRIDGE_SOURCE.read_text(encoding="utf-8")
@@ -802,7 +802,7 @@ class ClientProtocolTest(unittest.TestCase):
     def test_goal_unsaved_game_initialization_invalidates_prior_binding(self) -> None:
         source = BRIDGE_SOURCE.read_text(encoding="utf-8")
         wrapper = source.split("(defun ap3-game-info-initialize-wrapper", 1)[1].split(
-            "(defun ap3-pending-operation-matches?", 1
+            "(defun ap3-publish-pending-native-save!", 1
         )[0]
         invalidation = source.split("(defun ap3-invalidate-native-save-binding!", 1)[
             1
@@ -812,8 +812,11 @@ class ClientProtocolTest(unittest.TestCase):
         )[0]
 
         self.assertIn("(and (= mode 'game) (not save))", wrapper)
-        self.assertIn('(string= continue-name "intro-start")', wrapper)
-        self.assertIn("*ap3-saved-new-game-ready*", wrapper)
+        self.assertIn("(= *ap3-saved-new-game-ready* 1)", wrapper)
+        self.assertNotIn("handle->process", wrapper)
+        self.assertIn("(= (-> *ap-runtime* save-loaded) 1)", wrapper)
+        self.assertIn("(ap3-valid-uuid-shape? *ap3-native-save-identity*)", wrapper)
+        self.assertNotIn("(set! *ap3-saved-new-game-ready* 0)", wrapper)
         self.assertIn("(ap3-invalidate-native-save-binding!)", wrapper)
         self.assertLess(
             wrapper.index("(ap3-invalidate-native-save-binding!)"),
@@ -831,6 +834,30 @@ class ClientProtocolTest(unittest.TestCase):
 
         self.assertIn("(= *ap3-pending-save-new-game* 1)", done_hook)
         self.assertIn("(set! *ap3-saved-new-game-ready* 1)", done_hook)
+
+    def test_goal_new_game_guard_spans_native_done_notification_only(self) -> None:
+        source = BRIDGE_SOURCE.read_text(encoding="utf-8")
+        done_hook = source.split("(defbehavior ap3-auto-save-done-code", 1)[1].split(
+            "(defbehavior ap3-auto-save-error-code", 1
+        )[0]
+        error_hook = source.split("(defbehavior ap3-auto-save-error-code", 1)[1].split(
+            "(defun ap3-set-contract-versions!", 1
+        )[0]
+
+        observer = source.split("(defun ap3-observe-runtime!", 1)[1].split(
+            "(defun ap-export-state!", 1
+        )[0]
+
+        native_done = done_hook.index("*ap3-native-auto-save-done-code*")
+        publication = done_hook.index(
+            "(ap3-publish-pending-native-save! (-> self which))"
+        )
+        guard_clear = done_hook.index("(set! *ap3-saved-new-game-ready* 0)")
+        self.assertLess(publication, native_done)
+        self.assertLess(native_done, guard_clear)
+        self.assertIn("(not (handle->process *ap3-pending-save-process*))", observer)
+        self.assertIn("(ap3-clear-pending-native-operation!)", observer)
+        self.assertIn("(set! *ap3-saved-new-game-ready* 0)", error_hook)
 
     def test_goal_published_save_descriptor_survives_bridge_reload(self) -> None:
         source = BRIDGE_SOURCE.read_text(encoding="utf-8")
@@ -982,6 +1009,10 @@ class ClientProtocolTest(unittest.TestCase):
         )
         self.assertEqual(done_wrapper.count("AP-DIAG-EVENT-SAVE-SUCCEEDED"), 1)
         self.assertIn("*ap3-diagnostic-native-operation-kind*", done_wrapper)
+        self.assertLess(
+            done_wrapper.index("AP-DIAG-EVENT-SAVE-SUCCEEDED"),
+            done_wrapper.index("*ap3-native-auto-save-done-code*"),
+        )
         self.assertIn("AP-DIAG-EVENT-SAVE-FAILED", error_wrapper)
         self.assertLess(
             error_wrapper.index("AP-DIAG-EVENT-SAVE-FAILED"),
@@ -1083,6 +1114,8 @@ class ClientProtocolTest(unittest.TestCase):
         self.assertIn("(< (-> tag 0 elt-count) 138)", freshness)
         self.assertIn("(let ((task-id (+ offset 6)))", freshness)
         self.assertIn("(entity-perm-status complete)", freshness)
+        self.assertIn("(the-as entity-perm", freshness)
+        self.assertNotIn("(pointer entity-perm)", freshness)
 
     def test_goal_transformation_guard_includes_dark_and_light_jak(self) -> None:
         source = BRIDGE_SOURCE.read_text(encoding="utf-8")

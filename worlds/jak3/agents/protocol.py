@@ -948,7 +948,12 @@ class BridgeProtocol:
                     )
                 )
                 await asyncio.wait_for(
-                    operation, timeout=DIAGNOSTIC_ACK_TIMEOUT_SECONDS
+                    operation,
+                    # The sender keeps the actual socket drain bounded by the
+                    # diagnostic timeout.  Its coroutine may first wait behind
+                    # an ordinary heartbeat on the serialized nREPL lock, which
+                    # is not a capture failure and can routinely exceed 250 ms.
+                    timeout=max(DIAGNOSTIC_ACK_TIMEOUT_SECONDS, self.command_timeout),
                 )
                 self._goal_source_state["ack_failed"] = 0
             except asyncio.CancelledError:

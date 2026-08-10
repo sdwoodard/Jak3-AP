@@ -403,9 +403,9 @@
                (dotimes (offset 132)
                  (let ((task-id (+ offset 6)))
                    (when (logtest?
-                           (-> (the-as (pointer entity-perm)
+                           (-> (the-as entity-perm
                                        (+ (the-as int tag) 16 (* task-id 16)))
-                               0 status)
+                               status)
                            (entity-perm-status complete))
                      (set! fresh #f)))))))
         (set! cursor (the-as object next))))
@@ -450,10 +450,6 @@
   (set! *ap3-diagnostic-native-operation-kind* AP-DIAG-NATIVE-OP-NONE)
   (set! *ap3-diagnostic-native-operation-process* (the-as handle #f))
   0)
-
-(defun ap3-diagnostic-native-operation-matches? ((self auto-save))
-  (and (!= *ap3-diagnostic-native-operation-kind* AP-DIAG-NATIVE-OP-NONE)
-       (= (handle->process *ap3-diagnostic-native-operation-process*) self)))
 
 (defun ap3-diagnostic-stage-native-operation! ((kind int))
   ;; This records only that native I/O began. It does not authorize, validate,
@@ -605,48 +601,35 @@
 (defun ap3-game-info-initialize-wrapper ((this game-info) (mode symbol)
                                          (save game-save) (continue-name string)
                                          (reset-spec resetter-spec))
-  ;; Native New Game saves before calling initialize! with no game-save. The
-  ;; done hook arms a one-shot marker for that exact transition. Every other
-  ;; full no-save initialization, including "Continue Without Save", must
-  ;; invalidate the previously published AP descriptor before gameplay starts.
+  ;; Native save done synchronously notifies progress, which can issue more
+  ;; than one no-save initialization before the done behavior returns. Keep
+  ;; the published New Game descriptor only while that notification is being
+  ;; dispatched. A later "Continue Without Save" therefore still clears it.
   (when (and (= mode 'game) (not save))
-    (if (and (= *ap3-saved-new-game-ready* 1)
-             continue-name
-             (string= continue-name "intro-start"))
-        (set! *ap3-saved-new-game-ready* 0)
-        (ap3-invalidate-native-save-binding!)))
+    (when (not (and (= *ap3-saved-new-game-ready* 1)
+                    (= (-> *ap-runtime* save-loaded) 1)
+                    (ap3-valid-uuid-shape? *ap3-native-save-identity*)))
+      (ap3-invalidate-native-save-binding!)))
   (*ap3-native-game-info-initialize* this mode save continue-name reset-spec))
 
-(defun ap3-pending-operation-matches? ((self auto-save))
-  ;; Compare with the bridge-staged handle, not game-info.auto-save-proc.
-  ;; Native done clears the latter for save/restore before returning to our
-  ;; wrapper, while this staged handle continues to resolve to self until the
-  ;; wrapper finishes. Keeping both the pre- and post-dispatch checks rejects
-  ;; any staged operation that was invalidated by the native notification.
-  (= (handle->process *ap3-pending-save-process*) self))
-
-(defun ap3-publish-pending-native-save! ()
-  ;; The native done behavior is the durable I/O boundary. Commit the observed
-  ;; descriptor to reload-persistent state there, before another bridge load
-  ;; can discard the regular pending-operation globals. The observer calls
-  ;; this too as a conservative fallback, but publication does not wait for a
-  ;; later heartbeat or for the completed auto-save process to deactivate.
+(defun ap3-publish-pending-native-save! ((slot int))
+  ;; Entry to native done is the durable I/O boundary. Commit the observed
+  ;; descriptor there before its synchronous progress notification can start
+  ;; gameplay. The observer calls this too as a conservative fallback.
   (when (and (= *ap3-pending-save-valid* 1)
              (= *ap3-pending-save-succeeded* 1)
-             (>= (-> *game-info* auto-save-which) 0)
-             (< (-> *game-info* auto-save-which) 4)
-             (= (-> *game-info* auto-save-status) (mc-status-code ok)))
+             (>= slot 0)
+             (< slot 4))
     ;; Never carry a sidecar acknowledgement from one identity or native slot
     ;; into another. Python must acknowledge this exact descriptor later.
     (when (or (zero? (-> *ap-runtime* save-loaded))
               (not (string= *ap3-pending-save-identity*
                             *ap3-native-save-identity*))
-              (!= (-> *ap-runtime* native-save-slot)
-                  (-> *game-info* auto-save-which)))
+              (!= (-> *ap-runtime* native-save-slot) slot))
       (set! (-> *ap-runtime* ap-state-loaded) 0)
       (set! (-> *ap-runtime* ap-state-bound) 0))
     (ap3-copy-string! *ap3-native-save-identity* *ap3-pending-save-identity* 96)
-    (set! (-> *ap-runtime* native-save-slot) (-> *game-info* auto-save-which))
+    (set! (-> *ap-runtime* native-save-slot) slot)
     (set! (-> *ap-runtime* native-save-eligibility)
           *ap3-pending-save-eligibility*)
     (set! (-> *ap-runtime* save-loaded) 1)
@@ -671,48 +654,57 @@
                          AP-RESULT-OK AP-ERROR-NONE
                          (-> *ap-runtime* native-save-eligibility) 0 0)
     (set! *ap3-pending-save-valid* 0)
-    (ap3-clear-pending-native-operation!)
+    (set! *ap3-pending-save-succeeded* 0)
+    (set! *ap3-pending-save-new-game* 0)
+    ;; Preserve the staged process handle only as a cleanup fallback if native
+    ;; done does not return through the wrapper. Other saves can release it.
+    (when (= *ap3-saved-new-game-ready* 0)
+      (set! *ap3-pending-save-process* (the-as handle #f)))
     (ap3-clear-native-save-error!))
   0)
 
 (defbehavior ap3-auto-save-done-code auto-save ()
-  ;; The native done code is the operation-specific success boundary: it runs
-  ;; only after mc-save/mc-load completed and updates the authoritative slot.
-  (let ((matches (and (= *ap3-pending-save-valid* 1)
-                       (ap3-pending-operation-matches? self))))
-    ;; Arm this before the native done behavior dispatches its completion
-    ;; notification. If that notification starts gameplay immediately, the
-    ;; initialize! wrapper can still distinguish a saved New Game from the
-    ;; unsaved title-menu path.
-    (when (and matches (= *ap3-pending-save-new-game* 1))
+  ;; Reaching this state proves mc-save/mc-load succeeded. Publish before the
+  ;; native code synchronously notifies progress: that notification can start
+  ;; gameplay and does not preserve a usable post-dispatch hook boundary.
+  (let ((has-pending (= *ap3-pending-save-valid* 1)))
+    (when (and has-pending (= *ap3-pending-save-new-game* 1))
       (set! *ap3-saved-new-game-ready* 1))
+    ;; Upstream auto-save-init-by-other rejects a second native operation while
+    ;; one is active, so the one staged diagnostic belongs to this done state.
+    (when (!= *ap3-diagnostic-native-operation-kind*
+              AP-DIAG-NATIVE-OP-NONE)
+      (ap-diagnostic-emit! AP-DIAG-EVENT-SAVE-SUCCEEDED
+                           AP-DIAG-SEVERITY-INFO
+                           1 (-> self which)
+                           AP-RESULT-OK AP-ERROR-NONE
+                           *ap3-diagnostic-native-operation-kind* 0 0)
+      (ap3-diagnostic-clear-native-operation!))
+    (when has-pending
+      (set! *ap3-pending-save-succeeded* 1)
+      (ap3-publish-pending-native-save! (-> self which)))
     (let ((result
             ((the (function object :behavior auto-save)
                    *ap3-native-auto-save-done-code*))))
-      (when (ap3-diagnostic-native-operation-matches? self)
-        (ap-diagnostic-emit! AP-DIAG-EVENT-SAVE-SUCCEEDED
-                             AP-DIAG-SEVERITY-INFO
-                             1 (-> *game-info* auto-save-which)
-                             AP-RESULT-OK AP-ERROR-NONE
-                             *ap3-diagnostic-native-operation-kind* 0 0)
-        (ap3-diagnostic-clear-native-operation!))
-      (when (and matches
-                 (= *ap3-pending-save-valid* 1)
-                 (ap3-pending-operation-matches? self))
-        (set! *ap3-pending-save-succeeded* 1)
-        (ap3-publish-pending-native-save!))
+      ;; If native done returns normally, release the guard here. The runtime
+      ;; observer also clears it once the process handle expires.
+      (set! *ap3-saved-new-game-ready* 0)
+      (ap3-clear-pending-native-operation!)
       result)))
 
 (defbehavior ap3-auto-save-error-code auto-save ((status mc-status-code))
-  (when (ap3-diagnostic-native-operation-matches? self)
+  (set! *ap3-saved-new-game-ready* 0)
+  ;; Native auto-save permits only one operation at a time; an active staged
+  ;; diagnostic and pending candidate therefore belong to this error state.
+  (when (!= *ap3-diagnostic-native-operation-kind*
+            AP-DIAG-NATIVE-OP-NONE)
     (ap-diagnostic-emit! AP-DIAG-EVENT-SAVE-FAILED AP-DIAG-SEVERITY-ERROR
-                         1 (-> *game-info* auto-save-which)
+                         1 (-> self which)
                          AP-RESULT-FAILED AP-ERROR-INTERNAL-FAILURE
                          *ap3-diagnostic-native-operation-kind*
                          (the-as int status) 0)
     (ap3-diagnostic-clear-native-operation!))
-  (when (and (= *ap3-pending-save-valid* 1)
-             (ap3-pending-operation-matches? self))
+  (when (= *ap3-pending-save-valid* 1)
     (set! *ap3-pending-save-valid* 0)
     (ap3-clear-pending-native-operation!)
     (ap3-set-native-save-error!
@@ -825,9 +817,16 @@
     (set! (-> *ap-runtime* mission-restarting) (if restarting 1 0))
     (set! (-> *ap-runtime* level-transition) (if transition 1 0))
     (set! (-> *ap-runtime* in-vehicle) (if vehicle 1 0))
-    ;; Successful operations normally publish in their done hook. Retain this
+    ;; Successful operations normally publish at done-state entry. Retain this
     ;; fallback so observation also commits any compatible staged success.
-    (ap3-publish-pending-native-save!)
+    (ap3-publish-pending-native-save! (-> *game-info* auto-save-which))
+    ;; A New Game done notification may not preserve a usable return boundary.
+    ;; Once its staged process expires, no later no-save initialization belongs
+    ;; to that transition.
+    (when (and (= *ap3-saved-new-game-ready* 1)
+               (not (handle->process *ap3-pending-save-process*)))
+      (set! *ap3-saved-new-game-ready* 0)
+      (ap3-clear-pending-native-operation!))
     ;; Eligibility is deliberately monotonic for the currently observed save.
     (when (and (= (-> *ap-runtime* native-save-eligibility)
                   AP-SAVE-ELIGIBILITY-FRESH-UNPROGRESSED)

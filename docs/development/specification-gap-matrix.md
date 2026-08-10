@@ -6,7 +6,7 @@ normative first-release default in
 and
 [`../../config/templates/Jak3.yaml`](../../config/templates/Jak3.yaml).
 
-Snapshot date: **2026-08-08**
+Snapshot date: **2026-08-09**
 
 ## Status vocabulary
 
@@ -48,8 +48,8 @@ still absent.
 | Automatic OpenGOAL discovery | Launcher v2/v3 settings and paired environment overrides supported. | Implemented | — |
 | Automatic debug game/compiler startup | Missing `gk`/`goalc` processes are launched with diagnostic commands. | Implemented | `R-010` |
 | Compile-wait message | Flashing overlay is installed before `(mi)` and removed after compile path. | Implemented | `R-009` |
-| Versioned runtime handshake | Protocol 3/game integration 2 exports a forward-safe live snapshot, full compatibility metadata, game nonce, and eight harmless receipts. | Automated and compiled; live matrix pending | `R-009`, `R-019` |
-| Restart tolerance | Client reconnect preserves the game nonce/receipts; a bridge/game restart changes the nonce and stale commands fail. Lifecycle cases are automated. | Partial until live matrix | `R-010`, `R-019` |
+| Versioned runtime handshake | Protocol 3/game integration 2 exports a forward-safe live snapshot, full compatibility metadata, game nonce, and eight harmless receipts. The semantic contract is frozen; 12/15 live rows pass. | Implemented; live gate failed/pending | `R-009`, `R-019` |
+| Restart tolerance | Game restart changed the nonce, cleared receipts, rejected stale state, and rebound the save. Client-first and game-first both passed. Clean and unclean client-only recovery failed because v0.3.5 cannot replace its compiler connection. | Partial; mandatory live failure | `R-010`, `R-019` |
 | Normal title handoff | Retired with protocol 1; protocol 3 permits read/query at title but does not change title or mission state. | Deliberately absent | — |
 | Compile failure is authoritative | Protocol commands require snapshot acknowledgement, but `(mi)` completion does not prove compiler output contains no error. | Partial | `R-009` |
 | Client-owned process cleanup | Client does not stop processes it started. | Missing | `R-010` |
@@ -135,15 +135,15 @@ notes must keep that distinction explicit.
 
 | Requirement | Current state | Status | Risk |
 | --- | --- | --- | --- |
-| Persistent identity includes seed/team/slot/save/table version | Schema 1 atomically persists and one-time binds the full identity/contract against opaque tested save descriptors. Live GOAL identity/freshness observation is deferred. | Automated storage engine / live binding pending | `R-007`, `R-012`, `R-019` |
+| Persistent identity includes seed/team/slot/save/table version | Schema 1 atomically persists and one-time binds the full identity/contract. Real fresh/repeated load, A → B → A, wrong-slot copy rejection, untagged vanilla rejection, Continue Without Save, New Game identity, and normal recovery passed. Client-only restart and locked-bank diagnostics remain failed. | Automated plus partial runtime acceptance | `R-007`, `R-012`, `R-019` |
 | Durable received-item ledger/index | Per-index `received`/`pending`/`applied` records, counts, and pending indices are schema-defined and round-trip tested; the client still requests no `ReceivedItems`. | Automated empty/storage model / gameplay missing | `R-007` |
 | Durable location bitset | Sorted explicit registry IDs are schema-defined and validated; no location hook populates them. | Automated storage model / gameplay missing | `R-007` |
 | Durable pending-check outbox | Schema-defined and relationship-validated; no location hook or network drain exists. | Automated storage model / gameplay missing | `R-007` |
 | Offline completion later sends exactly once | Not guaranteed. | Missing | `R-007` |
 | New-game reconstruction | Absent from the handshake milestone. | Missing | `R-011` |
 | Load-save reconstruction | Absent; protocol 2 has no `/game` command or inventory sync. | Missing | `R-006`, `R-011` |
-| Reconnect/replay idempotence | Hello and duplicate ping are idempotent; gameplay replay is absent. | Handshake only | `R-011` |
-| Packet-gap/out-of-order handling | Not implemented because protocol 2 requests no item stream. | Missing | `R-007` |
+| Reconnect/replay idempotence | Protocol 3 harmless commands passed one effect, exact duplicate receipt replay, `ALREADY_APPLIED`, stale-game-session reset, and title-menu unsafe rejection. Gameplay item replay is absent, and client-only process recovery failed live. | Control transport runtime accepted / process recovery pending | `R-007`, `R-010`, `R-019` |
+| Packet-gap/out-of-order handling | Not implemented because Protocol 3 still requests no item stream. | Missing | `R-007` |
 
 ## Diagnostics and user feedback
 
@@ -155,7 +155,7 @@ notes must keep that distinction explicit.
 | State snapshot on demand | `/diagnostics` and `/diagnostics summary` retain the current snapshot UX without dumping raw identities or forms. | Implemented | — |
 | Sanitized support export | `/diagnostics export` runs off the heartbeat loop and writes a checksummed local ZIP with merged timeline, paired logs, schema-validated summaries, cross-generation storage failover, missing/truncated-artifact declarations, newest-evidence retention, and no native save or sidecar. Startup and export reserve every leased live session's remaining rotation budget under the hard managed cap; remote leases expire after 30 minutes. | Implemented and automated | — |
 | Diagnostic failure isolation | Injected event-sink and writer failures leave persistence revisions, command results, safety decisions, and state mutation unchanged. | Implemented and automated | — |
-| Received/sent HUD messages | Deliberately absent from protocol 2. | Missing | `R-011` |
+| Received/sent HUD messages | Deliberately absent from Protocol 3. | Missing | `R-011` |
 | Compile-wait text | Flashing overlay during compile path. | Implemented/Smoke verified | — |
 | Sufficient failure classification | Typed persistence compatibility/binding/corruption/eligibility/lock/stale errors and client contract diagnostics exist; compiler-error detection and live save provenance remain incomplete. | Partial | `R-009`, `R-012`, `R-019` |
 

@@ -120,3 +120,15 @@ or checksum-invalid bytes enter the documented backup/quarantine flow.
 occur in the same open operation. `StateSession.binding_performed` reports the
 binding as a separate fact, so diagnostics do not have to discard either
 event.
+
+Milestone 7.2 exercised this boundary with disposable native saves. Repeated
+loads retained one descriptor; A → B → A switching closed and reopened the
+matching sidecars; a UUID copied into the wrong native slot was rejected
+read-only; an untagged vanilla save created no sidecar; Continue Without Save
+cleared the descriptor and acknowledgement; and New Game never inherited the
+prior AP identity. An exclusive-lock failure left both native banks and the AP
+revision unchanged, and normal save/load recovered after the locks were
+released, although OpenGOAL v0.3.5 terminated instead of reporting a graceful
+native failure. Clean and unclean client-only recovery also remain blocked by
+that version's one-connection compiler/game lifecycle. The complete evidence
+and hashes are in `milestone-7.2-acceptance.md`.

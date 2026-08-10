@@ -911,6 +911,44 @@ class ProtocolLifecycleTest(unittest.IsolatedAsyncioTestCase):
         acknowledgement_release.set()
         await asyncio.sleep(0)
 
+    async def test_goal_ack_waiting_behind_heartbeat_is_not_a_capture_gap(
+        self,
+    ) -> None:
+        acknowledgement_started = asyncio.Event()
+        acknowledgement_release = asyncio.Event()
+        events: list[tuple[str, dict[str, object]]] = []
+
+        class ContendedAckRepl:
+            async def send_form_unacknowledged(
+                self, form: str, timeout: float = 0.25
+            ) -> None:
+                if not form.startswith("(ap-diagnostic-ack!"):
+                    raise AssertionError(form)
+                acknowledgement_started.set()
+                await acknowledgement_release.wait()
+
+        bridge = BridgeProtocol(
+            ContendedAckRepl(),
+            self.path,
+            "contended-ack",
+            command_timeout=1.0,
+            event_sink=lambda event_name, **fields: events.append((event_name, fields)),
+        )
+        bridge._schedule_goal_acknowledgement(1, 5)
+        await asyncio.wait_for(acknowledgement_started.wait(), timeout=0.1)
+        await asyncio.sleep(0.3)
+        acknowledgement_release.set()
+        if bridge._goal_ack_task is not None:
+            await bridge._goal_ack_task
+
+        acknowledgement_gaps = [
+            event
+            for event in events
+            if event[0] == "diagnostics.capture_gap"
+            and event[1].get("context", {}).get("reason") == "goal_ack_failure"
+        ]
+        self.assertEqual(acknowledgement_gaps, [])
+
     async def test_save_identity_entropy_requires_authenticated_slot(self) -> None:
         game = FakeGame(self.path)
         bridge = self.bridge(game, "authorization")
