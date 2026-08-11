@@ -10,6 +10,17 @@ from worlds.jak3.agents.diagnostics import GOAL_EVENT_REGISTRY
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = REPOSITORY_ROOT / "mod" / "opengoal" / "bridge-modules.json"
 BRIDGE_ROOT = MANIFEST_PATH.parent
+GOAL_EVENT_DECLARATION = re.compile(
+    r"\(defconstant AP-DIAG-EVENT-[A-Z0-9-]+ ([0-9]+)\)"
+)
+
+
+def goal_event_codes(payload: bytes) -> tuple[int, ...]:
+    return tuple(
+        int(match.group(1))
+        for line in payload.decode().splitlines()
+        if (match := GOAL_EVENT_DECLARATION.fullmatch(line)) is not None
+    )
 
 
 class BridgeManifestTest(unittest.TestCase):
@@ -117,16 +128,16 @@ class BridgeManifestTest(unittest.TestCase):
     def test_goal_event_codes_match_the_python_registry(self) -> None:
         codes: list[int] = []
         for payload in self.payloads.values():
-            codes.extend(
-                int(value)
-                for value in re.findall(
-                    r"^\(defconstant AP-DIAG-EVENT-[A-Z0-9-]+ ([0-9]+)\)$",
-                    payload.decode(),
-                    re.MULTILINE,
-                )
-            )
+            codes.extend(goal_event_codes(payload))
         self.assertEqual(len(codes), len(set(codes)))
         self.assertEqual(set(codes), set(GOAL_EVENT_REGISTRY))
+
+    def test_goal_event_code_parser_accepts_lf_and_crlf(self) -> None:
+        declaration = b"(defconstant AP-DIAG-EVENT-SOURCE-LOADED 100)"
+
+        for ending in (b"\n", b"\r\n"):
+            with self.subTest(ending=ending):
+                self.assertEqual(goal_event_codes(declaration + ending), (100,))
 
 
 if __name__ == "__main__":
