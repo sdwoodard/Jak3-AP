@@ -195,14 +195,25 @@ normal Archipelago Launcher path, then start a clean game session. The durable
 pending-reload marker must be cleared only by the normal compatible activation
 attestation; deleting it manually is unsupported.
 
-An unchanged-source client/server reconnect is intended to keep the game open
-and preserve the game nonce, receipt ring, descriptor, and binding. Milestone
-7.2 rows 3 and 4 found that official OpenGOAL v0.3.5 cannot accept the required
-replacement compiler connection after the original connection is lost. Until
-that prerequisite is repaired or an approved safe limitation is recorded, the
-safe operational workaround is to restart the client, `gk`, and `goalc`
-together. This keeps Milestones 7/7.2 pending; it does not redefine the frozen
-Protocol 3 semantics.
+Official OpenGOAL v0.3.5 cannot accept a replacement compiler connection after
+the original connection is lost. The sole supported first-release recovery
+path after clean or unclean client/compiler loss is therefore to finish native
+memory-card I/O and restart the client, `gk`, and `goalc` together. Warm
+replacement attachment to the existing game is unsupported. A full-process
+restart creates a new game nonce, discards the old eight-entry receipt ring,
+and requires exact native-save rebinding before any mutation gate can reopen.
+This operational limitation does not redefine the frozen Protocol 3 semantics.
+
+External locking, replacement, or editing of native save-bank files is
+unsupported upstream interference. Acceptance covers ordinary unlocked native
+save/load and verifies that the same descriptor and sidecar recover after a
+supported full-process restart; it does not promise recovery from injected
+filesystem contention.
+
+The 2026-08-10/11 closure observations passed this policy for both clean and
+unclean client loss: each full-process restart issued a new nonce, started with
+an empty receipt ring, remained unsafe before loading, and recovered the exact
+descriptor-qualified sidecar binding. Ordinary unlocked save/load also passed.
 
 Manual `(ml)` remains a developer/recovery aid only. It is unsupported during
 native save/load or any other memory-card I/O, and future gameplay milestones

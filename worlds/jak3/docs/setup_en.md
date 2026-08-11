@@ -19,10 +19,12 @@ playable release. These steps are for protocol and integration testing.
 
 ## Updates and restarts
 
-An unchanged-source client/server reconnect may keep the game open in principle,
-but official OpenGOAL v0.3.5 did not pass replacement-client attachment in the
-Milestone 7.2 acceptance run. If that reconnect fails, finish native save/load
-activity and cleanly restart the client, `gk`, and `goalc`.
+Official OpenGOAL v0.3.5 does not support attaching a replacement client and
+compiler to a game process whose original compiler connection was lost. For
+the first release, recovery after either a clean or unclean client/compiler
+loss therefore requires finishing native save/load activity and restarting the
+client, `gk`, and `goalc` together. Leaving `gk` open for a warm replacement
+attachment is unsupported.
 
 Always use the full clean-restart path when installing a changed APWorld or
 bridge: finish native memory-card I/O, close the client, `gk`, and `goalc`,
@@ -30,6 +32,15 @@ install through Archipelago Launcher, and start a clean game session. Never
 manually delete the pending-reload marker; compatible bridge activation clears
 it. Manual `(ml)` is developer/recovery-only and unsupported during memory-card
 I/O.
+
+External programs must not lock, replace, or edit OpenGOAL's native save-bank
+files while the game is running. That is unsupported upstream interference;
+wait for ordinary native save/load to finish and use the full-process recovery
+path if a bank operation fails.
+
+Milestone 7.2 acceptance verified this full-process path after both clean and
+unclean client loss, including a new game nonce, an empty receipt ring, and
+descriptor-qualified rebinding before permanent-item safety reopened.
 
 ## Connect and launch
 

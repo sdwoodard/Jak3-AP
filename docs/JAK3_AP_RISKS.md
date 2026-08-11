@@ -219,9 +219,9 @@ Owners are deliberately role-based until maintainers assign people.
   ownership and replacement-attachment policy therefore remain unresolved.
 - Mitigation: Start tests with no stale process, record PIDs, and close only
   processes opened for that test using the maintained runbook. For the first
-  release, recover a failed client-only reconnect by finishing native I/O and
-  cleanly restarting the client, `gk`, and `goalc`; do not promise that the game
-  can remain open on official v0.3.5 until the lifecycle is fixed.
+  release, the sole supported recovery after clean or unclean client/compiler
+  loss is to finish native I/O and restart the client, `gk`, and `goalc`
+  together. Warm replacement attachment on official v0.3.5 is unsupported.
 - Exit criteria: Define user-facing ownership policy and implement/test clean
   normal exit, crash recovery, “leave game running” behavior if desired, and
   no termination of unrelated processes.
@@ -342,9 +342,11 @@ Owners are deliberately role-based until maintainers assign people.
   AP revision stayed unchanged, and unlocked save/load recovered. The source
   audit checks structural tables, but no compatible commit/table hash is stored
   in the APWorld handshake.
-- Mitigation: Log paths and bridge hashes, retain the source-table audit, keep
-  locked-bank injection confined to backed-up disposable saves, and classify
-  the native crash rather than attempting an AP-layer speculative workaround.
+- Mitigation: Log paths and bridge hashes, retain the source-table audit, and
+  classify the native crash rather than attempting an AP-layer speculative
+  workaround. External locking, replacement, or editing of native save banks
+  is unsupported upstream interference and is excluded from the supported
+  acceptance matrix; exercise ordinary unlocked save/load recovery instead.
 - Exit criteria: Define supported OpenGOAL version/commit range, include a
   deterministic compatibility/table hash, reject known-incompatible projects,
   and test every supported release.
@@ -488,19 +490,25 @@ Owners are deliberately role-based until maintainers assign people.
   eight original-versus-installed hook assertions, and a later attached smoke
   preserved the descriptor across repeated reloads while rejecting an expired
   proposal and clearing one on disconnect. Milestone 7.2 exercised all 15
-  mandatory rows with isolated state and disposable native slots. Twelve rows
+  historical rows with isolated state and disposable native slots. Twelve rows
   passed: fresh/repeated identity, game and ordered dual restarts, A to B to A
   switching, copied-slot and progressed-vanilla rejection, no-save clearing,
   distinct and overwritten New Game identity, harmless-command duplicate and
   no-op receipts, and title-menu safety. Descriptor-qualified acknowledgement
-  prevented a false-safe save-switch interval. The three remaining failures
+  prevented a false-safe save-switch interval. The three historical failures
   are clean and unclean client-only replacement attachment (R-010) and the
   native locked-bank crash (R-015); neither published an incorrect identity or
-  uncommitted AP revision.
-- Mitigation: Keep Milestones 7 and 7.2 formally incomplete until all three
-  mandatory failures pass. Never infer freshness from a missing sidecar or tag,
-  preserve slot-copy rejection, and use the clean full-process restart policy
-  as the operational fallback without weakening Protocol 3 semantics.
+  uncommitted AP revision. The approved first-release policy excludes warm
+  replacement attachment and external bank interference. Replacement clean and
+  unclean full-process recovery both passed with new nonces, empty receipt
+  rings, exact descriptor/sidecar rebinding, and no premature safe state. An
+  ordinary unlocked save/load also passed. The revised supported result is
+  14/14, so Milestones 7 and 7.2 are complete while R-010 and R-015 remain open
+  for broader upstream lifecycle and compatibility work.
+- Mitigation: Never infer freshness from a missing sidecar or tag, preserve
+  slot-copy rejection, and require a complete client/`gk`/`goalc` restart after
+  client or compiler loss. Treat external native-bank locking, replacement, or
+  editing as unsupported without weakening Protocol 3 semantics.
 - Exit criteria: The real bridge supplies stable identity/slot/freshness across
   clean and crashed restarts; new, progressed, copied, deleted, restored, and
   switched native saves pass the documented policy without inventory changes.

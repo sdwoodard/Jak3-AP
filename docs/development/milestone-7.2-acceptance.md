@@ -2,11 +2,18 @@
 
 ## Decision
 
-**Pending.** The real OpenGOAL v0.3.5 run exercised all 15 mandatory rows.
-Rows 1, 2, and 5–12 plus 14–15 passed. Rows 3, 4, and 13 failed mandatory
-requirements, so Milestones 7 and 7.2 remain incomplete and Milestone 8 remains
-blocked. The performance gates passed after separating normal gameplay content
-allocation from warm client/bridge growth.
+**Complete for the documented first-release workflow, with approved upstream
+limitations.** The original OpenGOAL v0.3.5 run remains preserved as a
+historical 12/15 result: rows 3 and 4 proved that warm replacement attachment
+is not supported, and row 13 proved that external native-bank locking can crash
+upstream OpenGOAL. On 2026-08-10/11, replacement observations for clean and
+unclean client loss both passed the approved full-process recovery workflow,
+and an ordinary unlocked native save/load passed. The revised supported matrix
+is **14/14 PASS**, with original row 13 retained as one accepted limitation.
+
+Milestones 7 and 7.2 are complete. Protocol 3/game integration 2 and native tag
+900 semantics remain frozen. This closure adds no gameplay behavior and does
+not begin Milestone 8.
 
 This run added no gameplay behavior. Production changes are limited to three
 reproduced native-save defects in the Protocol 3 GOAL boundary and one
@@ -18,7 +25,7 @@ authoritative artifact was built.
 
 | Field | Recorded value |
 | --- | --- |
-| Runtime date | 2026-08-09, America/New_York; UTC evidence timestamps cross into 2026-08-10 |
+| Runtime date | Original matrix: 2026-08-09; supported-policy closure: 2026-08-10/11, America/New_York |
 | Jak3-AP base commit | `9fa6617569e39cf47129e4d34c5150bf776fd81c` plus this reviewed worktree |
 | Live-tested APWorld | version `0.1.0`, 220,211 bytes |
 | Live deterministic build A/B SHA-256 | `f74c13f2b0c24e44cc70be224ca4feefd167590e6ff3b29ed248f0fdb412adc5` for both builds |
@@ -74,7 +81,7 @@ The disposable saves were:
 | C | 2 | `cd635a2ac384a24a` | post-copy New Game and lock/recovery target |
 | Vanilla | 3 | none | disconnected, untagged native control |
 
-## Acceptance matrix
+## Historical 15-row acceptance matrix
 
 “Session/event evidence” names the sanitized recorder label and GOAL event
 range where one was available. A session-scoped entry means the row is proven
@@ -99,10 +106,32 @@ contiguous GOAL range.
 | 14 | Unique effect applies once, exact duplicate replays receipt, new no-op returns `ALREADY_APPLIED`. | ID 7201401 changed target 0→1 and revision 5→6; exact duplicate returned stored `APPLIED` with no receipt/revision growth; ID 7201402 returned `ALREADY_APPLIED`, receipt count 2, revision 6→7. | **PASS** | C; same nonce; receipt results 3 and 4. | Events 106–116. The recorder’s old 100 ms check missed the last transient acknowledgement; the durable ring proved it and the recorder now polls/reads the ring. |
 | 15 | Queries work at title; unique mutation is unsafe/unbound. | Query completed in 184.215 ms. ID 7201501 did not change the target and returned result 6 `UNSAFE_NOW` with error 16. | **PASS** | No save/state/binding; title flag true. | `row-15-pass`; session-scoped snapshot. |
 
-Mandatory result: **12 PASS / 3 FAIL**. No row bound the wrong save,
+Historical result: **12 PASS / 3 FAIL**. No row bound the wrong save,
 transferred an acknowledgement, published an uncommitted identity, or reported
-mutation-safe without a compatible bound save. The three failures nevertheless
-prevent the required release claim.
+mutation-safe without a compatible bound save. The original failures remain
+evidence of the unsupported warm-attachment and external-lock workflows; they
+are not rewritten as passes.
+
+## Supported first-release closure observations
+
+Only the approved replacement paths were rerun. The other 12 passing rows were
+not repeated.
+
+| Observation | Baseline | Recovery evidence | Result |
+| --- | --- | --- | :---: |
+| A — clean full-process recovery | Save A, descriptor `0debe8fcf21f0729`, native slot 0, the matching sidecar at revision 26, nonce `164ad71761f7d8b2`, zero receipts, bound and permanent-item safe. | The sidecar closed cleanly at revision 27. Client, `gk`, and `goalc` were restarted through the normal launcher. Before loading, binding and permanent-item safety were false. Reloading Save A selected the same descriptor/sidecar and slot, advanced valid open-state bookkeeping to revision 28, changed the nonce to `d7efd9ce30f1dd46`, retained zero receipts, and became safe only after exact rebinding. | **PASS** |
+| B — unclean client followed by full-process recovery | Save B, descriptor `48f91b6d5d34bf59`, native slot 1, the matching sidecar at revision 5, nonce `17c4589764b5c440`, zero receipts, bound and permanent-item safe. | Only the AP client was terminated; the sidecar remained `last_clean_shutdown=false` while `gk` and `goalc` stayed alive. Both remaining processes were then closed without attempting warm attachment. The replacement diagnostic session emitted `diagnostics.prior_session.unclean` as event 1. After all three processes restarted, the authenticated pre-load snapshot had binding and safety false. Loading Save B retained its descriptor, sidecar, slot, and revision; the nonce changed to `41e2f4d5d9cb1e3c`, receipts were zero, and safety opened only after exact rebinding. Final clean close advanced bookkeeping to revision 6. | **PASS** |
+| Row-13 supported counterpart — ordinary unlocked save/load | Bound Save B at descriptor `48f91b6d5d34bf59`, slot 1, sidecar revision 5, nonce `17c4589764b5c440`. | A normal in-game save changed only the selected native bank (`bank2.bin`) while retaining the descriptor, binding, sidecar, authorization, nonce, and safety. A normal in-game load then recovered the same descriptor-qualified binding with no AP-state loss. No bank was locked, replaced, edited, or tampered with. | **PASS** |
+
+The revised supported result is **14 PASS / 0 FAIL**, plus one accepted
+limitation: original row 13's externally injected bank lock. Client-only or
+compiler-only replacement attachment to an existing `gk` is also explicitly
+unsupported on official OpenGOAL v0.3.5.
+
+One attempted unlocked-save capture was excluded before the passing Save B
+check: `gk` had independently restarted before the requested save, so the game
+no longer had a bound save loaded. The recorder marks that attempt as an
+invalid precondition and it is not counted as a product result.
 
 ## Failure ownership
 
@@ -191,6 +220,13 @@ The warm same-scene comparison, not content-loaded `gk` growth, is the selected
 | Connected profiler trace | 3,530,953 | `90953a2ede507711daa8945b93b869a156cb08732b78eccdfc97380705b0de23` |
 | Row-4 crash-following bundle | 8,127 | `0d5303f7ccc275819d99869289d5e6fca3baa25857da66e5eca397c11766ddf8` |
 | Row-13 crash-following bundle | 362,610 | `224cdc5f0fc6d428d3e4a4370690c71c31c728143f8592954580dd9382368aa5` |
+| Closure observation A recorder | 6,846 | `750fb236a847a4bbb9810a7b78c21605c34c9a7b3a4e295b1953ef780017b8ce` |
+| Observation A baseline/restart snapshots | 1,690 / 1,541 | `4101fdf01064904bbc52a5b35f8a78d4c831265f59909a56026c1f37a820be7a` / `fee664c928fec6444002ab39dfbb704a83a5d830e6bf8b5210ecbe45c63f0498` |
+| Closure observation B recorder | 7,381 | `f8020d38d12438d93e584a1c5fee5e518fdb099b4d357cd3ae1e34b1f4771cf2` |
+| Observation B baseline/unbound/rebound snapshots | 1,576 / 1,503 / 1,541 | `8f7d13bc9429f12b420a7fb7e641b1a167ae5a5eced0445a530fb44c884c1b6f` / `7bdfdfb8a475e7987176b7e81073b095571ccac40b6a7fca1ffea98f121e417c` / `ac5afc8e60eac65a38411006f41ac26cb6c3078142067a0b00becb8453cd3018` |
+| Observation B recovery structured events | 41,542 | `5fbe4f2e7972cabb1939ff76e4148c1d7d621d1a06797490051b94171bd7fd9b` |
+| Ordinary unlocked save/load recorder | 7,435 | `5f25e8e50514cc5c90b6c3118d28026fce9cad6a0152e148e7dbf94d49adb2f3` |
+| Unlocked save before/after-save/after-load snapshots | 1,576 each | `853d1ee9304b86be5d590a432f5ef803594b2c23640879e6ec0f866e09be3d32` / `76c5dec8bd61342093b5aaa274e75891c4eb0c510b460d8f78bf709d532e0695` / `b8a29cfe1ffbdb72bb2833700f1ef8fb3a394de1556d89f2bb0cb9866ebec405` |
 
 The recorder retains both exported bundle names, byte lengths, and hashes, and
 the associated local session/native-bank evidence remains under the ignored
@@ -203,6 +239,7 @@ is not valid.
 
 | Check | Command surface | Result |
 | --- | --- | --- |
+| Supported-policy closure evidence | Parse all three closure recorder JSONL streams; validate framing and protocol/integration fields for all 12 retained snapshots; recompute the three recorder hashes; run documentation status/phrase consistency and `git diff --check` | Passed; 32 JSONL records and 12 snapshots validated, all recorded hashes matched, and no production source changed |
 | Focused regressions and recorder fixtures | Disposable Archipelago `pytest` selection for acknowledgement contention, analyzer gates, profiler parsing, and durable receipt polling | 4 passed |
 | Complete packaged suite | `python -m pytest <Jak3-AP/tests> -q -p no:cacheprovider` from the disposable Archipelago copy with the exact final APWorld installed | 293 passed; one expected optional `_speedups` warning |
 | Python lint | `ruff check --ignore E402 worlds/jak3 tests` | Passed |
@@ -227,13 +264,19 @@ session receipt ring. A later semantic change requires a protocol bump plus an
 explicit compatibility and migration decision. Optional diagnostic schema 1
 remains failure-isolated and does not change that contract.
 
-The intended unchanged-source policy is that a client/server reconnect may
-leave the game open and retain its nonce, receipts, and descriptor. Rows 3 and
-4 prove that official OpenGOAL v0.3.5 does not currently satisfy that policy
-after the compiler connection is lost. Until the prerequisite is fixed or an
-approved safe limitation is recorded, the operational workaround is a clean
-restart of client, `gk`, and `goalc`; this is a release blocker, not a silent
-policy change.
+Official OpenGOAL v0.3.5 does not support replacement-client attachment after
+the compiler connection is lost. The reviewed first-release policy therefore
+makes a full restart of the client, `gk`, and `goalc` the sole supported path
+after either a clean or unclean client/compiler loss. Warm attachment to the
+existing game is unsupported. The supported restart must create a new nonce,
+discard the old receipt ring, retain the native descriptor and AP sidecar, and
+reopen mutation safety only after exact rebinding. This operational policy does
+not change any frozen Protocol 3 meaning.
+
+External locking, replacement, or editing of native save banks is unsupported
+upstream interference. Row 13 remains a documented accepted limitation; the
+supported recovery check is an ordinary unlocked native save/load followed by
+the full-process path.
 
 For a changed APWorld or bridge:
 
@@ -249,7 +292,9 @@ a save/load is active.
 
 ## Completion gate
 
-Protocol 3 meanings are frozen, but the freeze does not waive runtime
-acceptance. Rows 3, 4, and 13 require an upstream-compatible repair or an
-explicitly reviewed safe limitation followed by reruns. Milestones 7 and 7.2
-remain pending and Milestone 8 must not begin.
+**Passed.** The 12 originally supported passing rows plus the two replacement
+full-process recovery observations yield 14/14 supported passes. The ordinary
+unlocked save/load counterpart also passed. Original rows 3 and 4 remain
+historical evidence for unsupported warm attachment, and original row 13 is an
+approved limitation for unsupported external bank interference. Milestones 7
+and 7.2 are complete for the first release. **READY FOR MILESTONE 8.**

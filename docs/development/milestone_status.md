@@ -1,6 +1,6 @@
 # Milestone status
 
-Snapshot date: **2026-08-09**
+Snapshot date: **2026-08-11**
 
 The revised roadmap in
 [`Project-Milestones-Revised.md`](Project-Milestones-Revised.md) is the status
@@ -13,9 +13,9 @@ later gameplay work is not credited early.
 | 4 — Consolidate normative sources and freeze the versioned data contract | **Complete** | Canonical in-repository sources, literal first-release registries, complete legacy ID retention/reservation, deterministic table/options hashes, versioned JSON-safe slot data, shared Python/GOAL constants, standalone tests, and push/PR CI are present and passing. |
 | 5 — Activate the exact default static APWorld pool | **Complete** | The active APWorld consumes the Milestone 4 registry and generates exactly 147 network locations, 26 progression instances, 28 useful instances, 93 weighted filler instances, zero traps, 65 hidden completion events, and one code-less Victory event. |
 | 6 — Add atomic persistent AP state and seed/save binding | **Complete** | Accepted Python-writer ADR, schema-1 atomic sidecar/binding engine, slot-data version 2 authenticated seed identity, recovery/quarantine/lock tests, and explicit Milestone 7 live-save deferral. |
-| 7 — Add a runtime state model and idempotent command transport | **Implementation complete; live gate failed/pending** | The full real matrix is recorded in [`milestone-7.2-acceptance.md`](milestone-7.2-acceptance.md): 12 of 15 mandatory rows passed, while clean client-only reconnect, unclean client recovery, and locked-bank native failure handling failed. This row is not complete. |
+| 7 — Add a runtime state model and idempotent command transport | **Complete** | The original 12/15 matrix and the supported-policy closure are recorded in [`milestone-7.2-acceptance.md`](milestone-7.2-acceptance.md). The revised supported matrix is 14/14: clean and unclean client loss both recover through a full client/`gk`/`goalc` restart. Warm replacement attachment and external native-bank interference are approved unsupported limitations. |
 | 7.1 — Structured diagnostics and support bundles | **Complete** | The paired logs remain; diagnostic schema 1 JSONL, the stable event registry, 64-record GOAL ring/drain, manifest-driven bridge lifecycle/hash, persistence/protocol instrumentation, exception capture, bounded retention, allowlist redaction, and local support-bundle export are implemented and automated. The cross-component forensic test drives the real launcher, persistence, protocol, and reconnect instrumentation to reconstruct startup/capture, recovery/rejection, harmless command replay/timeout/failure, and reconnect without native-save or sidecar contents. |
-| 7.2 — Live acceptance and Protocol 3 freeze | **Pending — 12/15 rows pass** | Protocol 3 semantics and the update/restart policy are documented; deterministic artifacts and performance gates pass. Mandatory rows 3, 4, and 13 failed on official OpenGOAL v0.3.5, so Milestone 8 remains blocked. |
+| 7.2 — Live acceptance and Protocol 3 freeze | **Complete — 14/14 supported rows pass** | Protocol 3/game integration 2 and tag 900 semantics are frozen. Both approved full-process recovery observations and ordinary unlocked save/load passed. Original warm-attachment failures and the locked-bank crash remain historical evidence for accepted unsupported workflows. |
 | 8–26 | Not started | Deliberately outside this change. |
 
 ## Milestone 4 completion evidence
@@ -304,6 +304,18 @@ later gameplay work is not credited early.
   because an exclusively locked native bank throws through the upstream card
   scan and terminates `gk`; the native banks and AP revision remained unchanged
   and normal save/load recovered after unlock.
+- The first-release support policy accepts those upstream limitations. The
+  supported recovery after clean or unclean client/compiler loss is a complete
+  restart of the client, `gk`, and `goalc`; warm replacement attachment is
+  unsupported. External locking, replacement, or editing of native save banks
+  is unsupported and original row 13 remains an accepted limitation.
+- Replacement observation A recovered Save A after a clean full-process
+  restart with the same descriptor/sidecar and slot, a new nonce, an empty
+  receipt ring, and no safe state before exact rebinding. Replacement
+  observation B detected the prior unclean client as diagnostic event 1, then
+  recovered Save B through the same full-process path with the same guarantees.
+  An ordinary unlocked Save B save/load also retained its descriptor, sidecar,
+  authorization, binding, and safety. The revised supported matrix is 14/14.
 - The recorder retains the row-4 and row-13 bundle names, sizes, and SHA-256
   values, but the exported ZIP bytes were absent from the ignored evidence root
   at final audit. This retention gap is recorded in the acceptance report.
@@ -317,7 +329,7 @@ later gameplay work is not credited early.
   version 1, descriptor-qualified acknowledgement, result/error meanings, and
   the eight-entry receipt ring are semantically frozen. Any later change needs
   a protocol bump and compatibility/migration decision. The freeze does not
-  waive the three failed acceptance rows.
+  waive the accepted upstream limitations or broaden the supported workflow.
 
 ## Explicitly deferred
 
@@ -326,8 +338,9 @@ until Milestone 12 supplies Standard reachability. Protocol 3 now observes
 native identity/freshness and opens the sidecar for a compatible authenticated
 save, but there are still no early placement guarantees, received-item
 handling, location submission, mission hooks/dispatch, reward interception, or
-goal reporting. Milestones 7/7.2 remain pending until rows 3, 4, and 13 are
-repaired or receive an explicitly reviewed safe limitation and are rerun.
+goal reporting. Milestones 7/7.2 are complete for their documented
+first-release scope; these gameplay domains remain assigned to later
+milestones.
 
 Open runtime risks remain recorded in [`../JAK3_AP_RISKS.md`](../JAK3_AP_RISKS.md),
 especially permissive generator logic (`R-003`), runtime goal reporting

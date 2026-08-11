@@ -48,8 +48,8 @@ still absent.
 | Automatic OpenGOAL discovery | Launcher v2/v3 settings and paired environment overrides supported. | Implemented | — |
 | Automatic debug game/compiler startup | Missing `gk`/`goalc` processes are launched with diagnostic commands. | Implemented | `R-010` |
 | Compile-wait message | Flashing overlay is installed before `(mi)` and removed after compile path. | Implemented | `R-009` |
-| Versioned runtime handshake | Protocol 3/game integration 2 exports a forward-safe live snapshot, full compatibility metadata, game nonce, and eight harmless receipts. The semantic contract is frozen; 12/15 live rows pass. | Implemented; live gate failed/pending | `R-009`, `R-019` |
-| Restart tolerance | Game restart changed the nonce, cleared receipts, rejected stale state, and rebound the save. Client-first and game-first both passed. Clean and unclean client-only recovery failed because v0.3.5 cannot replace its compiler connection. | Partial; mandatory live failure | `R-010`, `R-019` |
+| Versioned runtime handshake | Protocol 3/game integration 2 exports a forward-safe live snapshot, full compatibility metadata, game nonce, and eight harmless receipts. The semantic contract is frozen; the revised supported matrix passed 14/14 rows. | Implemented; live accepted with limitations | `R-009`, `R-019` |
+| Restart tolerance | Game restart changed the nonce, cleared receipts, rejected stale state, and rebound the save. Client-first and game-first both passed. Clean and unclean client loss recovered through the supported full client/`gk`/`goalc` restart; warm replacement attachment remains unsupported on v0.3.5. | Implemented for documented path; upstream limitation retained | `R-010`, `R-019` |
 | Normal title handoff | Retired with protocol 1; protocol 3 permits read/query at title but does not change title or mission state. | Deliberately absent | — |
 | Compile failure is authoritative | Protocol commands require snapshot acknowledgement, but `(mi)` completion does not prove compiler output contains no error. | Partial | `R-009` |
 | Client-owned process cleanup | Client does not stop processes it started. | Missing | `R-010` |
@@ -135,14 +135,14 @@ notes must keep that distinction explicit.
 
 | Requirement | Current state | Status | Risk |
 | --- | --- | --- | --- |
-| Persistent identity includes seed/team/slot/save/table version | Schema 1 atomically persists and one-time binds the full identity/contract. Real fresh/repeated load, A → B → A, wrong-slot copy rejection, untagged vanilla rejection, Continue Without Save, New Game identity, and normal recovery passed. Client-only restart and locked-bank diagnostics remain failed. | Automated plus partial runtime acceptance | `R-007`, `R-012`, `R-019` |
+| Persistent identity includes seed/team/slot/save/table version | Schema 1 atomically persists and one-time binds the full identity/contract. Real fresh/repeated load, A → B → A, wrong-slot copy rejection, untagged vanilla rejection, Continue Without Save, New Game identity, normal recovery, and supported clean/unclean full-process recovery passed. Warm replacement attachment and external bank interference remain unsupported. | Automated plus runtime accepted with limitations | `R-007`, `R-012`, `R-019` |
 | Durable received-item ledger/index | Per-index `received`/`pending`/`applied` records, counts, and pending indices are schema-defined and round-trip tested; the client still requests no `ReceivedItems`. | Automated empty/storage model / gameplay missing | `R-007` |
 | Durable location bitset | Sorted explicit registry IDs are schema-defined and validated; no location hook populates them. | Automated storage model / gameplay missing | `R-007` |
 | Durable pending-check outbox | Schema-defined and relationship-validated; no location hook or network drain exists. | Automated storage model / gameplay missing | `R-007` |
 | Offline completion later sends exactly once | Not guaranteed. | Missing | `R-007` |
 | New-game reconstruction | Absent from the handshake milestone. | Missing | `R-011` |
 | Load-save reconstruction | Absent; protocol 2 has no `/game` command or inventory sync. | Missing | `R-006`, `R-011` |
-| Reconnect/replay idempotence | Protocol 3 harmless commands passed one effect, exact duplicate receipt replay, `ALREADY_APPLIED`, stale-game-session reset, and title-menu unsafe rejection. Gameplay item replay is absent, and client-only process recovery failed live. | Control transport runtime accepted / process recovery pending | `R-007`, `R-010`, `R-019` |
+| Reconnect/replay idempotence | Protocol 3 harmless commands passed one effect, exact duplicate receipt replay, `ALREADY_APPLIED`, stale-game-session reset, and title-menu unsafe rejection. Gameplay item replay is absent. Supported full-process recovery passed after clean and unclean client loss; warm replacement attachment remains unsupported. | Control transport and supported process recovery accepted | `R-007`, `R-010`, `R-019` |
 | Packet-gap/out-of-order handling | Not implemented because Protocol 3 still requests no item stream. | Missing | `R-007` |
 
 ## Diagnostics and user feedback

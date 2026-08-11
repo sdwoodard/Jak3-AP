@@ -52,12 +52,16 @@ installed source actually runs.
 Manual `(ml)` is developer/recovery-only and unsupported during memory-card
 I/O. It is not a player-facing hot-update workflow.
 
-An unchanged-source client reconnect is intended to leave the game open.
-Milestone 7.2 found that official OpenGOAL v0.3.5 cannot reconnect a replacement
-compiler after the original compiler connection is lost. Until that release
-blocker is repaired or explicitly accepted, close and restart the client,
-`gk`, and `goalc` together even for recovery. See
+Official OpenGOAL v0.3.5 cannot reconnect a replacement compiler after the
+original compiler connection is lost. The sole supported first-release
+recovery path after clean or unclean client/compiler loss is to finish native
+memory-card I/O and restart the client, `gk`, and `goalc` together. Warm
+replacement attachment to an existing `gk` is unsupported. See
 `docs/development/milestone-7.2-acceptance.md`.
+
+Do not lock, replace, or edit OpenGOAL's native save-bank files from an external
+program while the game is running. That is unsupported upstream interference,
+not a bridge recovery workflow.
 
 ## Launch path
 
@@ -125,11 +129,12 @@ is statically provable; those require runtime acceptance tests.
    compiler/bridge events are present, and `/diagnostics export` creates a
    validated sanitized bundle.
 7. For Protocol 3 release evidence, run the native-save matrix and performance
-   gates recorded in `docs/development/milestone-7.2-acceptance.md`. A mandatory
-   failed row keeps Milestones 7/7.2 pending.
+   gates recorded in `docs/development/milestone-7.2-acceptance.md`. The
+   accepted v0.3.5 matrix uses full-process recovery after client/compiler loss
+   and excludes external native-bank interference.
 
 The checked-in generator now creates the exact versioned 147-location static
 pool. Its regions and events are deliberately always reachable until Milestone
 12 supplies Standard logic, and protocol 3 still does not drive gameplay. Do
 not publish an installer or call a seed playable until the remaining generator
-and runtime acceptance matrix passes.
+and gameplay milestones pass.
