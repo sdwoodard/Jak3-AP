@@ -135,15 +135,14 @@ source from `mod/opengoal` as package data. The installed client reads those
 resources from either the source tree or APWorld zip and installs them into the
 active OpenGOAL project.
 
-The current single-source pipeline must become manifest-driven when Milestone
-7.1 introduces the first additional bridge module. Use one explicit versioned
-manifest, recommended at `mod/opengoal/bridge-modules.json`, containing each
-source, object name, role, and deterministic load order. The build script,
-standalone installer, installed-client repair path, object registration, and
-compatibility hashing must consume that same manifest. Wildcard discovery is
-not permitted. The bridge compatibility hash covers the canonical ordered
-source set rather than only `archipelago.gc`. Installation and repair are
-atomic for the complete declared module set.
+The bridge lifecycle is manifest-driven through the explicit versioned
+`mod/opengoal/bridge-modules.json` module list introduced by Milestone 7.1. The
+build script, standalone installer, installed-client repair path, object
+registration, compile/load order, activation verification, and compatibility
+hashing consume that same manifest. Wildcard discovery is not permitted. The
+bridge compatibility hash covers the canonical ordered source set rather than
+only `archipelago.gc`, and installation/repair is atomic for the complete
+declared module set.
 
 The standalone install tool remains useful while developing the GOAL source.
 `installer/` is reserved for any future experience beyond Archipelago's native
@@ -185,5 +184,97 @@ item. The active generator consumes the versioned first-release registry and
 creates the exact 26 progression, 28 useful, and 93 weighted filler instances.
 Its single always-open region and immediately reachable event locations are
 explicitly non-playable Milestone 5 scaffolding; Standard reachability remains
-Milestone 12 work. The runtime observes safety and save identity but does not
+Milestone 13 work. The runtime observes safety and save identity but does not
 submit these locations or apply these items.
+
+
+## Collectible-sanity ownership and data flow
+
+The default-only beta uses **global locally earned Precursor Orb thresholds**.
+It does not expose regional or individual orb locations, and Skull Gem sanity
+remains off. A source catalog is nevertheless required before Milestone 13 so
+the generator can prove how much local orb value is reachable in each logical
+state rather than treating every threshold as automatically reachable.
+
+### Authoritative boundaries
+
+- The APWorld owns the versioned collectible-source catalog, stable network
+  location records, logical region assignment, access rules, option validation,
+  placement classification, and dynamic filler count.
+- `archipelago-locations.gc` observes finite native source completion and
+  local-native currency changes. It does not apply AP-delivered currency and it
+  does not own the Python sidecar.
+- `archipelago-consumables.gc` applies AP-delivered Orb/Gem Packs through the
+  exactly-once receipt boundary. Those effects are always tagged
+  `ap_delivered` and cannot advance local-earned or source-completion state.
+- Python remains the sole persistent writer for monotonic local-earned totals,
+  completed collectible-source/location bits, pending outbox entries, and
+  server-confirmed locations.
+- The diagnostics subsystem may carry bounded, allowlisted collectible events,
+  but diagnostic output is never the durability boundary.
+
+### Audit pipeline before public locations
+
+Milestone 12 creates a deterministic **candidate source catalog** and a
+runtime verification report. Candidate entries are development evidence, not
+public network locations. Each entry records at least:
+
+```text
+source_id_candidate
+source_family
+native_level
+logical_region
+native_actor_or_reward_kind
+resource_or_persistent_key
+value
+respawn_class
+save_persistence
+availability_parent
+access_requirements
+source_evidence
+runtime_verification
+```
+
+Stable identity must be source-derived. Coordinates are useful diagnostic
+metadata but cannot be the identity. Actor addresses and spawn order are never
+stable identity.
+
+A container that awards multiple orbs is one finite source with `value = 2` or
+`value = 3` unless the engine exposes a separate persistent bit for each unit.
+Therefore `individual_static` means one location per audited finite source; it
+is not promised to create exactly 600 network locations.
+
+### Logic and generation
+
+For global thresholds, Milestone 13 derives a conservative function equivalent
+to:
+
+```text
+reachable_local_orb_value(state)
+```
+
+It sums only audited, one-time local-native source values and one-time native
+mission/challenge rewards whose locations are reachable in that state. AP Orb
+Packs are never included.
+
+Future regional/individual modes use the same catalog. Enabling one of those
+modes changes the generated location table and therefore requires an explicit
+location-table version/hash, deterministic slot-data representation, stable ID
+reservation, and persistence compatibility or migration decision.
+
+The mandatory progression/useful item pool does not grow merely because more
+collectible checks are enabled. The generator adds enough filler/traps to equal
+the enabled unfilled location count. To avoid turning hundreds of optional
+pickup checks into a progression hunt, the first supported individual mode
+places those locations as `EXCLUDED` under the safe policy until a separate
+placement audit deliberately permits progression.
+
+### Skull Gem boundary
+
+Repeatable Metal Head drops are not individual locations. Future cumulative
+Skull Gem milestones require both a finite milestone cap and a progression cap;
+`skull_gem_bundle_size` alone does not define a finite location set because the
+resource is farmable. Secret purchases are the preferred first Skull Gem
+expansion because their first-time persistent states are finite. Individual
+static Skull Gem locations remain conditional on Milestone 12 proving a
+source-audited set of non-respawning, independently persistent entities.

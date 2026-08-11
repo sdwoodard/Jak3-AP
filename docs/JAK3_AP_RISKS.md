@@ -70,7 +70,7 @@ Owners are deliberately role-based until maintainers assign people.
   and the required default exclusions. Generation tests pass, but every
   location and the Victory event are deliberately immediate-access scaffolding.
 - Mitigation: Keep the scaffold clearly labeled non-playable and keep protocol
-  2 handshake-only until Milestone 12 replaces the region and rules with the
+  2 handshake-only until Milestone 13 replaces the region and rules with the
   audited Standard mission graph and access predicates.
 - Exit criteria: Tiered board, default predicates, early guarantees, all-state
   reachability, beatability, and full Standard generation tests pass.
@@ -102,7 +102,7 @@ Owners are deliberately role-based until maintainers assign people.
   task 72 City Win only as a locked code-less Victory event. Its event item is
   the completion condition, and slot-data version 2 names task 72 plus the
   five-relic threshold. The permissive scaffold makes the event immediately
-  reachable; runtime goal reporting remains absent until Milestone 23.
+  reachable; runtime goal reporting remains absent until Milestone 24.
 - Mitigation: Keep the immediate event labeled non-playable and avoid release
   seeds until Standard finale logic and runtime goal reporting are accepted.
 - Exit criteria: Generator, client, bridge, tests, and reconnect goal resend all
@@ -207,8 +207,7 @@ Owners are deliberately role-based until maintainers assign people.
   exit. Reusing an old process also prevents the current diagnostic session
   from capturing its earlier output.
 - Current evidence: The client records which processes it starts but does not
-  stop them on exit; old windows remained after a prior smoke test. Milestone
-  7.1 now records a structured capture gap whenever a process predates the
+  stop them on exit; old windows remained after a prior smoke test. Milestone 7.1 now records a structured capture gap whenever a process predates the
   client, and the support bundle includes the gap list. Processes started by
   the client stream through bounded pipes, so a client-side raw spool cannot
   grow after exit; a pipe read failure is now retained as a capture gap instead
@@ -410,7 +409,7 @@ Owners are deliberately role-based until maintainers assign people.
   design early guarantees, so placement-control cross-validation cannot yet be
   accepted.
 - Mitigation: Keep Archipelago core authoritative for generic placement data.
-  In Milestone 12, derive a checked placement snapshot after mandatory pool
+  In Milestone 13, derive a checked placement snapshot after mandatory pool
   selection and before the early prefill.
 - Exit criteria: Generation tests reject pool overcounts and local/non-local
   conflicts, account correctly for precollected items, and prove the local
@@ -505,6 +504,58 @@ Owners are deliberately role-based until maintainers assign people.
 - Exit criteria: The real bridge supplies stable identity/slot/freshness across
   clean and crashed restarts; new, progressed, copied, deleted, restored, and
   switched native saves pass the documented policy without inventory changes.
+
+### R-020 — Regional/individual Precursor Orb identity and logic are unproven
+
+- Severity/status: **High / Open**
+- Owner: APWorld collectible-data and OpenGOAL location maintainers
+- Risk: A total of 600 does not provide stable per-source identity, value,
+  region, persistence, or access logic. Enabling regional/individual orbsanity
+  from coordinates, actor addresses, or a generated order could change IDs
+  across builds, duplicate multi-orb containers, create replayable checks, or
+  place progression behind an unreachable source.
+- Current evidence: The first-release registry contains only 24 global
+  25-orb thresholds. The existing source audit proves the global maximum but not
+  a complete source table. Upstream OpenGOAL tracking code distinguishes
+  standalone `skill` actors and orb-bearing containers through persistent entity
+  state, and documents one two-orb container plus one golden triple-orb
+  container. That makes a finite source catalog feasible but also proves that
+  one source is not necessarily one orb unit.
+- Mitigation: Complete Milestone 12 before Milestone 13. Build a deterministic
+  candidate catalog with source-derived identity, value, region, persistence,
+  and access evidence; use it for global-threshold reachability but do not assign
+  public IDs. Promote only accepted sources through Milestones 28, 30, and 31 with an
+  explicit location-table/hash/migration decision. Initial individual-source
+  placement is `EXCLUDED` under the safe policy.
+- Exit criteria: The accepted catalog reconciles to the proven normal-save orb
+  maximum, every source has unique stable identity/value/region/access evidence,
+  default threshold logic is source-aware, and any enabled regional/individual
+  mode passes exact-count, persistence, all-state, fuzzing, and runtime tests.
+
+### R-021 — Skull Gem sanity lacks a finite source and cap contract
+
+- Severity/status: **High / Open**
+- Owner: APWorld option/logic and OpenGOAL collectible maintainers
+- Risk: Ordinary Skull Gem enemy drops are repeatable, while the current
+  `skull_gem_bundle_size` does not define a finite maximum. Enabling cumulative
+  milestones without a cap could create an undefined or grind-dependent
+  location family; treating enemy drops as individual checks would violate the
+  finite/idempotent location invariant.
+- Current evidence: The canonical design keeps `skull_gem_sanity: off`, rejects
+  repeatable drops as locations, and documents only future cumulative,
+  purchase, union, and conditional static modes. No complete non-respawning
+  static-gem table or finite cumulative cap is frozen.
+- Mitigation: Milestone 12 classifies every source family and audits purchase
+  persistence. Milestone 28 adds explicit finite milestone and progression
+  caps with versioned table/slot/state behavior. Milestone 32 implements
+  cumulative milestones and secret purchases; the recommended initial
+  progression cap is zero. Milestone 33 implements individual static gems only
+  if a complete independently persistent table is proven, otherwise the mode
+  remains rejected and IDs are reserved.
+- Exit criteria: Every enabled Skull Gem mode has a finite exact location count,
+  stable IDs where applicable, clear progression placement, AP-pack isolation,
+  save/replay persistence, all-state logic, and runtime acceptance. Repeatable
+  enemy drops never become individual locations.
 
 ## Risk update rules
 

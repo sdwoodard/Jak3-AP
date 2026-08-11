@@ -111,26 +111,34 @@ Jak 3:
 
   precursor_orb_sanity: global_bundles # [SUPPORTED DEFAULT]
                                      # off: no Precursor Orb checks.
-                                     # global_bundles: threshold checks at a fixed step (recommended).
-                                     # global_milestones: curated ten thresholds.
-                                     # regional_bundles: experimental region-attributed totals.
-                                     # individual_static: experimental stable-ID pickup checks.
+                                     # global_bundles: monotonic local-earned thresholds at a fixed step; this is the
+                                     # supported first-release orbsanity model.
+                                     # global_milestones: curated ten thresholds (post-beta until implemented).
+                                     # regional_bundles: post-beta; requires a complete region-attributed source catalog.
+                                     # individual_static: post-beta; one check per audited finite native source, not
+                                     # necessarily 600 checks. A 2- or 3-orb container is one source with a value unless
+                                     # each orb unit has its own independently persistent identity.
 
-  precursor_orb_bundle_size: 25     # [SUPPORTED DEFAULT] 10-100. Creates thresholds up to the 600-orb maximum.
-                                     # Step 25 creates 24 locations.
+  precursor_orb_bundle_size: 25     # [SUPPORTED DEFAULT] 10-100. Creates thresholds up to the proven local maximum.
+                                     # Step 25 creates 24 locations when all 600 local orbs remain obtainable.
 
   precursor_orb_progression_cap: 300 # [SUPPORTED DEFAULT]
-                                     # 0-600. Orb thresholds above this are marked EXCLUDED.
-                                     # AP Orb Packs never count toward local-world orb thresholds.
+                                     # 0-600. Global thresholds above this are marked EXCLUDED.
+                                     # This cap does not silently define placement for future individual-source mode.
+                                     # AP Orb Packs never count toward local-world orb thresholds or source checks.
 
-  skull_gem_sanity: "off"           # [SUPPORTED DEFAULT] off: recommended; enemy drops are repeatable.
-                                     # cumulative_milestones: finite local-earned-total thresholds.
-                                     # secret_purchases: finite first-time purchase checks.
+  skull_gem_sanity: "off"           # [SUPPORTED DEFAULT] off: recommended; enemy drops are repeatable and are never
+                                     # individual locations. Every non-off value remains post-beta.
+                                     # cumulative_milestones: monotonic local-earned thresholds, but a future versioned
+                                     # finite cap/progression-cap contract is required before this can generate.
+                                     # secret_purchases: finite first-time purchase checks; preferred first expansion.
                                      # both: milestones plus purchases.
-                                     # individual_static: experimental non-respawning static gems only.
+                                     # individual_static: only if a source audit proves non-respawning, independently
+                                     # persistent static gems.
 
-  skull_gem_bundle_size: 25         # [SUPPORTED DEFAULT] 5-100. Step for cumulative Skull Gem milestone mode.
-                                     # AP Gem Packs never count toward local-world thresholds.
+  skull_gem_bundle_size: 25         # [SUPPORTED DEFAULT] 5-100. Reserved step for future cumulative milestone mode.
+                                     # It has no effect while skull_gem_sanity is off and does not by itself define a
+                                     # finite maximum. AP Gem Packs never count toward local-world thresholds.
 
   secret_purchase_sanity: "off"     # [SUPPORTED DEFAULT] off: recommended first release; free mode pre-opens R&C content
                                      # without auto-checking a purchase location.
@@ -139,7 +147,8 @@ Jak 3:
                                      # individual_vanilla_costs: preserve native costs and grind.
 
   allow_experimental_checks: false  # [SUPPORTED DEFAULT] true remains rejected in the default-only beta.
-                                     # Experimental names stay documented for future audited table versions.
+                                     # Milestone 12 source auditing does not make an option selectable; experimental
+                                     # names remain documentation until their later versioned implementation milestones.
 
   # ---------------------------------------------------------------------------
   # Item shuffle and logic options

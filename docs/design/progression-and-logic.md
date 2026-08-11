@@ -831,41 +831,136 @@ Default is `off`; medal checks are high-skill optional content. Under `challenge
 
 ### 11.6 Precursor Orb sanity
 
-Jak 3 has 600 Precursor Orbs. The first implementation should use a monotonic **local-world earned orb total** rather than individual pickup identities.
+Jak 3 has 600 Precursor Orbs. The first-release implementation uses a monotonic
+**local-world earned orb total** rather than individual pickup locations.
 
-| Mode | Behavior |
-| --- | --- |
-| `off` | No orb checks. |
-| `global_bundles` | One check at each multiple of `precursor_orb_bundle_size`, capped at 600. Default. |
-| `global_milestones` | Curated thresholds: 25, 50, 100, 150, 200, 250, 300, 400, 500, 600. |
-| `regional_bundles` | Experimental; requires reliable region attribution. |
-| `individual_static` | Experimental; requires stable per-pickup IDs and a source-derived finite table. |
+| Mode | Behavior | Release status |
+| --- | --- | --- |
+| `off` | No orb checks. | Supported after its ordinary option-resolution tests exist. |
+| `global_bundles` | One check at each multiple of `precursor_orb_bundle_size`, capped at the proven local maximum. | Default first-release mode. |
+| `global_milestones` | Curated thresholds: 25, 50, 100, 150, 200, 250, 300, 400, 500, 600, capped at the proven local maximum. | Post-beta until implemented. |
+| `regional_bundles` | Region-attributed local-earned totals. | Post-beta; requires a complete region-attributed source catalog. |
+| `individual_static` | One check per audited finite native source. | Post-beta; requires stable source IDs, values, persistence, and per-source logic. |
+
+#### 11.6.1 First-release global-threshold rules
+
+- AP-delivered Orb Packs increase spendable balance but **not** the local-world
+  earned total.
+- Native one-time mission/challenge orb rewards may increase the local-world
+  total exactly once.
+- The threshold flag remains set after spending.
+- With the default 25-step bundles and a proven 600-orb maximum, 24 checks are
+  created.
+- `precursor_orb_progression_cap: 300` marks global thresholds above 300
+  `EXCLUDED` so they cannot contain progression/useful items.
+- Orb glitches, native reconstruction, mission replay, or reward replay cannot
+  send duplicate locations because every threshold has a permanent AP bit.
+- The mission-board adapter MUST prove that all enabled local-world orb value
+  remains obtainable on one post-game AP save without Hero Mode or a glitch.
+  If that acceptance test fails, generation stops at the highest proven
+  obtainable threshold and recalculates the filler count.
+
+Global thresholds still need source-aware logic. Milestone 12 creates an
+orb-source catalog, and Milestone 13 derives a conservative function equivalent
+to:
+
+```text
+reachable_local_orb_value(state)
+```
+
+It sums only audited one-time local-native source values and one-time native
+mission/challenge rewards reachable in that state. AP Orb Packs are never part
+of that sum. A threshold can be progression-eligible only when the generator can
+prove that at least its value is reachable without the item placed there.
+
+#### 11.6.2 Future regional and individual semantics
+
+A future source-catalog entry records at least:
+
+```text
+source_id
+source_family
+native_level
+logical_region
+resource_or_persistent_key
+value
+respawn_class
+save_persistence
+availability_parent
+access_requirements
+source_evidence
+```
 
 Rules:
 
-- AP-delivered Orb Packs increase spendable balance but **not** the local-world earned total.
-- Native one-time mission/challenge orb rewards may increase the local-world total.
-- The threshold flag remains set after spending.
-- With the default 25-step bundles, 24 checks are created.
-- `precursor_orb_progression_cap: 300` marks thresholds above 300 `EXCLUDED` so they cannot contain progression/useful items.
-- Orb glitches or replay behavior cannot send duplicate locations because each threshold has a permanent AP bit.
-- Retail guides/community reports indicate Jak 3's 600 orbs are not permanently missable, unlike Jak II; nevertheless, the AP mission-board adapter MUST prove that all 600 local-world orbs/rewards remain obtainable on one post-game AP save. If that acceptance test fails, the first release MUST cap generated orb locations at the proven obtainable total rather than relying on Hero Mode or an orb glitch.
+- Public source IDs are explicit and source-derived. Coordinates, actor memory
+  addresses, spawn order, display order, and generated list position are not
+  identity.
+- One finite native source becomes one individual location. A crate or urn that
+  awards two or three orbs has `value = 2` or `value = 3` and remains one
+  location unless each orb unit has an independently persistent native bit.
+  Therefore `individual_static` is not promised to create exactly 600 checks.
+- Respawning containers, replay rewards, Hero Mode respawns, and any source
+  without a durable first-time state are invalid individual locations.
+- `regional_bundles` requires every counted source/reward to have one unambiguous
+  logical region and source class.
+- `precursor_orb_progression_cap` applies to global threshold values. It does not
+  silently define placement eligibility for individual-source locations.
+- The first supported individual-source policy SHOULD mark every individual orb
+  location `EXCLUDED` under `challenge_progression: safe` until per-source logic
+  and multiworld pacing are separately accepted. `accessibility: full` still
+  requires every enabled source to be reachable in all-state.
+- Enabling regional or individual modes changes the generated location contract
+  and requires a location-table version/hash, stable ID reservations,
+  deterministic slot data, persistence compatibility/migration behavior, fill
+  tests, fuzzing, and runtime acceptance.
 
 ### 11.7 Skull Gem sanity
 
 Individual Skull Gem enemy drops are repeatable and MUST NOT be locations.
+Cumulative totals may be monotonic, but the underlying resource is farmable, so
+`skull_gem_bundle_size` alone does not define a finite location family.
 
-Supported modes:
+| Mode | Behavior | Release status |
+| --- | --- | --- |
+| `off` | No Skull Gem checks. | Default first-release mode. |
+| `cumulative_milestones` | Checks at configured monotonic locally earned totals; AP Gem Packs do not count. | Post-beta; requires a finite milestone cap and a progression-placement cap. |
+| `secret_purchases` | First-time persistent secret-purchase checks. | Preferred first Skull Gem expansion after purchase audit. |
+| `both` | Union of cumulative milestones and secret purchases. | Post-beta. |
+| `individual_static` | One check per source-audited non-respawning, independently persistent static gem source. | Conditional; reject permanently if no such finite table can be proven. |
 
-| Mode | Behavior |
-| --- | --- |
-| `off` | Default. |
-| `cumulative_milestones` | Finite checks at configured monotonic locally-earned totals; AP Gem Packs do not count. |
-| `secret_purchases` | First-time secret purchases are checks. |
-| `both` | Union. |
-| `individual_static` | Experimental only for source-audited non-respawning gem entities. |
+Before cumulative milestones can generate, a versioned future option contract
+must define values equivalent to:
 
-The default remains off because cumulative gems are farmable even though the threshold locations themselves are finite.
+```text
+skull_gem_milestone_cap
+skull_gem_progression_cap
+```
+
+These are not first-release options and MUST NOT be added silently after the
+Milestone 7.2 contract freeze. The milestone cap makes the number of checks
+finite. The recommended first supported progression cap is `0`, making every
+farmable cumulative milestone `EXCLUDED` and therefore filler/trap-only unless a
+later pacing decision deliberately changes that policy.
+
+Rules:
+
+- AP Gem Packs increase spendable balance but never local-earned totals,
+  cumulative thresholds, regional totals, or individual source bits.
+- Spending does not decrease the monotonic local-earned total or unset a check.
+- Repeated enemy drops may advance a cumulative counter but never identify an
+  individual location.
+- Secret purchases are finite only when read from persistent first-purchase
+  state; toggling a secret off or revisiting the menu cannot create another
+  check.
+- `individual_static` remains rejected unless Milestone 12 proves stable
+  source identity, one-time persistence, non-respawn behavior, and logic for
+  every enabled source.
+- Any non-`off` mode changes location-table/hash and fill behavior and therefore
+  requires the versioned post-beta collectible contract before generation.
+
+The default remains off because the cumulative resource is farmable and a
+finite static source table has not yet been proven.
 
 ### 11.8 Secret-purchase sanity
 
@@ -955,14 +1050,18 @@ These are logical access containers. They do not need to match physical loading 
 Recommended generation order:
 
 1. Resolve and validate option interactions in `generate_early()`.
-2. Select the mission/check tables and assign location progress types.
+2. Select the mission/check tables and assign location progress types. For an
+   enabled collectible mode, load only its accepted versioned source catalog and
+   include the catalog/table hash in compatibility data.
 3. Create regions and entrances.
 4. Create network locations.
 5. Create hidden mission-completion event locations/items.
 6. Create the locked Victory event.
 7. Create option-dependent progression items.
 8. Create useful items.
-9. Fill remaining non-event locations with weighted filler.
+9. Fill remaining non-event locations with weighted filler. Additional
+   collectible locations increase filler/trap capacity; they do not duplicate
+   mandatory progression/useful items.
 10. Replace the configured percentage of filler with traps.
 11. Force one immediately actionable early route item and one reliable ranged gun locally when configured; do not choose Haven City Access as the sole early route unless Jetboard is also sphere-zero/precollected.
 12. Apply all rules.
@@ -1039,6 +1138,11 @@ The accompanying commented YAML is the normative default template. Supported wor
 | `secret_purchase_sanity` | `off`, `milestones_free`, `individual_free`, `individual_vanilla_costs` | `off` |
 | `allow_experimental_checks` | Boolean | `false` |
 
+Post-beta Skull Gem milestone modes additionally require a versioned finite
+`skull_gem_milestone_cap` and `skull_gem_progression_cap`. Those keys are not
+part of the current first-release schema or template and remain deferred to
+Milestone 28.
+
 ### 15.3 Item options
 
 | Option | Values | Default |
@@ -1077,7 +1181,13 @@ Generation MUST reject or normalize:
 - `mission_equipment: require_unlocks` with missions whose exact equipment has no item/rule implementation.
 - Experimental sanity modes while `allow_experimental_checks: false`.
 - Canonical story mode without its separate gate table.
-- `individual_static` collectible modes without stable ID tables matching the client hash.
+- `individual_static` collectible modes without stable source-derived ID tables,
+  source values, persistence evidence, region/access rules, and a catalog hash
+  matching the connected client.
+- `regional_bundles` without complete, unambiguous region attribution for every
+  counted source/reward.
+- Cumulative Skull Gem milestones without a finite milestone cap, or with a
+  progression cap greater than that finite cap.
 - A progression cap outside the collectible maximum.
 - `early_route_item: guaranteed_local` choosing Haven City Access without Jetboard already precollected or guaranteed sphere zero; normalize to Spargus Field Orders.
 - Trap replacement greater than the number of filler slots; clamp after mandatory items, never before.
@@ -1147,6 +1257,20 @@ class ItemData:
     family: str
     max_native_count: int
     progressive_group: str | None = None
+
+@dataclass(frozen=True)
+class CollectibleSourceData:
+    source_id: str
+    source_family: str
+    native_level: str
+    logical_region: str
+    resource_or_persistent_key: str
+    value: int
+    respawn_class: str
+    save_persistent: bool
+    availability_parent: str | None
+    requirements: tuple[str, ...]
+    evidence: tuple[str, ...]
 ```
 
 ---

@@ -1,11 +1,11 @@
 # Jak 3 Archipelago — Revised Remaining Project Milestones
 
-**Applies after:** Milestones 0–6 completed; Milestone 7 implementation committed as `0cdc04e`; formal live acceptance pending  
-**Repository review basis:** commit `0cdc04e` plus the complete attached Milestone 7 implementation/review history  
+**Applies after:** Milestones 0–7.2 completed; Protocol 3/game integration 2 frozen; Milestone 8 is next
+**Repository review basis:** current post-Milestone-7.2 repository contracts and retained implementation/acceptance evidence
 **Design target:** OpenGOAL Jak 3 + Archipelago, design version 0.3  
 **First-release scope:** one supported default profile only
 
-This revision preserves the established Milestones 4–26 numbering. Milestones 4–6 remain completed contracts, and **Milestone 7 is preserved exactly as previously written**. Commit `0cdc04e` is treated as its implementation result, not as proof of its remaining interactive acceptance gate. **Milestone 7.1** adds diagnostics around the committed implementation, and **Milestone 7.2** performs the real save/restart matrix, measures overhead, and freezes the control architecture before Milestone 8. No existing whole-number milestone is renumbered or displaced.
+Milestones 0–7.2 are completed contracts and are not reopened. Protocol 3, game integration 2, native tag 900, descriptor-qualified binding, diagnostics, and the accepted update/restart policy remain frozen foundations for Milestone 8. Because none of the later whole-number milestones has begun, this revision uses a continuous integer sequence: Milestones 8–11 retain their numbers; the data-only collectible-source audit becomes **Milestone 12**; the former Milestones 12–26 become **Milestones 13–27**; and the optional post-beta collectible track becomes **Milestones 28–33**. No new fractional milestone is introduced. The already completed historical Milestones 7.1 and 7.2 retain their existing numbers.
 
 ---
 
@@ -23,6 +23,9 @@ The design goal is sound and should remain the target:
 - A five-of-seven relic finale.
 - `accessibility: full`.
 - Unsupported and experimental options rejected before generation.
+- The default-only beta supports global locally earned Precursor Orb thresholds;
+  regional/individual orb locations and every non-`off` Skull Gem mode remain
+  post-beta options.
 - Fresh/unprogressed native saves for first-release binding; importing a progressed vanilla save is out of scope.
 
 The first public target should be described as a **default-only beta**, not as a feature-complete 1.0 release. The project becomes a release candidate only after one full generated default seed has been completed with ordinary save/load, a deliberate disconnect, a game restart, a client restart, and a full item replay.
@@ -35,7 +38,13 @@ Three design assumptions must remain conditional until runtime evidence exists:
    Keep it as the preferred design. If the Haven snapshot cannot be proven safe, the recommended fallback is to make Haven converge after the Act I branch while still requiring `Haven City Access`. Do not falsify Act I task completion merely to preserve the original graph.
 
 2. **All 24 orb thresholds through 600.**  
-   Keep all IDs reserved. If a normal AP save cannot obtain all 600 locally earned orbs without Hero Mode, replay exploits, or a glitch, generate thresholds only through the highest proven obtainable multiple of 25 and recalculate the filler count.
+   Keep all IDs reserved. Milestone 12 must catalog the finite local-native
+   sources/rewards used to prove both the normal-save maximum and the
+   source-aware reachability of each threshold. If a normal AP save cannot
+   obtain all 600 locally earned orbs without Hero Mode, replay exploits, or a
+   glitch, generate thresholds only through the highest proven obtainable
+   multiple of 25 and recalculate the filler count. This audit does not enable
+   regional or individual orb options.
 
 3. **Jetboard Launch as an independent shuffled capability.**  
    Keep it separate only if runtime proves that its native flag can be granted, removed, reconstructed, and tested independently from the base Jetboard. If it is demonstrably not independent, revise the design explicitly, reserve the retired Launch ID, merge the capability into Jetboard, and recalculate the item/filler counts. Do not ship a logical item that the game cannot represent.
@@ -106,7 +115,35 @@ Every milestone that adds OpenGOAL behavior must follow these boundaries:
 7. Every new module requires package, installation, compilation, deterministic load-order, source-set-hash, and source-boundary tests. Domain modules emit through the shared Milestone 7.1 diagnostic API rather than creating separate log formats.
 8. The module names are ownership boundaries, not a requirement to create empty placeholders. Create each file only when its milestone needs production behavior.
 
-### Cross-cutting diagnostic contract for Milestones 7.1–26
+### Cross-cutting collectible-sanity contract
+
+1. The supported first-release mode remains global locally earned Precursor Orb
+   thresholds. Milestone 12 gathers the source/value/region/access data needed
+   to make that existing mode logically sound; it does not add locations.
+2. Audit catalogs and runtime observations are development evidence. They must
+   not change the public location registry, location-table hash, slot data,
+   generated counts, or accepted option profile.
+3. One future individual location represents one finite native source. A source
+   with value two or three remains one location unless independent persistent
+   identities exist for each unit.
+4. Stable identity is source-derived and explicit. Coordinates, actor pointers,
+   spawn order, display order, and list position are never public identity.
+5. Repeatable enemy drops, respawning containers, replay rewards, and Hero Mode
+   respawns are never individual locations.
+6. AP-delivered Orb/Gem Packs never advance local-earned totals, regional totals,
+   source bits, or sanity checks.
+7. Any later option promotion requires a location-table/version/hash decision,
+   stable ID reservations, deterministic slot data, persistence compatibility or
+   migration behavior, complete APWorld logic, fill/fuzz tests, and runtime
+   acceptance. Protocol 3 is not changed implicitly.
+8. Additional collectible locations expand filler/trap capacity; they do not
+   duplicate mandatory progression/useful items. Safe placement initially marks
+   individual collectible sources `EXCLUDED` until a deliberate pacing/logic
+   audit permits progression.
+9. Native source observation belongs in `archipelago-locations.gc`; AP-delivered
+   resource effects belong in `archipelago-consumables.gc`.
+
+### Cross-cutting diagnostic contract for Milestones 7.1–33
 
 Milestone 7.1 establishes the diagnostic API, event registry, storage, retention, redaction, and support-bundle contract around the committed Milestone 7 implementation. Milestone 7 itself is not retroactively changed. Milestone 7.2 then uses those diagnostics for the remaining interactive acceptance and performance baseline. Every milestone from Milestone 8 onward that adds or changes runtime behavior must use the Milestone 7.1 API rather than creating unrelated free-form logging.
 
@@ -130,12 +167,13 @@ For each meaningful state transition, command, durable write, native hook, recov
 | Milestone | Treatment in this revision |
 | --- | --- |
 | Milestones 4–6 | Preserved as completed contracts. Milestone 7.1 may instrument their paths without changing their behavior. |
-| Milestone 7 | Preserved exactly as previously written. Commit `0cdc04e` is implementation-complete, but its existing live save/copy/restart completion gate is still pending. |
+| Milestone 7 | Preserved as the completed Protocol 3/runtime/save-binding contract; its semantics are frozen by completed Milestone 7.2. |
 | **Milestone 7.1** | Structured diagnostic logging and forensic support bundles around the committed Milestone 7 behavior. It must not redefine protocol or save-binding semantics. |
-| **Milestone 7.2** | New validation-first milestone: execute the real runtime matrix, measure startup/runtime cost, define the supported update/reload policy, and freeze Protocol 3 before gameplay traffic. |
-| Milestones 8–24 | Keep their existing numbers and functional scope. Their wording adds subsystem-specific diagnostic-event and support-evidence requirements and requires Milestone 7.2 acceptance before real gameplay transport. |
-| Milestone 25 | Keeps its number, but becomes player-facing status, recovery guidance, and diagnostic-export UX. It reuses Milestone 7.1 rather than creating the logger late in development. |
-| Milestone 26 | Keeps its number and adds diagnostic schema, retention, redaction, and support-bundle validation to release hardening. |
+| **Milestone 7.2** | Completed validation-first contract: real runtime acceptance, measured overhead, supported update/restart policy, and Protocol 3 freeze. |
+| Milestones 8–11 | Retain their existing numbers and functional scope. |
+| **Milestone 12** | New data-only collectible-source audit. It provides source/value/region/access evidence for default global orb logic and future modes without enabling any option or changing public IDs. |
+| Milestones 13–27 | These are the former Milestones 12–26, shifted upward by one. In particular: Milestone 13 implements pure reachability, Milestone 21 adds story checks, Milestone 22 adds selected side challenges, Milestone 23 adds global orb thresholds, Milestone 25 performs full integration, Milestone 26 polishes player-facing status, and Milestone 27 releases the default-only beta. |
+| **Milestones 28–33** | Post-beta collectible expansion track: version the optional data contract, then implement curated global milestones, regional orbs, individual orb sources, finite Skull Gem milestones/purchases, and conditional individual static gems as separate reviewable milestones. |
 
 This ordering gives the logger access to the committed Milestone 7 runtime snapshot and idempotent command channel, uses it to capture the remaining live acceptance evidence, and still places both observability and protocol freeze before real `ReceivedItems`, real location traffic, reward interception, overlays, route mutation, and finale handling.
 
@@ -170,7 +208,7 @@ This is a strong **startup and handshake diagnostic logger**. It is not yet a co
 
 ### Decision
 
-Do not revert, rewrite, or broadly reopen commit `0cdc04e`. Treat its Protocol 3, native-save identity, descriptor-qualified binding, runtime-safety, and idempotent command semantics as frozen pending real acceptance. Implement Milestone 7.1 as a separate, reviewable instrumentation task, then perform Milestone 7.2 as the evidence-producing completion of Milestone 7's existing live gate. Production fixes during Milestone 7.2 are limited to reproduced failures or direct source-proven defects. Milestone 25 remains responsible only for concise player-facing presentation and recovery guidance.
+Do not revert, rewrite, or broadly reopen the completed Milestones 7–7.2. Protocol 3, native-save identity, descriptor-qualified binding, runtime-safety, idempotent command semantics, diagnostic contracts, and the accepted update/restart policy are frozen foundations. Later collectible work uses the established location/consumable modules and requires explicit compatibility versioning when it changes public tables; it does not opportunistically alter the control protocol. Milestone 26 remains responsible only for concise player-facing presentation and recovery guidance.
 
 ---
 
@@ -336,7 +374,7 @@ update milestone_status.md and JAK3_AP_RISKS.md.
 
 The repository's current generator still creates the old 131-location mission-unlock world. That scaffold was useful for verifying package structure, but it is not the intended Jak 3 Archipelago game.
 
-This milestone switches the active generator to the documented default static pool: the right item names, classifications, counts, location families, exclusions, and Victory event. Logic may remain deliberately permissive until Milestone 12, but generated seeds must no longer describe the retired mission-unlock design.
+This milestone switches the active generator to the documented default static pool: the right item names, classifications, counts, location families, exclusions, and Victory event. Logic may remain deliberately permissive until Milestone 13, but generated seeds must no longer describe the retired mission-unlock design.
 
 ## Technical objective
 
@@ -630,7 +668,7 @@ Use stable enums/codes for machine decisions and separate human-readable text fo
   - Expected state/schema versions.
 - Repeating the same command ID in the same game session returns the prior result without applying the effect again.
 - Permanent-unlock commands are expressed as idempotent target-state/reconciliation operations, not blind increments.
-- Additive consumable commands remain forbidden until Milestone 14 supplies a durable game-application receipt boundary that survives the crash-after-effect window.
+- Additive consumable commands remain forbidden until Milestone 15 supplies a durable game-application receipt boundary that survives the crash-after-effect window.
 - Commands from an old game session are rejected.
 - A command result distinguishes:
   - Applied.
@@ -705,9 +743,9 @@ For the player, normal logging remains automatic and bounded. When a problem occ
 
 ## Frozen Milestone 7 boundary
 
-Milestone 7 is not revised by this milestone. Milestone 7.1 begins after commit `1348e92` is present, even though the existing interactive completion gate is still pending. Its purpose is to make that gate and later gameplay failures diagnosable. It may add passive observation adapters, event sinks, and diagnostic projections around Milestones 4–7, but it must not change persistence semantics, safe-state decisions, command/result semantics, protocol compatibility requirements, or Milestone 7's required tests.
+Milestone 7 is not revised by this milestone. Milestone 7.1 began after commit `1348e92` and is now a completed contract. Its purpose was to make Milestone 7.2 and later gameplay failures diagnosable. It may add passive observation adapters, event sinks, and diagnostic projections around Milestones 4–7, but it must not change persistence semantics, safe-state decisions, command/result semantics, protocol compatibility requirements, or Milestone 7's required tests.
 
-Formal live acceptance is performed in Milestone 7.2. If diagnostic work exposes an actual defect, record it as a focused regression with a reproducer or direct source evidence and repair only that defect; do not silently redefine or broadly re-review Milestone 7.
+Formal live acceptance was performed in Milestone 7.2. Later diagnostic work may repair only focused reproduced regressions; it must not silently redefine or broadly re-review Milestone 7.
 
 ## Technical objective
 
@@ -1165,7 +1203,7 @@ After Milestone 7.2 passes, implement indexed `ReceivedItems` processing, a cras
 - Milestone 7.2 is a hard prerequisite.
 - Use idempotent target-state/reconciliation commands for permanent unlocks.
 - Python persistence and indexed AP receipts are authoritative; the GOAL receipt ring is only current-game-session command deduplication and reconnect discovery.
-- Do not use the eight-entry ring as the crash-safe journal for currency or other consumables. Additive exactly-once application remains deferred to Milestone 14.
+- Do not use the eight-entry ring as the crash-safe journal for currency or other consumables. Additive exactly-once application remains deferred to Milestone 15.
 - Add native item mapping/application in `archipelago-items.gc` or an equivalent separate module rather than continually enlarging the core `archipelago.gc`.
 
 ## OpenGOAL implementation boundary
@@ -1184,7 +1222,7 @@ Use permanent or ledger-only effects only:
 - Progressive Armor stage 1.
 - An internal ledger-only test item only if needed.
 
-Do not use an Orb Pack or another additive consumable in this milestone; those require the durable exactly-once application boundary in Milestone 14.
+Do not use an Orb Pack or another additive consumable in this milestone; those require the durable exactly-once application boundary in Milestone 15.
 
 ## Required behavior
 
@@ -1558,9 +1596,13 @@ Identify and test the exact five native artifact flags/props required by the scr
 
 Prove which reward commands or inventory fields are reconstructed on save load and how the AP guard/reconciliation must override them.
 
-### 6. Orb completeness
+### 6. Orb completeness and catalog handoff
 
-Prove the maximum number of locally earnable Precursor Orbs on one normal post-game AP save, without Hero Mode or glitches.
+Prove the maximum number of locally earnable Precursor Orbs on one normal
+post-game AP save, without Hero Mode or glitches. Identify every source family
+that contributes to that total and hand unresolved source/value/region/persistence
+questions to Milestone 12. Milestone 11 itself need not freeze individual
+source IDs, but its runtime procedures must not make the later audit impossible.
 
 ### 7. Side-challenge cost and course access
 
@@ -1569,6 +1611,8 @@ Verify the safe zero-cost entry path and hidden Ratchet & Clank course-access be
 ## Diagnostic evidence requirements
 
 Each runtime spike must have an experiment/correlation ID and must retain its structured event timeline or sanitized support bundle. A PASS or fallback decision cannot rely only on prose recollection; the deliverable must point to the source/runtime procedure and the diagnostic evidence that demonstrates the observed state transitions, native flags, item/relic counts, and save/reload result.
+
+Orb-related runs should also retain bounded, opt-in observations sufficient for Milestone 12 to reconcile source classes and local-earned deltas. Do not turn that telemetry into public locations or normal INFO-level per-pickup logging.
 
 ## Required deliverable
 
@@ -1587,7 +1631,7 @@ Create `docs/development/feasibility_decisions.md` with, for each spike:
 
 - **Haven snapshot fails:** recommended fallback is `Haven City Access + DONE(34)` rather than falsifying Act I completion. If even that is unstable, ship vanilla mission order as the supported beta profile.
 - **600 orbs fail:** reserve all IDs but generate thresholds only through the highest proven multiple of 25; recalculate network/filler counts.
-- **Launch is demonstrably inseparable from base Jetboard:** make an explicit design/registry revision, reserve the retired Launch ID, merge the capability into Jetboard, and recalculate pool counts before Milestone 12.
+- **Launch is demonstrably inseparable from base Jetboard:** make an explicit design/registry revision, reserve the retired Launch ID, merge the capability into Jetboard, and recalculate pool counts before Milestone 13.
 - **Launch remains uncertain:** mark the assumption BLOCKED. Do not ship either a ghost Launch item or an unverified gate.
 - **Shadow story state cannot be isolated:** block the affected simplified-mode mission path; do not let native shadow props count as AP relics.
 - **Save reconstruction leaks:** release is blocked until reconciliation is deterministic.
@@ -1621,7 +1665,147 @@ fallbacks. Record all discrepancies in JAK3_AP_RISKS.md.
 
 ---
 
-# Milestone 12 — Implement Complete Pure APWorld Reachability Logic
+# Milestone 12 — Audit Finite Orb and Skull Gem Sources Without Enabling Options
+
+## Human-readable summary
+
+The default already includes global Precursor Orb thresholds, but correct logic
+requires more than knowing that Jak 3 contains 600 orbs. The generator needs to
+know how much local orb value is reachable in each part of the game. Future
+regional or individual orbsanity needs an even stricter source table.
+
+Skull Gems are harder: common enemy drops are repeatable, cumulative totals are
+farmable, and the current bundle-size option does not define a finite maximum.
+Before another option becomes selectable, the project must distinguish finite
+sources, repeatable sources, persistent purchases, values, regions, and logic.
+
+This milestone gathers that evidence now, while source/runtime testing is
+already active. It does not add network locations, public IDs, or supported
+player options.
+
+## Technical objective
+
+Create a deterministic candidate collectible-source catalog and runtime audit
+that makes the default global orb threshold logic sound and produces explicit
+GO/NO-GO decisions for future regional/individual orb and Skull Gem modes.
+
+## Required design and evidence contract
+
+Read and implement
+`docs/development/collectible-sanity-audit.md`. The audit must follow these
+rules:
+
+- Candidate IDs are development evidence, not public location IDs.
+- Identity is source-derived; coordinates, actor addresses, spawn/list order,
+  and arbitrary duplicate ordinals are forbidden.
+- One finite native source becomes one catalog record. A two- or three-orb
+  container records that value but remains one source unless independently
+  persistent units exist.
+- Repeatable enemies, respawning containers, replay rewards, Hero Mode respawns,
+  and random spawns never become individual locations.
+- AP-delivered Orb/Gem Packs are excluded from every local-earned/source total.
+- Audit instrumentation is opt-in, bounded, and non-authoritative.
+
+## Required Precursor Orb work
+
+1. Enumerate standalone orb/`skill` actors from audited source/resource data.
+2. Enumerate orb-bearing crates, sacks, baskets, urns, and other containers.
+3. Record each source's native level, logical region, source family, resource or
+   permanent-entity key, value, persistent completion field, and respawn class.
+4. Enumerate one-time mission/challenge/native rewards that contribute local orb
+   value.
+5. Prove representative standalone, multi-orb-container, and reward persistence
+   through collect, save/load, death/revisit, and game restart.
+6. Reconcile the catalog value with the normal-save maximum of 600, or document a
+   lower proven maximum and every unexplained gap.
+7. Assign conservative availability parents and item/route requirements so
+   Milestone 13 can calculate `reachable_local_orb_value(state)`.
+8. Produce GO/NO-GO decisions for:
+   - Default global thresholds.
+   - Curated global milestones.
+   - Regional bundles.
+   - Individual finite-source checks.
+
+## Required Skull Gem work
+
+1. Enumerate candidate source families and classify each as finite or repeatable.
+2. Confirm ordinary enemy drops are repeatable and invalid as individual checks.
+3. Search for non-respawning static gems with independent persistent identity.
+4. Enumerate one-time mission/challenge rewards separately from enemy drops.
+5. Audit first-time secret-purchase persistence and purchase-table size.
+6. Identify the native local-earned increment path separately from spendable
+   balance and AP-delivered Gem Packs.
+7. Propose a finite future `skull_gem_milestone_cap` and safe
+   `skull_gem_progression_cap`; recommended initial progression cap is zero.
+8. Produce GO/NO-GO decisions for cumulative milestones, secret purchases, and
+   individual static gems.
+
+## Required deliverables
+
+- `docs/development/collectible-sanity-audit.md` kept current with procedures and
+  decisions.
+- A deterministic candidate catalog in a documented development-data path.
+- A human-readable total, duplicate, region, persistence, and unresolved-gap
+  report.
+- A source extractor/audit tool that does not become a runtime dependency.
+- A bounded runtime verification harness or procedure.
+- New risk entries for unresolved identity, total, region, cap, or persistence
+  questions.
+- Tests proving the current public registry, table hashes, slot data, generated
+  147-location count, and accepted default profile are unchanged.
+
+## Required tests
+
+- Repeated extraction produces byte-identical catalog data.
+- Candidate IDs are unique and independent of source declaration order.
+- No coordinate, actor pointer, spawn order, or list position is identity.
+- Multi-orb source values are retained without fabricating multiple IDs.
+- Repeatable sources cannot enter the individual candidate set.
+- Source/reward values reconcile to the proven local orb maximum or emit an
+  explicit gap report.
+- Every accepted orb source has one logical region and a conservative
+  availability rule description.
+- AP-delivered packs never appear in local source totals.
+- Audit events are disabled in normal mode and bounded in audit mode.
+- Non-default collectible options remain rejected.
+
+## Non-goals
+
+- Do not assign public integer location IDs.
+- Do not bump the location table, slot-data schema, state schema, or Protocol 3.
+- Do not enable `global_milestones`, `regional_bundles`, `individual_static`, or
+  any non-`off` Skull Gem mode.
+- Do not add location traffic or permanent collectible bits.
+- Do not add per-frame or ordinary INFO-level pickup logging.
+
+## Completion gate
+
+The default global orb threshold family has enough audited source/value/access
+data for Milestone 13 to model its reachability, and every future orb/Skull Gem
+mode has an explicit evidence-backed GO, SAFE DEFER, or NO-GO decision. The
+current generated world and compatibility hashes are unchanged.
+
+## Suggested Codex prompt
+
+```text
+/plan
+
+Implement only Milestone 12.
+
+Read AGENTS.md, the canonical collectible-sanity design sections,
+collectible-sanity-audit.md, the current source audit, and the immutable
+OpenGOAL sources. Build a deterministic candidate catalog for finite Precursor
+Orb and Skull Gem source families and verify representative value/persistence
+behavior in the real runtime.
+
+Do not create public AP IDs, enable options, change table hashes, add location
+traffic, or modify Protocol 3. Produce the source/value/region/access data needed
+by Milestone 13 and explicit GO/NO-GO decisions for all future modes.
+```
+
+---
+
+# Milestone 13 — Implement Complete Pure APWorld Reachability Logic
 
 ## Human-readable summary
 
@@ -1661,7 +1845,9 @@ DONE(task_id)
 - Story completion events.
 - 38 reward-location rules.
 - 24 selected side-challenge rules.
-- 24 orb-threshold rules, or the proven reduced set.
+- 24 orb-threshold rules, or the proven reduced set. Threshold access uses the
+  Milestone 12 catalog to prove `reachable_local_orb_value(state) >= threshold`;
+  it is not based only on all-state or current spendable balance.
 - Orb progression exclusion above 300.
 - Safe challenge exclusions.
 - Early local Spargus Field Orders.
@@ -1684,6 +1870,8 @@ DONE(task_id)
 - Five relics are sufficient; four are not.
 - Every rule-referenced item is progression-classified.
 - Every enabled `EXCLUDED` location is still reachable in all-state.
+- No regional/individual orb or non-off Skull Gem source location is generated in the first-release profile.
+- Removing any catalog source/reward lowers only the thresholds whose reachable value depended on it; AP Orb Packs never satisfy the calculation.
 
 ## Generation and compatibility tests
 
@@ -1698,6 +1886,7 @@ DONE(task_id)
 - Item links/plando fail clearly if they violate the supported contract.
 - Early guarantees remain valid after common option processing.
 - No stale legacy mission-unlock logic remains.
+- The accepted Milestone 12 catalog is deterministic and its source/value total matches the threshold logic fixtures.
 
 ## Non-goals
 
@@ -1714,7 +1903,7 @@ The exact supported default generates with correct Standard reachability, all-st
 ```text
 /plan
 
-Implement only Milestone 12.
+Implement only Milestone 13.
 
 Replace permissive APWorld rules with the complete documented Standard graph,
 using the Milestone 11 feasibility decisions. Add hidden DONE events, shared
@@ -1727,7 +1916,7 @@ Do not change native mission-board behavior.
 
 ---
 
-# Milestone 13 — Implement Every Permanent Default Item
+# Milestone 14 — Implement Every Permanent Default Item
 
 ## Human-readable summary
 
@@ -1751,11 +1940,11 @@ Implement table-driven application and reconciliation for all 26 progression ins
 
 - Eight route authorizations.
   - Record ownership in the AP ledger.
-  - Do not mutate mission state until Milestone 17.
+  - Do not mutate mission state until Milestone 18.
 - Seven Finale Relics.
   - Count only AP receipts.
   - Do not grant native Seal/Cipher/Astro-Viewer props.
-  - Shadow native props remain Milestone 19 behavior.
+  - Shadow native props remain Milestone 20 behavior.
 
 ### Permanent native capability/inventory
 
@@ -1853,7 +2042,7 @@ Every non-consumable item in the 54-instance progression/useful default pool has
 ```text
 /plan
 
-Implement only Milestone 13.
+Implement only Milestone 14.
 
 Expand the proven permanent-item ledger/reconciliation path to every supported
 progression and useful item. Keep route authorizations and finale relics
@@ -1866,7 +2055,7 @@ Do not implement filler, traps, route opening, or reward expansion.
 
 ---
 
-# Milestone 14 — Implement Exactly-Once Filler and Consumable Delivery
+# Milestone 15 — Implement Exactly-Once Filler and Consumable Delivery
 
 ## Human-readable summary
 
@@ -1980,7 +2169,7 @@ Every default filler item applies once and only once across both crash windows, 
 ```text
 /plan
 
-Implement only Milestone 14.
+Implement only Milestone 15.
 
 First prove and document a durable exactly-once boundary for additive game
 effects. Then implement all supported filler families keyed by ReceivedItems
@@ -1992,7 +2181,7 @@ Do not implement traps, DeathLink, orb-threshold locations, or secret purchases.
 
 ---
 
-# Milestone 15 — Build the Generic Mission-Equipment Overlay System
+# Milestone 16 — Build the Generic Mission-Equipment Overlay System
 
 ## Human-readable summary
 
@@ -2081,7 +2270,7 @@ Tasks 11 and 27 are completable with temporary lesson state, cleanup is reliable
 ```text
 /plan
 
-Implement only Milestone 15.
+Implement only Milestone 16.
 
 Create the generic persistent overlay subsystem and prove it with task 11
 Dark Bomb/Dark Blast and task 27 Invisibility Statues. Use the existing command
@@ -2093,7 +2282,7 @@ Do not add other mission profiles or shadow story state.
 
 ---
 
-# Milestone 16 — Expand Permanent Reward Interception to All 38 Major Rewards
+# Milestone 17 — Expand Permanent Reward Interception to All 38 Major Rewards
 
 ## Human-readable summary
 
@@ -2120,7 +2309,7 @@ Use a reviewed table that records:
 - AP location ID.
 - Permanent commands to suppress.
 - Temporary/story commands to allow.
-- Lesson-overlay handoff through the Milestone 15 overlay subsystem, when applicable.
+- Lesson-overlay handoff through the Milestone 16 overlay subsystem, when applicable.
 - Recursion-guard behavior.
 - Save-reconstruction behavior.
 - AP-off behavior.
@@ -2193,7 +2382,7 @@ All 38 major reward moments use one consistent, audited interception path and pe
 ```text
 /plan
 
-Implement the next approved Milestone 16 reward subgroup only.
+Implement the next approved Milestone 17 reward subgroup only.
 
 Use the table-driven interceptor proven in Milestone 10. For every included
 node, suppress only shuffled permanent grants, preserve all story/task behavior,
@@ -2205,7 +2394,7 @@ Do not proceed to the next subgroup in the same change.
 
 ---
 
-# Milestone 17 — Implement Route Authorizations and the Tiered Mission Board
+# Milestone 18 — Implement Route Authorizations and the Tiered Mission Board
 
 ## Human-readable summary
 
@@ -2305,7 +2494,7 @@ Every default authorization safely opens the same mission content modeled by the
 ```text
 /plan
 
-Implement the next approved Milestone 17 authorization only, in the documented
+Implement the next approved Milestone 18 authorization only, in the documented
 order. Use the Milestone 11 feasibility decision for Haven.
 
 Initialize only the minimum audited native state. Prove that no unrelated task,
@@ -2315,7 +2504,7 @@ to the next authorization.
 
 ---
 
-# Milestone 18 — Expand Mission Bootstrap Profiles
+# Milestone 19 — Expand Mission Bootstrap Profiles
 
 ## Human-readable summary
 
@@ -2335,14 +2524,14 @@ Create reviewed, table-driven bootstrap profiles for all documented default miss
 
 ## Required subdivisions
 
-### 18A — Spargus and early Wasteland
+### 19A — Spargus and early Wasteland
 
 - Training/race vehicles.
 - Leaper sections.
 - Turrets.
 - Arena and gun-training loadouts.
 
-### 18B — Temple, Volcano, and Mines
+### 19B — Temple, Volcano, and Mines
 
 - Flut-Flut/glider.
 - Daxter sections.
@@ -2350,7 +2539,7 @@ Create reviewed, table-driven bootstrap profiles for all documented default miss
 - Bomb train.
 - Remaining lesson powers used in these missions.
 
-### 18C — Haven and Sewers
+### 19C — Haven and Sewers
 
 - Haven vehicles.
 - Missile and Blast Bot sequences.
@@ -2358,7 +2547,7 @@ Create reviewed, table-driven bootstrap profiles for all documented default miss
 - Board Trail.
 - Mission-only shooters.
 
-### 18D — War Factory and late game
+### 19D — War Factory and late game
 
 - Fighter.
 - Mech.
@@ -2421,7 +2610,7 @@ Every default mission can acquire its mission-only actors/equipment while every 
 ```text
 /plan
 
-Implement the next approved Milestone 18 profile subgroup only.
+Implement the next approved Milestone 19 profile subgroup only.
 
 Use table-driven bootstrap descriptors and the generic overlay lifecycle. Add
 all lifecycle tests, verify permanent AP ownership after cleanup, and explicitly
@@ -2432,7 +2621,7 @@ Do not proceed to another subgroup in the same change.
 
 ---
 
-# Milestone 19 — Implement Shadow Native Story State
+# Milestone 20 — Implement Shadow Native Story State
 
 ## Human-readable summary
 
@@ -2508,11 +2697,10 @@ Tasks 30 and 63 execute with their required native props while the AP ledger and
 ```text
 /plan
 
-Implement only Milestone 19.
+Implement only Milestone 20.
 
 Create a shadow-story subsystem separate from permanent inventory and mission
-equipment. Implement the task-30 and task-63 profiles using the exact Milestone
-11 findings. Persist/restore native state and prove AP item/relic counts never
+equipment. Implement the task-30 and task-63 profiles using the exact Milestone 11 findings. Persist/restore native state and prove AP item/relic counts never
 change.
 
 Canonical story-item mode remains unsupported.
@@ -2520,7 +2708,7 @@ Canonical story-item mode remains unsupported.
 
 ---
 
-# Milestone 20 — Add All 61 Story Mission Completion Checks
+# Milestone 21 — Add All 61 Story Mission Completion Checks
 
 ## Human-readable summary
 
@@ -2569,6 +2757,7 @@ For each story mission record close-task/native completion observed, durable AP 
 - Mission completion and reward moment remain distinct locations.
 - Existing completed native state is not auto-imported from a progressed vanilla save; first release requires a fresh AP-bound save.
 - AP mode off does not send checks.
+- When a story completion grants local-native Orbs or Skull Gems, record the audited source class/value needed by the Milestone 12 catalog without creating an extra location or double-counting reconstruction/replay.
 
 ## Required subdivisions
 
@@ -2608,7 +2797,7 @@ All 61 story-completion locations send exactly once and remain correct through r
 ```text
 /plan
 
-Implement the next approved Milestone 20 chapter group only.
+Implement the next approved Milestone 21 chapter group only.
 
 Use verified close-task hooks, durable AP bits, and the existing persistent
 outbox. Keep mission-completion and reward locations distinct. Test replay,
@@ -2620,7 +2809,7 @@ Do not add task 36 or task 72 as network locations.
 
 ---
 
-# Milestone 21 — Add the 24 Selected Side-Challenge Checks
+# Milestone 22 — Add the 24 Selected Side-Challenge Checks
 
 ## Human-readable summary
 
@@ -2650,6 +2839,7 @@ Implement the selected side-challenge location family and default free-entry beh
 - Fixed challenge loadouts supplied where documented.
 - Ratchet & Clank course access pre-opened only under the documented default behavior.
 - AP-delivered gems/orbs do not count toward local-earned sanity totals.
+- Audited one-time challenge Orb/Gem rewards publish their source class and value to the local-earned accounting path exactly once; replay and free-entry behavior cannot add the value again.
 
 ## Default placement exclusions
 
@@ -2696,7 +2886,7 @@ All 24 selected side challenges are finite, persistent, replay-safe locations wi
 ```text
 /plan
 
-Implement only Milestone 21.
+Implement only Milestone 22.
 
 Add side tasks 114–137, their durable AP bits/outbox hooks, default free-entry
 behavior, fixed challenge profiles, and the six documented placement
@@ -2706,17 +2896,17 @@ drops.
 
 ---
 
-# Milestone 22 — Add Local-Earned Precursor Orb Thresholds
+# Milestone 23 — Add Audited Local-Earned Precursor Orb Thresholds
 
 ## Human-readable summary
 
 The default does not need 600 individual pickup identities. It sends checks at total locally earned orb thresholds instead.
 
-This milestone implements a monotonic local-earned counter, keeps AP Orb Packs spendable but logically separate, and enables thresholds only through the amount proven obtainable in Milestone 11.
+This milestone implements a monotonic local-earned counter, keeps AP Orb Packs spendable but logically separate, and enables thresholds only through the amount proven obtainable in Milestone 11 and reconciled by the Milestone 12 source catalog. Regional and individual orb modes remain disabled.
 
 ## Technical objective
 
-Implement the default orb-threshold location family and its separate accounting model.
+Implement only the default global orb-threshold location family and its separate accounting model, using the accepted source catalog for reachability and runtime reconciliation.
 
 ## OpenGOAL implementation boundary
 
@@ -2741,6 +2931,19 @@ If not proven, stop at the highest proven multiple of 25 and update:
 - Documentation.
 
 Reserved IDs above the proven maximum remain reserved.
+
+## Milestone 12 catalog boundary
+
+- Load the accepted catalog/version as development/runtime mapping data needed by
+  the global counter; do not expose candidate IDs as network locations.
+- Reconcile observed local-native deltas against source/reward classes where
+  available and emit a diagnostic mismatch rather than silently changing the
+  catalog.
+- Global threshold access rules must match Milestone 13's
+  `reachable_local_orb_value(state)` calculation.
+- Do not enable `global_milestones`, `regional_bundles`, or `individual_static`
+  in this milestone.
+- Audit telemetry remains bounded/opt-in and is not the persistence boundary.
 
 ## Required accounting behavior
 
@@ -2794,17 +2997,19 @@ Record each local native orb delta, AP-delivered spendable-orb delta, monotonic 
 - Threshold replay.
 - Exclusion above 300.
 - Maximum obtainable threshold matches the Milestone 11 decision.
+- Catalog source/reward value, reachable-value logic, observed local-earned total, and threshold bits reconcile without unexplained gaps or double counts.
+- Non-default orb modes and every non-off Skull Gem mode remain rejected.
 
 ## Completion gate
 
-Every enabled orb threshold is monotonic, persistent, replay-safe, and completely unaffected by AP-delivered currency.
+Every enabled global orb threshold is source-audit-backed, monotonic, persistent, replay-safe, reachable under the APWorld model, and completely unaffected by AP-delivered currency. No regional or individual location has been enabled.
 
 ## Suggested Codex prompt
 
 ```text
 /plan
 
-Implement only Milestone 22 using the proven maximum from Milestone 11.
+Implement only Milestone 23 using the proven maximum from Milestone 11 and the accepted source/value/access catalog from Milestone 12.
 
 Create a separate monotonic locally-earned orb counter and threshold bits.
 Native earning may trigger thresholds; AP Orb Packs must never do so. Handle
@@ -2814,7 +3019,7 @@ and exclusions above 300.
 
 ---
 
-# Milestone 23 — Implement the Complete Default Finale and Goal
+# Milestone 24 — Implement the Complete Default Finale and Goal
 
 ## Human-readable summary
 
@@ -2880,7 +3085,7 @@ The default game can be completed only after the mission chain and five unique r
 ```text
 /plan
 
-Implement only Milestone 23.
+Implement only Milestone 24.
 
 Add the seven-relic group, unique five-of-seven runtime count, task-71 access,
 task-71 location, task-72/city-win goal, persistent goal state, and duplicate-
@@ -2890,7 +3095,7 @@ inflate the relic count.
 
 ---
 
-# Milestone 24 — Full Default Integration, Accessibility, and Reliability Testing
+# Milestone 25 — Full Default Integration, Accessibility, and Reliability Testing
 
 ## Human-readable summary
 
@@ -2938,6 +3143,7 @@ Also verify:
 - Multi-player generation.
 - Standard placement controls.
 - No unsupported option can generate.
+- The Milestone 12 collectible catalog is deterministic; global orb threshold logic uses its reachable values, while regional/individual orb and non-off Skull Gem modes remain rejected.
 
 ## Fuzzing tiers
 
@@ -2983,7 +3189,8 @@ Repeat the complete Milestone 7.2 save/binding/restart matrix against the full g
 - Shadow cleanup.
 - Mission replay.
 - Side challenge replay.
-- Orb accounting.
+- Orb accounting, including catalog-to-observed-total reconciliation and no AP-pack contamination.
+- Representative one-time story/challenge orb rewards and multi-orb sources contribute exactly once.
 - Goal resend.
 - Table/protocol mismatch.
 - Corrupt sidecar recovery.
@@ -3026,6 +3233,7 @@ Complete at least one full default seed with:
 - No unreachable enabled locations.
 - No false mission completion.
 - No unexplained protocol errors.
+- No unexplained collectible source/value/region gaps in the accepted global-threshold catalog.
 - Reproducible logs for every failure.
 
 ## Completion gate
@@ -3037,7 +3245,7 @@ A full default seed can be generated, played, saved, restarted, reconnected, rep
 ```text
 /plan
 
-Implement only Milestone 24 verification and fixes required by failures found
+Implement only Milestone 25 verification and fixes required by failures found
 within that verification. Do not add new options or content.
 
 Run the complete generator assertions, tiered fuzzing, runtime failure matrix,
@@ -3048,7 +3256,7 @@ unresolved invariant violation.
 
 ---
 
-# Milestone 25 — Polish Player-Facing Status, Recovery Guidance, and Diagnostic Export UX
+# Milestone 26 — Polish Player-Facing Status, Recovery Guidance, and Diagnostic Export UX
 
 ## Human-readable summary
 
@@ -3137,7 +3345,7 @@ A tester can identify and safely respond to common connection, binding, delivery
 ```text
 /plan
 
-Implement only Milestone 25.
+Implement only Milestone 26.
 
 Polish the existing Milestone 7.1 diagnostic infrastructure into concise status,
 pending, binding, version, resync-guidance, and diagnostic-export commands.
@@ -3148,7 +3356,7 @@ force command that bypasses invariants.
 
 ---
 
-# Milestone 26 — Release Documentation, Packaging, and Clean-Room Validation
+# Milestone 27 — Release Documentation, Packaging, and Clean-Room Validation
 
 ## Human-readable summary
 
@@ -3218,7 +3426,8 @@ The packaged APWorld must include every manifest-declared GOAL module, the event
 - Locate logs, temporarily enable verbose diagnostics, export a sanitized support bundle, and explain its retention/redaction policy.
 - Report a bug.
 - Known limitations.
-- Unsupported options.
+- Unsupported options, explicitly including regional/individual Precursor Orb modes and every non-`off` Skull Gem mode in the default-only beta.
+- The distinction between the supported global orb-threshold model and the development-only Milestone 12 candidate catalog.
 - Recovery from partial installation.
 - Complete removal.
 
@@ -3253,7 +3462,7 @@ Recommended first public label:
 Jak3-AP default-only beta
 ```
 
-Experimental options remain rejected even if partial code exists.
+Experimental options remain rejected even if partial code or a candidate collectible catalog exists. The default-only beta may ship the audit report for maintainers, but it must not expose candidate source IDs as public locations.
 
 ## Completion gate
 
@@ -3264,7 +3473,7 @@ A non-developer can install the released artifacts in a clean environment, gener
 ```text
 /plan
 
-Implement only Milestone 26 release hardening.
+Implement only Milestone 27 release hardening.
 
 Package the already-tested default-only beta, pin all compatibility versions and
 hashes, complete installation/recovery/uninstall documentation, and perform a
@@ -3274,9 +3483,358 @@ features during release packaging.
 
 ---
 
+# Milestone 28 — Version the Post-Beta Collectible-Sanity Contract
+
+## Human-readable summary
+
+Milestone 12 gathered evidence without changing the shipped world. Before any
+new collectible mode can be selected, the APWorld must deliberately version the
+larger location contract and define what old seeds/saves do.
+
+This milestone promotes only accepted catalog data into a public compatibility
+contract. It does not yet hook every new location in the game.
+
+## Technical objective
+
+Freeze the first post-beta collectible source tables, option semantics, stable
+ID ranges, dynamic generation rules, slot data, and persistence compatibility or
+migration policy.
+
+## Required work
+
+- Accept only Milestone 12 source families with completed GO decisions.
+- Assign explicit public location IDs and reserve rejected/retired candidates.
+- Version and hash the orb/gem source catalog independently and include the
+  accepted catalog identity in the location-table/slot-data contract.
+- Bump the location-table and slot-data versions; decide whether the existing
+  state schema can safely represent the added location bits or requires a
+  versioned migration/read-only boundary.
+- Preserve Protocol 3 unless a new wire field is genuinely required; any change
+  requires an explicit protocol bump.
+- Add future Skull Gem fields equivalent to:
+  - `skull_gem_milestone_cap`.
+  - `skull_gem_progression_cap`.
+- Define mode replacement/union semantics. A single `precursor_orb_sanity` value
+  selects one orb location family; it does not silently combine threshold and
+  individual locations.
+- Define safe placement:
+  - Individual orb/static-gem locations are `EXCLUDED` under the initial safe
+    policy.
+  - Cumulative Skull Gem thresholds above the progression cap are `EXCLUDED`;
+    recommended initial progression cap is zero.
+- Define dynamic fill arithmetic: mandatory progression/useful counts stay
+  fixed; added enabled locations create additional filler/trap slots.
+- Keep unsupported catalog decisions rejected with clear errors.
+
+## Required tests
+
+- Stable IDs, reservations, deterministic catalog serialization, and hash
+  changes for every semantic mutation.
+- Exact location counts for every newly accepted option profile.
+- Item-pool count equals unfilled location count.
+- Old default seeds retain their existing table identity.
+- Old state is migrated safely or rejected read-only according to the explicit
+  decision.
+- Unsupported/no-go modes cannot generate.
+- Standard Archipelago placement controls and item links/plando fail clearly
+  when they violate the new contract.
+
+## Non-goals
+
+- No runtime pickup/check hooks yet.
+- No automatic acceptance of every Milestone 12 candidate.
+- No reuse of coordinates or list positions as IDs.
+- No change to the default-only beta profile.
+
+## Completion gate
+
+Every accepted post-beta collectible mode has a deterministic public data and
+compatibility contract, while old default seeds/saves are handled by an explicit
+migration or read-only policy.
+
+## Suggested Codex prompt
+
+```text
+/plan
+
+Implement only Milestone 28.
+
+Promote only the accepted Milestone 12 collectible catalog decisions into a
+versioned APWorld contract. Assign explicit IDs, reserve rejected IDs, define
+Skull Gem finite/progression caps, bump the necessary table/slot/state versions,
+and add deterministic generation/fill/migration tests.
+
+Do not add runtime collectible hooks or alter Protocol 3 without an explicit
+version-bump decision.
+```
+
+---
+
+# Milestone 29 — Implement Curated Global Precursor Orb Milestones
+
+## Human-readable summary
+
+The default 25-orb bundles already prove the reliable global-threshold model.
+Some players may prefer a smaller set of meaningful checkpoints instead of one
+check every 25 orbs.
+
+This milestone adds the documented curated global milestone set using the same
+monotonic local-earned counter, permanent threshold bits, and AP-pack isolation
+as the default. It is the lowest-risk post-beta collectible option because it
+does not require regional counters or individual pickup identities.
+
+## Technical objective
+
+Enable `precursor_orb_sanity: global_milestones` using the accepted Milestone 28 data contract and the Milestone 23 global local-earned accounting path.
+
+## Required behavior
+
+- Generate the curated thresholds:
+
+  ```text
+  25, 50, 100, 150, 200, 250, 300, 400, 500, 600
+  ```
+
+  If Milestone 11 proves a lower normal-save maximum, include only thresholds at
+  or below the highest proven value and preserve all higher IDs as reserved.
+- Reuse the existing monotonic `local_earned_precursor_orbs` counter and generic
+  threshold/outbox implementation; do not create another runtime counter.
+- AP-delivered Orb Packs increase only spendable balance and never advance a
+  curated milestone.
+- Spending, save reconstruction, replay, and native reward reconstruction never
+  lower or duplicate the local-earned total or completed threshold bits.
+- `precursor_orb_sanity` selects exactly one orb location family. Curated
+  milestones do not silently combine with default bundles, regional bundles, or
+  individual sources.
+- Thresholds above `precursor_orb_progression_cap` are `EXCLUDED` exactly as in
+  the default family.
+- Keep the existing default `global_bundles` table identity and generated counts
+  unchanged.
+- Added/removed threshold locations change only the option-specific filler/trap
+  count; mandatory progression/useful instances are not duplicated.
+
+## Required tests
+
+- Exact curated threshold names, IDs, count, and ordering.
+- Reduced proven-maximum behavior and reserved higher IDs.
+- Boundary crossing and crossing several curated milestones in one native award.
+- AP Orb Pack isolation, spending, save/load, both process restarts, offline
+  outbox upload, replay, and server reconciliation.
+- Progression-cap placement classification.
+- Dynamic item-pool/filler arithmetic.
+- All-state accessibility, fixed-seed determinism, multi-player generation, and
+  fuzzing for both `global_bundles` and `global_milestones`.
+- The default profile's location-table identity and exact 147-location result are
+  unchanged.
+
+## Non-goals
+
+- No regional accounting.
+- No individual pickup/source locations.
+- No Skull Gem mode.
+- No new protocol or native pickup identity mechanism.
+
+## Completion gate
+
+`global_milestones` generates and runs through the existing global counter as a
+finite, monotonic, replay-safe alternative while the supported beta default and
+its compatibility identity remain unchanged.
+
+## Suggested Codex prompt
+
+```text
+/plan
+
+Implement only Milestone 29.
+
+Enable precursor_orb_sanity: global_milestones using the versioned Milestone 28 records and the existing Milestone 23 local-earned threshold engine. Keep
+orb families mutually exclusive, preserve AP-pack isolation, apply the
+progression cap, and prove the default global_bundles profile is byte-for-byte
+and hash compatible with its prior contract.
+
+Do not add regional or individual orb tracking or any Skull Gem mode.
+```
+
+---
+
+# Milestone 30 — Implement Regional Precursor Orb Bundles
+
+## Human-readable summary
+
+Regional bundles keep the reliable threshold model but make exploration matter
+within each logical part of Jak 3. They are less invasive than hundreds of
+individual pickup checks and should be the first post-beta orb expansion.
+
+## Technical objective
+
+Implement region-attributed local-native orb totals and finite regional
+threshold locations using the accepted Milestone 28 contract.
+
+## Required behavior
+
+- Every counted source/reward has exactly one accepted logical region.
+- AP Orb Packs never advance any regional total.
+- Moving/spending orbs never transfers or reduces regional earned totals.
+- One source contributes once through save/load, replay, and reconstruction.
+- Regional threshold access rules sum only sources reachable in that region.
+- Region totals and threshold bits are persisted and reconciled independently of
+  the spendable balance.
+- Disabled/unknown catalog entries cannot contribute.
+
+## Required tests
+
+- Exact per-region totals and location counts.
+- Boundary and multi-threshold crossings.
+- Save/load, both process restarts, offline completion, and reconnect.
+- One-time story/challenge rewards assigned to the correct region.
+- Multi-orb container value.
+- AP pack isolation.
+- All-state accessibility, fuzzing, and full dynamic fill arithmetic.
+
+## Completion gate
+
+Every enabled regional threshold is finite, monotonic, logically reachable,
+runtime-persistent, and unaffected by AP-delivered currency.
+
+---
+
+# Milestone 31 — Implement Individual Finite-Source Precursor Orbsanity
+
+## Human-readable summary
+
+Individual orbsanity turns each audited finite orb source into one location. It
+is the largest location expansion and must use native persistent identity rather
+than coordinates or a 600-element fiction.
+
+A source that awards two or three orbs still sends one check. The mode's network
+location count is the number of accepted finite sources, which may be lower than
+600.
+
+## Technical objective
+
+Implement source-level orb observation, persistent AP bits/outbox integration,
+per-source logic, and dynamic generation for the accepted catalog.
+
+## Required behavior
+
+- One public location per accepted finite source ID.
+- Source value is accounting metadata, not duplicated network identity.
+- Native persistent completion is observed through `archipelago-locations.gc`;
+  Python remains the durable writer/outbox owner.
+- Replay, save reconstruction, death/revisit, and game restart cannot resend.
+- AP Orb Packs cannot complete sources.
+- Safe placement initially marks all individual orb locations `EXCLUDED`; a
+  later deliberate option may relax that only after pacing/fuzz acceptance.
+- Unknown catalog/source identity fails closed and produces a diagnostic mismatch.
+- Normal logging summarizes batches/state changes rather than writing an INFO
+  event for every nearby uncollected pickup.
+
+## Required tests
+
+- Every source family, including value-2 and value-3 containers.
+- Stable ID/table parity between generator and runtime.
+- First collection, duplicate observation, save/load, death/revisit, both process
+  restarts, offline outbox, reconnect, and server reconciliation.
+- AP pack isolation.
+- Exact dynamic pool/filler counts.
+- All-state accessibility and large-location-set generation fuzzing.
+- Multiworld pacing statistics and proof that safe placement cannot hide
+  progression/useful items among individual orb checks.
+
+## Completion gate
+
+All accepted finite orb sources generate and send exactly once with stable IDs,
+correct logic, bounded diagnostics, dynamic fill, and no AP-pack contamination.
+
+---
+
+# Milestone 32 — Implement Finite Skull Gem Milestones and Secret Purchases
+
+## Human-readable summary
+
+Skull Gems are commonly farmed from repeatable enemies, so their first supported
+sanity modes must remain finite. Secret purchases are naturally first-time
+persistent events. Cumulative milestones are also finite only after the player
+selects an explicit cap.
+
+## Technical objective
+
+Implement `secret_purchases`, finite `cumulative_milestones`, and `both` using
+the Milestone 28 option/data contract.
+
+## Required behavior
+
+- Enemy drops may advance the monotonic local-earned counter but never identify
+  an individual location.
+- AP Gem Packs increase spendable balance but never local-earned milestones.
+- Cumulative thresholds stop at `skull_gem_milestone_cap`.
+- Thresholds above `skull_gem_progression_cap` are `EXCLUDED`; recommended first
+  default is progression cap zero.
+- Spending never lowers local-earned totals or unsets checks.
+- First-time purchase checks read persistent purchase state and send once even if
+  a secret is later toggled or revisited.
+- Free-cost modes preserve the activity/purchase action without auto-completing
+  checks; vanilla-cost mode remains an explicitly grind-permitting profile.
+
+## Required tests
+
+- Finite location counts for milestone, purchase, and union modes.
+- Threshold boundary/multiple crossing and cap enforcement.
+- Repeatable enemy farming advances totals without duplicate source locations.
+- AP Gem Pack isolation.
+- Purchase first-time/revisit/toggle/save/restart behavior.
+- Dynamic filler counts, safe placement, all-state accessibility, and fuzzing.
+
+## Completion gate
+
+Every enabled Skull Gem milestone/purchase location is finite, monotonic,
+persistent, correctly classified, and unaffected by AP-delivered Gem Packs.
+
+---
+
+# Milestone 33 — Conditionally Implement Individual Static Skull Gem Sources
+
+## Human-readable summary
+
+This mode exists only if the source audit proves a complete set of
+non-respawning Skull Gem entities with independent persistent identity. It must
+not turn ordinary repeatable Metal Head drops into locations.
+
+## Technical objective
+
+Either implement the accepted finite static-gem table or formally retain the
+mode as unsupported/no-go with all proposed IDs reserved.
+
+## Required behavior when GO
+
+- One location per accepted non-respawning, independently persistent source.
+- No enemy drop, random spawn, respawning actor, or replay reward is included.
+- Stable source-derived IDs and per-source access rules.
+- Durable location bits/outbox and full restart/replay tests.
+- AP Gem Packs cannot complete a source.
+- Initial safe placement is `EXCLUDED`.
+
+## Required no-go behavior
+
+When the audit cannot prove a complete valid table:
+
+- Keep `individual_static` rejected with a clear error.
+- Preserve the design/audit explanation.
+- Reserve any IDs already proposed.
+- Do not fabricate sources from coordinates, actor addresses, or observed spawn
+  order.
+
+## Completion gate
+
+The mode is either fully implemented from a proven finite table or explicitly
+closed as unsupported. No repeatable source can masquerade as a network
+location.
+
+---
+
 # Later Milestones — After the Default-Only Beta
 
-Do not mix these into Milestones 4–26. Each feature needs its own design delta, registry/version impact, generation rules, runtime behavior, migration behavior, tests, and manual acceptance.
+Do not mix these into Milestones 4–27. Each feature needs its own design delta, registry/version impact, generation rules, runtime behavior, migration behavior, tests, and manual acceptance.
 
 ## Recommended expanded-safe order
 
@@ -3284,21 +3842,24 @@ Do not mix these into Milestones 4–26. Each feature needs its own design delta
 2. DeathLink.
 3. Safe traps.
 4. Medal checks.
-5. Secret-purchase checks.
-6. Secret upgrades and vehicles.
-7. Audited mission milestones.
+5. Secret upgrades and vehicles.
+6. Audited mission milestones.
+
+Collectible sanity follows the explicit Milestones 28–33 rather than this
+generic list.
 
 ## Recommended experimental order
 
-1. Orb-hunt sanity after per-target audit.
-2. Regional orb bundles.
-3. Individual static collectibles.
-4. Individual vehicle shuffle.
-5. Canonical passes and amulets.
-6. Chapter shuffle.
-7. Full mission shuffle.
-8. Expert movement alternatives.
-9. Physical entrance shuffle.
+1. Orb-hunt side-task sanity after per-target audit.
+2. Individual vehicle shuffle.
+3. Canonical passes and amulets.
+4. Chapter shuffle.
+5. Full mission shuffle.
+6. Expert movement alternatives.
+7. Physical entrance shuffle.
+
+Regional/individual Precursor Orb and Skull Gem modes are governed by
+Milestones 28–33 and are not generic experimental tasks.
 
 An option remains rejected until all of the following are complete:
 

@@ -55,6 +55,37 @@ milestone explicitly implements them.
   still required.
 - AP-delivered currency must not advance locally earned collectible checks.
 
+### Collectible-sanity invariants
+
+- The first-release collectible mode remains the existing global Precursor Orb
+  threshold model. Regional and individual Precursor Orb modes, and every
+  non-`off` Skull Gem mode, remain rejected until their explicit later
+  milestones are complete.
+- Milestone 12 may add source catalogs, audit tools, tests, and opt-in runtime
+  observations. Audit data is not a player-facing location table and MUST NOT
+  make an experimental option selectable.
+- A future individual collectible location represents one finite native source
+  with one durable identity. A source that awards two or three orbs remains one
+  source with a `value` unless each orb unit has its own independently persistent
+  native identity.
+- Stable collectible identity must come from audited source data, such as a
+  level/resource/permanent-entity key. Actor addresses, spawn order, coordinates,
+  display order, and generated list position are never public location identity.
+- Repeatable enemy drops, respawning containers, replay rewards, and random
+  spawns are never individual locations. Skull Gem enemy drops remain invalid
+  even when cumulative locally earned totals are observed.
+- AP-delivered Orb Packs and Skull Gem Packs are spendable resource effects only.
+  They never increment local-earned totals, regional totals, source completion
+  bits, or sanity locations.
+- Any later promotion of a collectible mode changes the generated location
+  contract. It requires an explicit location-table/version/hash decision,
+  deterministic slot data, stable ID reservations, persistence compatibility or
+  migration behavior, and full logic/accessibility tests. Milestone 7.2's frozen
+  Protocol 3 semantics are not changed implicitly.
+- Native collectible observation belongs in `archipelago-locations.gc`;
+  AP-delivered resource effects belong in `archipelago-consumables.gc`. Neither
+  responsibility moves into the Protocol 3 control plane.
+
 ## Task behavior
 
 - Implement only the requested milestone.
