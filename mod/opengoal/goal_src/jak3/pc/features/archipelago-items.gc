@@ -1,0 +1,75 @@
+;; Jak 3 Archipelago permanent-item application and reconstruction.
+(in-package goal)
+
+(defconstant AP-ITEM-TARGET-JETBOARD 1)
+(defconstant AP-ITEM-TARGET-BLASTER-STAGE-ONE 2)
+(defconstant AP-ITEM-TARGET-ARMOR-STAGE-ONE 4)
+(defconstant AP-ITEM-TARGET-MASK 7)
+
+(defun ap-items-blaster-stage-one-correct? ()
+  (and *game-info*
+       (logtest? (game-feature gun) (-> *game-info* features))
+       (logtest? (game-feature gun-yellow-1) (-> *game-info* features))))
+
+(defun ap-items-native-target-mask ()
+  (let ((mask 0))
+    (when *game-info*
+      (when (logtest? (game-feature board) (-> *game-info* features))
+        (logior! mask AP-ITEM-TARGET-JETBOARD))
+      (when (ap-items-blaster-stage-one-correct?)
+        (logior! mask AP-ITEM-TARGET-BLASTER-STAGE-ONE))
+      (when (logtest? (game-feature armor0) (-> *game-info* features))
+        (logior! mask AP-ITEM-TARGET-ARMOR-STAGE-ONE)))
+    mask))
+
+(defun ap-items-set-native-target! ((target-mask int))
+  ;; Only the three Milestone 8 feature bits are cleared. The generic gun bit
+  ;; is a dependency when setting yellow stage 1, not AP-owned state to clear.
+  (if (not *game-info*)
+      #f
+      (begin
+        (if (logtest? target-mask AP-ITEM-TARGET-JETBOARD)
+            (logior! (-> *game-info* features) (game-feature board))
+            (logclear! (-> *game-info* features) (game-feature board)))
+        (if (logtest? target-mask AP-ITEM-TARGET-BLASTER-STAGE-ONE)
+            (begin
+              (logior! (-> *game-info* features) (game-feature gun))
+              (logior! (-> *game-info* features) (game-feature gun-yellow-1)))
+            (logclear! (-> *game-info* features) (game-feature gun-yellow-1)))
+        (if (logtest? target-mask AP-ITEM-TARGET-ARMOR-STAGE-ONE)
+            (logior! (-> *game-info* features) (game-feature armor0))
+            (logclear! (-> *game-info* features) (game-feature armor0)))
+        #t)))
+
+(defun ap-items-reconcile-native-target! ((command-id int) (target-mask int))
+  (let ((before (ap-items-native-target-mask))
+        (result AP-RESULT-FAILED))
+    (cond
+      ((or (< target-mask 0) (> target-mask AP-ITEM-TARGET-MASK))
+       (ap-diagnostic-emit! AP-DIAG-EVENT-ITEM-NATIVE-TARGET-FAILED
+                            AP-DIAG-SEVERITY-ERROR 2 command-id
+                            AP-RESULT-FAILED AP-ERROR-INVALID-PAYLOAD
+                            target-mask before before))
+      ((= before target-mask)
+       (set! result AP-RESULT-ALREADY-APPLIED)
+       (ap-diagnostic-emit! AP-DIAG-EVENT-ITEM-NATIVE-TARGET-ALREADY-CORRECT
+                            AP-DIAG-SEVERITY-INFO 2 command-id result
+                            AP-ERROR-NONE target-mask before before))
+      ((and (ap-items-set-native-target! target-mask)
+            (= (ap-items-native-target-mask) target-mask))
+       (set! result AP-RESULT-APPLIED)
+       (ap-diagnostic-emit! AP-DIAG-EVENT-ITEM-NATIVE-TARGET-APPLIED
+                            AP-DIAG-SEVERITY-INFO 2 command-id result
+                            AP-ERROR-NONE target-mask before
+                            (ap-items-native-target-mask)))
+      (else
+       (ap-diagnostic-emit! AP-DIAG-EVENT-ITEM-NATIVE-TARGET-FAILED
+                            AP-DIAG-SEVERITY-ERROR 2 command-id
+                            AP-RESULT-FAILED AP-ERROR-INTERNAL-FAILURE
+                            target-mask before
+                            (ap-items-native-target-mask))))
+    result))
+
+(set! *ap3-permanent-items-reconcile-hook* ap-items-reconcile-native-target!)
+(format #t "[JAK3-AP] permanent items initialized target-mask=~D~%"
+        (ap-items-native-target-mask))

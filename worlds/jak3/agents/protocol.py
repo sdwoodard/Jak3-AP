@@ -57,6 +57,7 @@ class ProtocolCommand(IntEnum):
     DISCONNECT = 4
     SET_TEST_TARGET = 100
     TEST_ADDITIVE_EFFECT = 101
+    RECONCILE_PERMANENT_ITEMS = 102
 
 
 class ProtocolResult(IntEnum):
@@ -1273,9 +1274,10 @@ class BridgeProtocol:
         if kind not in (
             ProtocolCommand.SET_TEST_TARGET,
             ProtocolCommand.TEST_ADDITIVE_EFFECT,
+            ProtocolCommand.RECONCILE_PERMANENT_ITEMS,
         ):
             raise ValueError(
-                "Only Milestone 7 harmless test commands use command receipts."
+                "Only receipt-bearing Protocol 3 commands may use this transport."
             )
         async with self._operation_lock:
             if self.session_nonce is None:
@@ -1302,7 +1304,7 @@ class BridgeProtocol:
             correlation = f"command:{selected_id}"
             self._emit(
                 "protocol.command.submitted",
-                message="Harmless Protocol 3 command submitted.",
+                message="Receipt-bearing Protocol 3 command submitted.",
                 correlation_id=correlation,
                 context={"command_id": selected_id, "command_kind": int(kind)},
             )
@@ -1368,7 +1370,7 @@ class BridgeProtocol:
             }.get(snapshot.last_command_result, "protocol.command.accepted")
             self._emit(
                 result_event,
-                message="Harmless Protocol 3 command receipt observed.",
+                message="Receipt-bearing Protocol 3 command receipt observed.",
                 correlation_id=correlation,
                 runtime_state_sequence=snapshot.snapshot_revision,
                 context={

@@ -95,7 +95,7 @@ when emitted and when an existing segment is validated for export.
 - `runtime.communication.lost`
 - `runtime.communication.reconnected`
 
-## Protocol 3 harmless commands
+## Protocol 3 receipt-bearing commands
 
 - `protocol.command.submitted`
 - `protocol.command.accepted`
@@ -108,6 +108,28 @@ when emitted and when an existing segment is validated for export.
 - `protocol.command.failed` (GOAL 415)
 - `protocol.command.recovered` (Python reconciles a prior timeout with a later
   receipt from the same game-session nonce)
+
+## Milestone 8 received items and permanent reconciliation
+
+- `ap.received_items.packet_observed`
+- `item.receipt.accepted`
+- `item.receipt.duplicate`
+- `item.receipt.index_gap`
+- `item.receipt.rejected`
+- `item.replay.started`
+- `item.replay.completed`
+- `item.application.queued`
+- `item.application.command_submitted`
+- `item.application.completed`
+- `item.application.already_applied`
+- `item.application.failed`
+- `item.reconciliation.started`
+- `item.reconciliation.completed`
+- `item.recovery.started`
+- `item.recovery.completed`
+- `item.native_target.applied` (GOAL 500)
+- `item.native_target.already_correct` (GOAL 501)
+- `item.native_target.failed` (GOAL 502)
 
 ## Persistence and recovery
 

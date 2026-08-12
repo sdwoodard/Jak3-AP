@@ -1,4 +1,4 @@
-# Protocol 3 runtime and harmless command contract
+# Protocol 3 runtime and receipt-bearing command contract
 
 ## First-release semantic freeze
 
@@ -37,12 +37,14 @@ the GOAL ring ignores a delayed acknowledgement for any earlier generation.
 
 Bridge installation, compilation, and load order are declared by
 `mod/opengoal/bridge-modules.json` version 1. The startup overlay loads before
-`mi`; `archipelago.o` and then `archipelago-diagnostics.o` are registered
-immediately after `task-control.o`. The canonical source-set SHA-256 covers the
+`mi`; `archipelago.o`, `archipelago-diagnostics.o`, and
+`archipelago-items.o` are registered immediately after `task-control.o` in
+that order. The canonical source-set SHA-256 covers the
 raw manifest plus each declared payload digest in manifest order, so changing
 either the manifest bytes or any declared source retains the reload marker
-until both manifest-ordered runtime modules publish new compatible activation
-generations. Packaging rejects undeclared matching bridge sources recursively,
+until the control and diagnostics modules publish new compatible activation
+generations after the complete manifest-ordered load. Packaging rejects
+undeclared matching bridge sources recursively,
 not only at the expected asset-directory depth.
 
 The game-session nonce is created from Python-supplied UUID entropy on the first
@@ -104,6 +106,17 @@ command therefore cannot accidentally reuse an accepted explicit ID.
 boolean. A new command already at its target returns `ALREADY_APPLIED`.
 `TEST_ADDITIVE_EFFECT` always fails with `ADDITIVE_EFFECT_FORBIDDEN`.
 `QUEUED` is reserved and is never emitted in Milestone 7.
+
+Bridge runtime version 3 adds the Milestone 8 extension command kind `102`,
+`RECONCILE_PERMANENT_ITEMS`, without changing Protocol 3, game integration 2,
+native tag 900, or any existing command/result/error meaning. Payload bits are
+`0` Jetboard, `1` native yellow-gun/Blaster stage 1, and `2` native Armor stage
+1; every other bit is invalid. The control plane repeats the existing exact
+descriptor and command-time permanent-safety gates, then dispatches the mask
+through the narrow `archipelago-items.gc` hook. That module applies the three
+target bits idempotently and returns only `APPLIED`, `ALREADY_APPLIED`, or
+`FAILED`. Python sends a fresh command after an uncertain result and advances
+durable item state only after `APPLIED` or `ALREADY_APPLIED` is committed.
 
 Permanent/test mutation is safe only with a compatible, loaded, bound native
 save during stable on-foot gameplay. Title, load, movie, death, resetter,
@@ -182,7 +195,15 @@ including across a bridge-only reload, until a valid identity is published.
 The Python client is still the sole sidecar writer. It opens/switches schema-1
 state only after authenticated slot data and a live descriptor are both known,
 requires matching durable proposal authorization before any first binding, and
-persists harmless receipts as `<game nonce>:<command ID>`. Protocol-2
+persists receipt-bearing command observations as `<game nonce>:<command ID>`.
+Milestone 8 requests the full ReceivedItems stream and uses the existing
+schema-1 indexed journal as the durable authority only for Jetboard, Blaster,
+and Progressive Armor receipts. Receipt persistence precedes native
+reconciliation; exact duplicates do not commit, gaps retain the expected index
+and request `Sync`, and index zero atomically replaces the canonical history.
+Unknown IDs and valid Jak 3 IDs outside that slice reject the complete packet.
+Progressive Armor counts are retained without applying beyond native stage 1.
+Protocol-2
 sidecars fail compatibility read-only and are not migrated. Transport loss or
 an incompatible reconnect closes any live writer session uncleanly and clears
 the game's sidecar acknowledgement before the nREPL connection is released.

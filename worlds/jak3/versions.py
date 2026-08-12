@@ -15,7 +15,7 @@ GAME_INTEGRATION_VERSION = 2
 # distinguishes corrected bridge objects whose public protocol/data contract
 # is intentionally unchanged, allowing a new client to replace stale live code
 # without resetting an ordinary reconnect.
-BRIDGE_RUNTIME_VERSION = 2
+BRIDGE_RUNTIME_VERSION = 3
 
 SLOT_DATA_VERSION = 2
 STATE_SCHEMA_VERSION = 1

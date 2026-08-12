@@ -116,9 +116,12 @@ Owners are deliberately role-based until maintainers assign people.
   permanent items independently of Archipelago, or overwrite AP-delivered
   state. Replaying a native reward can duplicate effects; suppressing too much
   can break task closure/cutscenes.
-- Current evidence: All 51 native reward nodes are source-audited, but no
-  permanent-grant interception, `ap-applying-item` guard, or authoritative
-  durable ledger exists.
+- Current evidence: Milestone 8 makes the schema-1 Python journal authoritative
+  for Jetboard, Blaster stage 1, and Armor stage 1, and reconstructs those exact
+  native targets after receipt/replay/restart boundaries. Both persistence-
+  before-application crash windows and native target idempotence are automated.
+  Native reward interception and the remaining permanent item table are still
+  absent, so this risk remains open.
 - Mitigation: Intercept only audited permanent grants; leave task, dialogue,
   cutscene, and presentation behavior intact; reconcile native state from the
   AP ledger after every reconstruction boundary.
@@ -147,8 +150,12 @@ Owners are deliberately role-based until maintainers assign people.
   deduplication or the high watermark.
   A live disposable-config smoke verified receipt discovery after client
   reconnect and a new nonce with stale-session rejection after game restart.
-  It still requests no `ReceivedItems` and has no game check transport, so item
-  replay and offline location outbox exit criteria remain open.
+  Milestone 8 now requests all `ReceivedItems`, validates each complete packet,
+  durably commits the approved permanent slice before native application,
+  handles exact duplicates/gaps/index-zero replacement, and retries pending
+  target reconciliation after client/game/process recovery. Automated tests
+  cover both crash windows. The location outbox, goal resend, and the remaining
+  item domains are still absent, so the full exit criteria remain open.
 - Mitigation: Keep the Milestone 6 sidecar authoritative and add idempotent
   game/client acknowledgement and packet-gap handling before gameplay
   acceptance.

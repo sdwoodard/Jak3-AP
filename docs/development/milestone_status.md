@@ -16,7 +16,8 @@ later gameplay work is not credited early.
 | 7 — Add a runtime state model and idempotent command transport | **Complete** | The original 12/15 matrix and the supported-policy closure are recorded in [`milestone-7.2-acceptance.md`](milestone-7.2-acceptance.md). The revised supported matrix is 14/14: clean and unclean client loss both recover through a full client/`gk`/`goalc` restart. Warm replacement attachment and external native-bank interference are approved unsupported limitations. |
 | 7.1 — Structured diagnostics and support bundles | **Complete** | The paired logs remain; diagnostic schema 1 JSONL, the stable event registry, 64-record GOAL ring/drain, manifest-driven bridge lifecycle/hash, persistence/protocol instrumentation, exception capture, bounded retention, allowlist redaction, and local support-bundle export are implemented and automated. The cross-component forensic test drives the real launcher, persistence, protocol, and reconnect instrumentation to reconstruct startup/capture, recovery/rejection, harmless command replay/timeout/failure, and reconnect without native-save or sidecar contents. |
 | 7.2 — Live acceptance and Protocol 3 freeze | **Complete — 14/14 supported rows pass** | Protocol 3/game integration 2 and tag 900 semantics are frozen. Both approved full-process recovery observations and ordinary unlocked save/load passed. Original warm-attachment failures and the locked-bank crash remain historical evidence for accepted unsupported workflows. |
-| 8–26 | Not started | Deliberately outside this change. |
+| 8 — Indexed ReceivedItems and permanent-item ledger | **Complete** | The three-item slice, atomic schema-1 ledger, command 102, order-40 native items module, pre-dispatch whole-packet validation, both crash windows, same-descriptor native-load reconstruction including diagnostic-ring overflow, changed index-zero reconciliation, 318-test packaged suite, deterministic twin build, official-v0.3.5 1,167-target compile, corrected Blaster-dependency probe, and the disposable AP-tagged-save receipt/unsafe/replay/full-process recovery matrix pass; see [`milestone-8-acceptance.md`](milestone-8-acceptance.md). |
+| 9–26 | Not started | Deliberately outside this change. |
 
 ## Milestone 4 completion evidence
 
@@ -334,12 +335,12 @@ later gameplay work is not credited early.
 ## Explicitly deferred
 
 The active generator deliberately exposes one always-open, non-playable region
-until Milestone 12 supplies Standard reachability. Protocol 3 now observes
-native identity/freshness and opens the sidecar for a compatible authenticated
-save, but there are still no early placement guarantees, received-item
-handling, location submission, mission hooks/dispatch, reward interception, or
-goal reporting. Milestones 7/7.2 are complete for their documented
-first-release scope; these gameplay domains remain assigned to later
+until Milestone 12 supplies Standard reachability. Milestone 8 implements
+ReceivedItems only for Jetboard, Blaster stage 1, and Armor stage 1; its live
+completion gate has passed. There are still no early placement guarantees,
+consumable handling, location submission, mission hooks/dispatch, reward
+interception, or goal reporting. Milestones 7/7.2 remain complete for their
+documented first-release scope; these gameplay domains remain assigned to later
 milestones.
 
 Open runtime risks remain recorded in [`../JAK3_AP_RISKS.md`](../JAK3_AP_RISKS.md),

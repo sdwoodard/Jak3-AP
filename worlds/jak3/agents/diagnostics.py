@@ -218,6 +218,22 @@ _SAFETY_PROJECTION_FIELDS = _fields("consumable", "mission", "permanent")
 _COMMAND_CONTEXT = _fields(
     "command_id", "command_kind", "error_code", "reason", "result", "status"
 )
+_ITEM_CONTEXT = _fields(
+    "attribution",
+    "command_id",
+    "expected_index",
+    "history_discrepancy_count",
+    "item_id",
+    "item_index",
+    "item_name",
+    "ledger_revision",
+    "outcome",
+    "packet_count",
+    "reason",
+    "safety_reason",
+    "target_mask",
+)
+_ITEM_ATTRIBUTION_FIELDS = _fields("flags", "location_id", "source_player")
 _PERSISTENCE_CONTEXT = _fields(
     "category",
     "native_save_hash",
@@ -308,6 +324,8 @@ def _context_allowlist(name: str, goal_code: int | None) -> frozenset[str]:
         selected = _RUNTIME_CONTEXT
     elif name.startswith("protocol.command."):
         selected = _COMMAND_CONTEXT
+    elif name.startswith(("ap.received_items.", "item.")):
+        selected = _ITEM_CONTEXT
     elif name.startswith("persistence."):
         selected = _PERSISTENCE_CONTEXT
     elif name.startswith("server."):
@@ -352,6 +370,8 @@ def _context_object_allowlist(name: str) -> Mapping[str, frozenset[str]]:
         return MappingProxyType({"runtime_state": _RUNTIME_STATE_FIELDS})
     if name == "runtime.safety.changed":
         return MappingProxyType({"safety_projection": _SAFETY_PROJECTION_FIELDS})
+    if name.startswith(("ap.received_items.", "item.")):
+        return MappingProxyType({"attribution": _ITEM_ATTRIBUTION_FIELDS})
     return MappingProxyType({})
 
 
@@ -380,6 +400,9 @@ def _registry() -> Mapping[str, EventDefinition]:
         "persistence.binding.rejected",
         "persistence.eligibility.rejected",
         "persistence.concurrent_writer.rejected",
+        "item.receipt.rejected",
+        "item.application.failed",
+        "item.native_target.failed",
     }
     warning_names = {
         "diagnostics.events_dropped_or_suppressed",
@@ -398,6 +421,8 @@ def _registry() -> Mapping[str, EventDefinition]:
         "persistence.writer_lock.refused",
         "persistence.revision.stale",
         "persistence.shutdown.unclean",
+        "item.receipt.index_gap",
+        "item.application.queued",
     }
     names = (
         "diagnostics.session.started",
@@ -488,6 +513,25 @@ def _registry() -> Mapping[str, EventDefinition]:
         "protocol.command.timed_out",
         "protocol.command.failed",
         "protocol.command.recovered",
+        "ap.received_items.packet_observed",
+        "item.receipt.accepted",
+        "item.receipt.duplicate",
+        "item.receipt.index_gap",
+        "item.receipt.rejected",
+        "item.replay.started",
+        "item.replay.completed",
+        "item.application.queued",
+        "item.application.command_submitted",
+        "item.application.completed",
+        "item.application.already_applied",
+        "item.application.failed",
+        "item.reconciliation.started",
+        "item.reconciliation.completed",
+        "item.recovery.started",
+        "item.recovery.completed",
+        "item.native_target.applied",
+        "item.native_target.already_correct",
+        "item.native_target.failed",
         "persistence.writer_lock.acquired",
         "persistence.writer_lock.refused",
         "persistence.writer_lock.released",
@@ -531,6 +575,9 @@ def _registry() -> Mapping[str, EventDefinition]:
         "protocol.command.rejected": 414,
         "protocol.command.failed": 415,
         "bridge.client.disconnected": 420,
+        "item.native_target.applied": 500,
+        "item.native_target.already_correct": 501,
+        "item.native_target.failed": 502,
     }
     definitions = {
         name: EventDefinition(

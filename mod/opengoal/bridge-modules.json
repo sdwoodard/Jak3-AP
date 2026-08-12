@@ -29,6 +29,15 @@
       "resource": "assets/opengoal/archipelago-diagnostics.gc",
       "destination": "goal_src/jak3/pc/features/archipelago-diagnostics.gc",
       "object": "archipelago-diagnostics.o"
+    },
+    {
+      "name": "items",
+      "order": 40,
+      "phase": "bridge",
+      "source": "goal_src/jak3/pc/features/archipelago-items.gc",
+      "resource": "assets/opengoal/archipelago-items.gc",
+      "destination": "goal_src/jak3/pc/features/archipelago-items.gc",
+      "object": "archipelago-items.o"
     }
   ]
 }

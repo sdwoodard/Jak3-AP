@@ -35,11 +35,11 @@ class BridgeManifestTest(unittest.TestCase):
     def test_manifest_has_exact_deterministic_lifecycle_order(self) -> None:
         self.assertEqual(
             tuple(module.name for module in self.manifest.modules),
-            ("startup", "control", "diagnostics"),
+            ("startup", "control", "diagnostics", "items"),
         )
         self.assertEqual(
             tuple(module.object_name for module in self.manifest.runtime_modules),
-            ("archipelago.o", "archipelago-diagnostics.o"),
+            ("archipelago.o", "archipelago-diagnostics.o", "archipelago-items.o"),
         )
         self.assertEqual(
             self.manifest.source_set_sha256(self.payloads),
@@ -105,6 +105,7 @@ class BridgeManifestTest(unittest.TestCase):
         diagnostics = self.payloads[
             "assets/opengoal/archipelago-diagnostics.gc"
         ].decode()
+        items = self.payloads["assets/opengoal/archipelago-items.gc"].decode()
         self.assertNotIn("ap-set-log-path!", control)
         self.assertNotIn("'append", control)
         self.assertNotIn("ap-diagnostic-ring-state", control)
@@ -124,6 +125,25 @@ class BridgeManifestTest(unittest.TestCase):
         self.assertNotIn("received-item", diagnostics.casefold())
         self.assertNotIn("location-check", diagnostics.casefold())
         self.assertNotIn("mission-reward", diagnostics.casefold())
+        self.assertNotIn("game-feature", control)
+        self.assertIn("game-feature board", items)
+        self.assertIn("game-feature gun-yellow-1", items)
+        self.assertIn("game-feature armor0", items)
+        for forbidden in ("precursor", "skull", "ammo", "health", "mission"):
+            self.assertNotIn(forbidden, items.casefold())
+
+    def test_blaster_target_requires_its_generic_gun_dependency(self) -> None:
+        items = self.payloads["assets/opengoal/archipelago-items.gc"].decode()
+        start = items.index("(defun ap-items-blaster-stage-one-correct? ()")
+        end = items.index("(defun ap-items-native-target-mask ()", start)
+        correctness_check = items[start:end]
+
+        self.assertIn("(game-feature gun)", correctness_check)
+        self.assertIn("(game-feature gun-yellow-1)", correctness_check)
+        self.assertIn(
+            "(when (ap-items-blaster-stage-one-correct?)",
+            items,
+        )
 
     def test_goal_event_codes_match_the_python_registry(self) -> None:
         codes: list[int] = []

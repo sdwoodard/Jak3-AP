@@ -101,8 +101,8 @@ class ClientProtocolTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             _goal_path_literal("D:\\bad\npath")
 
-    def test_client_requests_no_received_items(self) -> None:
-        self.assertEqual(Jak3Context.items_handling, 0)
+    def test_client_requests_full_received_items_stream(self) -> None:
+        self.assertEqual(Jak3Context.items_handling, 0b111)
 
     def test_server_rejection_disconnect_and_nrepl_timeout_are_distinct(self) -> None:
         emitted: list[str] = []

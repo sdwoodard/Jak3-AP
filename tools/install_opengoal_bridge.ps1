@@ -298,22 +298,24 @@ foreach ($module in $declaredModules) {
     }
 }
 $modules = @($manifest.modules | Sort-Object order)
-$expectedNames = @("startup", "control", "diagnostics")
-$expectedOrders = @(10, 20, 30)
-$expectedPhases = @("pre_mi", "bridge", "bridge")
+$expectedNames = @("startup", "control", "diagnostics", "items")
+$expectedOrders = @(10, 20, 30, 40)
+$expectedPhases = @("pre_mi", "bridge", "bridge", "bridge")
 $expectedSources = @(
     "goal_src/jak3/pc/features/archipelago-startup.gc",
     "goal_src/jak3/pc/features/archipelago.gc",
-    "goal_src/jak3/pc/features/archipelago-diagnostics.gc"
+    "goal_src/jak3/pc/features/archipelago-diagnostics.gc",
+    "goal_src/jak3/pc/features/archipelago-items.gc"
 )
 $expectedResources = @(
     "assets/opengoal/archipelago-startup.gc",
     "assets/opengoal/archipelago.gc",
-    "assets/opengoal/archipelago-diagnostics.gc"
+    "assets/opengoal/archipelago-diagnostics.gc",
+    "assets/opengoal/archipelago-items.gc"
 )
-$expectedObjects = @($null, "archipelago.o", "archipelago-diagnostics.o")
-if ($modules.Count -ne 3) {
-    throw "Bridge manifest must declare exactly three modules."
+$expectedObjects = @($null, "archipelago.o", "archipelago-diagnostics.o", "archipelago-items.o")
+if ($modules.Count -ne 4) {
+    throw "Bridge manifest must declare exactly four modules."
 }
 for ($index = 0; $index -lt $modules.Count; $index++) {
     $module = $modules[$index]
@@ -369,7 +371,7 @@ $newline = if ($projectText.Contains("`r`n")) { "`r`n" } else { "`n" }
 $indent = [regex]::Match($markerMatches[0].Value, '^[ \t]*').Value
 $projectWithoutObjects = [regex]::Replace(
     $projectText,
-    '(?m)^[ \t]*"(?:archipelago|archipelago-diagnostics)\.o"[ \t]*\r?\n?',
+    '(?m)^[ \t]*"(?:archipelago|archipelago-diagnostics|archipelago-items)\.o"[ \t]*\r?\n?',
     ''
 )
 $updatedMarker = [regex]::Match($projectWithoutObjects, $markerPattern)
@@ -507,7 +509,7 @@ finally {
 }
 
 Write-Host "Installed Jak 3 Archipelago bridge source set: $sourceSetHash"
-Write-Host "Registered archipelago.o then archipelago-diagnostics.o immediately after task-control.o in: $projectFile"
+Write-Host "Registered control, diagnostics, and items bridge objects after task-control.o in: $projectFile"
 Write-Host "Bridge installation complete."
 Write-Host "Launching Jak 3 Client now starts Debug gk/goalc, recompiles, and verifies protocol 3."
 }

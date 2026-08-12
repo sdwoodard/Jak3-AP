@@ -77,7 +77,8 @@ if ($bridgeManifest.manifest_version -ne 1 -or
 $expectedModules = @(
     @{ name = "startup"; order = 10; phase = "pre_mi"; source = "goal_src/jak3/pc/features/archipelago-startup.gc"; resource = "assets/opengoal/archipelago-startup.gc"; destination = "goal_src/jak3/pc/features/archipelago-startup.gc"; object = $null },
     @{ name = "control"; order = 20; phase = "bridge"; source = "goal_src/jak3/pc/features/archipelago.gc"; resource = "assets/opengoal/archipelago.gc"; destination = "goal_src/jak3/pc/features/archipelago.gc"; object = "archipelago.o" },
-    @{ name = "diagnostics"; order = 30; phase = "bridge"; source = "goal_src/jak3/pc/features/archipelago-diagnostics.gc"; resource = "assets/opengoal/archipelago-diagnostics.gc"; destination = "goal_src/jak3/pc/features/archipelago-diagnostics.gc"; object = "archipelago-diagnostics.o" }
+    @{ name = "diagnostics"; order = 30; phase = "bridge"; source = "goal_src/jak3/pc/features/archipelago-diagnostics.gc"; resource = "assets/opengoal/archipelago-diagnostics.gc"; destination = "goal_src/jak3/pc/features/archipelago-diagnostics.gc"; object = "archipelago-diagnostics.o" },
+    @{ name = "items"; order = 40; phase = "bridge"; source = "goal_src/jak3/pc/features/archipelago-items.gc"; resource = "assets/opengoal/archipelago-items.gc"; destination = "goal_src/jak3/pc/features/archipelago-items.gc"; object = "archipelago-items.o" }
 )
 $declaredBridgeModules = @($bridgeManifest.modules)
 foreach ($module in $declaredBridgeModules) {
@@ -301,6 +302,7 @@ try {
         "jak3/assets/opengoal/archipelago-startup.gc",
         "jak3/assets/opengoal/archipelago.gc",
         "jak3/assets/opengoal/archipelago-diagnostics.gc",
+        "jak3/assets/opengoal/archipelago-items.gc",
         "jak3/icons/jak3-logo.png"
     )
     foreach ($requiredEntry in $requiredEntries) {

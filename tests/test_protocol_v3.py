@@ -71,7 +71,9 @@ class FakeGame:
         self.target_available = True
         self.level_available = True
         self.test_target = False
+        self.permanent_item_target_mask = 0
         self.apply_count = 0
+        self.permanent_item_apply_count = 0
         self.high_watermark = -1
         self.receipts: list[CommandReceipt] = []
         self.last_id = -1
@@ -401,13 +403,21 @@ class FakeGame:
                     ProtocolError.ADDITIVE_EFFECT_FORBIDDEN,
                     True,
                 )
-            elif kind is not ProtocolCommand.SET_TEST_TARGET:
+            elif kind not in (
+                ProtocolCommand.SET_TEST_TARGET,
+                ProtocolCommand.RECONCILE_PERMANENT_ITEMS,
+            ):
                 result, error, record = (
                     ProtocolResult.FAILED,
                     ProtocolError.UNKNOWN_COMMAND,
                     True,
                 )
-            elif payload not in (0, 1):
+            elif (
+                kind is ProtocolCommand.SET_TEST_TARGET and payload not in (0, 1)
+            ) or (
+                kind is ProtocolCommand.RECONCILE_PERMANENT_ITEMS
+                and payload not in range(8)
+            ):
                 result, error, record = (
                     ProtocolResult.INVALID_PAYLOAD,
                     ProtocolError.INVALID_PAYLOAD,
@@ -437,6 +447,19 @@ class FakeGame:
                     ProtocolError.UNSAFE_GAME_STATE,
                     True,
                 )
+            elif (
+                kind is ProtocolCommand.RECONCILE_PERMANENT_ITEMS
+                and self.permanent_item_target_mask == payload
+            ):
+                result, error, record = (
+                    ProtocolResult.ALREADY_APPLIED,
+                    ProtocolError.NONE,
+                    True,
+                )
+            elif kind is ProtocolCommand.RECONCILE_PERMANENT_ITEMS:
+                self.permanent_item_target_mask = payload
+                self.permanent_item_apply_count += 1
+                result, error, record = ProtocolResult.APPLIED, ProtocolError.NONE, True
             elif self.test_target == bool(payload):
                 result, error, record = (
                     ProtocolResult.ALREADY_APPLIED,
@@ -1215,6 +1238,34 @@ class ProtocolLifecycleTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(
             ProtocolResult.QUEUED, [receipt.result for receipt in game.receipts]
         )
+
+    async def test_permanent_item_mask_command_is_validated_and_idempotent(
+        self,
+    ) -> None:
+        game = FakeGame(self.path)
+        bridge = await self.ready(game)
+
+        applied = await bridge.send_command(
+            ProtocolCommand.RECONCILE_PERMANENT_ITEMS, 0b111, command_id=4
+        )
+        duplicate = await bridge.send_command(
+            ProtocolCommand.RECONCILE_PERMANENT_ITEMS, 0b111, command_id=4
+        )
+        conflict = await bridge.send_command(
+            ProtocolCommand.RECONCILE_PERMANENT_ITEMS, 0b001, command_id=4
+        )
+        invalid = await bridge.send_command(
+            ProtocolCommand.RECONCILE_PERMANENT_ITEMS, 0b1000, command_id=5
+        )
+
+        self.assertEqual(applied.last_command_result, ProtocolResult.APPLIED)
+        self.assertEqual(duplicate.last_command_result, ProtocolResult.APPLIED)
+        self.assertEqual(game.permanent_item_apply_count, 1)
+        self.assertEqual(game.permanent_item_target_mask, 0b111)
+        self.assertEqual(
+            conflict.last_error_code, ProtocolError.DUPLICATE_COMMAND_CONFLICT
+        )
+        self.assertEqual(invalid.last_command_result, ProtocolResult.INVALID_PAYLOAD)
 
     async def test_query_remains_available_at_title(self) -> None:
         game = FakeGame(self.path)

@@ -1,11 +1,11 @@
 # Jak 3 Archipelago — Revised Remaining Project Milestones
 
-**Applies after:** Milestones 0–7.2 completed; Protocol 3/game integration 2 frozen; Milestone 8 is next
+**Applies after:** Milestones 0–8 completed; Protocol 3/game integration 2 frozen; Milestone 9 is next
 **Repository review basis:** current post-Milestone-7.2 repository contracts and retained implementation/acceptance evidence
 **Design target:** OpenGOAL Jak 3 + Archipelago, design version 0.3  
 **First-release scope:** one supported default profile only
 
-Milestones 0–7.2 are completed contracts and are not reopened. Protocol 3, game integration 2, native tag 900, descriptor-qualified binding, diagnostics, and the accepted update/restart policy remain frozen foundations for Milestone 8. Because none of the later whole-number milestones has begun, this revision uses a continuous integer sequence: Milestones 8–11 retain their numbers; the data-only collectible-source audit becomes **Milestone 12**; the former Milestones 12–26 become **Milestones 13–27**; and the optional post-beta collectible track becomes **Milestones 28–33**. No new fractional milestone is introduced. The already completed historical Milestones 7.1 and 7.2 retain their existing numbers.
+Milestones 0–8 are completed contracts and are not reopened. Protocol 3, game integration 2, native tag 900, descriptor-qualified binding, diagnostics, and the accepted update/restart policy remain frozen foundations for later milestones. This revision uses a continuous integer sequence: Milestones 8–11 retain their numbers; the data-only collectible-source audit becomes **Milestone 12**; the former Milestones 12–26 become **Milestones 13–27**; and the optional post-beta collectible track becomes **Milestones 28–33**. No new fractional milestone is introduced. The already completed historical Milestones 7.1 and 7.2 retain their existing numbers.
 
 ---
 

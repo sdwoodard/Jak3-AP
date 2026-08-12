@@ -1,10 +1,10 @@
-;; Jak 3 Archipelago protocol-3 runtime observation and harmless test bridge.
-;; Only metadata save wrappers and bridge-owned test state are mutable here.
+;; Jak 3 Archipelago Protocol 3 control plane.
+;; Gameplay mutation is delegated through narrow sibling-module hooks.
 (in-package goal)
 
 (defconstant AP-PROTOCOL-VERSION 3)
 (defconstant AP-GAME-INTEGRATION-VERSION 2)
-(defconstant AP-BRIDGE-RUNTIME-VERSION 2)
+(defconstant AP-BRIDGE-RUNTIME-VERSION 3)
 (defconstant AP-SLOT-DATA-VERSION 2)
 (defconstant AP-STATE-SCHEMA-VERSION 1)
 (defconstant AP-ITEM-TABLE-VERSION 2)
@@ -40,6 +40,7 @@
 (defconstant AP-COMMAND-DISCONNECT 4)
 (defconstant AP-COMMAND-SET-TEST-TARGET 100)
 (defconstant AP-COMMAND-TEST-ADDITIVE-EFFECT 101)
+(defconstant AP-COMMAND-RECONCILE-PERMANENT-ITEMS 102)
 
 (defconstant AP-RESULT-NONE 0)
 (defconstant AP-RESULT-OK 1)
@@ -101,6 +102,9 @@
 (defconstant AP-DIAG-EVENT-COMMAND-REJECTED 414)
 (defconstant AP-DIAG-EVENT-COMMAND-FAILED 415)
 (defconstant AP-DIAG-EVENT-CLIENT-DISCONNECTED 420)
+(defconstant AP-DIAG-EVENT-ITEM-NATIVE-TARGET-APPLIED 500)
+(defconstant AP-DIAG-EVENT-ITEM-NATIVE-TARGET-ALREADY-CORRECT 501)
+(defconstant AP-DIAG-EVENT-ITEM-NATIVE-TARGET-FAILED 502)
 (defconstant AP-DIAG-NATIVE-OP-NONE 0)
 (defconstant AP-DIAG-NATIVE-OP-SAVE 1)
 (defconstant AP-DIAG-NATIVE-OP-LOAD 2)
@@ -263,6 +267,15 @@
 (define *ap3-diagnostic-emit-hook* ap3-diagnostic-noop-emit)
 (define *ap3-diagnostic-export-hook* ap3-diagnostic-noop-export)
 (define *ap3-diagnostic-ack-hook* ap3-diagnostic-noop-ack)
+
+(defun ap3-permanent-items-noop-reconcile ((command-id int)
+                                            (target-mask int))
+  AP-RESULT-FAILED)
+
+;; Reloading control installs a safe failure hook. The manifest-ordered items
+;; module replaces it only after all native item functions compile and load.
+(define *ap3-permanent-items-reconcile-hook*
+  ap3-permanent-items-noop-reconcile)
 
 (defmacro ap-diagnostic-emit! (event-code severity
                                correlation-kind correlation-value
@@ -1197,11 +1210,15 @@
        (set! error AP-ERROR-ADDITIVE-EFFECT-FORBIDDEN)
        (set! message "additive-effect-forbidden")
        (ap3-record-receipt! command-id kind payload result error))
-      ((!= kind AP-COMMAND-SET-TEST-TARGET)
+      ((and (!= kind AP-COMMAND-SET-TEST-TARGET)
+            (!= kind AP-COMMAND-RECONCILE-PERMANENT-ITEMS))
        (set! error AP-ERROR-UNKNOWN-COMMAND)
        (set! message "unknown-command")
        (ap3-record-receipt! command-id kind payload result error))
-      ((and (!= payload 0) (!= payload 1))
+      ((or (and (= kind AP-COMMAND-SET-TEST-TARGET)
+                (!= payload 0) (!= payload 1))
+           (and (= kind AP-COMMAND-RECONCILE-PERMANENT-ITEMS)
+                (or (< payload 0) (> payload 7))))
        (set! result AP-RESULT-INVALID-PAYLOAD)
        (set! error AP-ERROR-INVALID-PAYLOAD)
        (set! message "invalid-payload")
@@ -1225,6 +1242,18 @@
        (set! result AP-RESULT-UNSAFE-NOW)
        (set! error AP-ERROR-UNSAFE-GAME-STATE)
        (set! message "unsafe-game-state")
+       (ap3-record-receipt! command-id kind payload result error))
+      ((= kind AP-COMMAND-RECONCILE-PERMANENT-ITEMS)
+       (set! result (*ap3-permanent-items-reconcile-hook* command-id payload))
+       (cond
+         ((= result AP-RESULT-APPLIED)
+          (set! message "applied"))
+         ((= result AP-RESULT-ALREADY-APPLIED)
+          (set! message "already-applied"))
+         (else
+          (set! result AP-RESULT-FAILED)
+          (set! error AP-ERROR-INTERNAL-FAILURE)
+          (set! message "permanent-item-reconciliation-failed")))
        (ap3-record-receipt! command-id kind payload result error))
       ((= payload (-> *ap-runtime* test-target))
        (set! result AP-RESULT-ALREADY-APPLIED)

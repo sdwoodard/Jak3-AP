@@ -41,6 +41,7 @@ class PackagedWorldRegistrationTest(unittest.TestCase):
                 "jak3/__init__.py",
                 "jak3/client.py",
                 "jak3/persistence.py",
+                "jak3/received_items.py",
                 "jak3/agents/launcher.py",
                 "jak3/agents/bridge_manifest.py",
                 "jak3/agents/diagnostics.py",
@@ -49,6 +50,7 @@ class PackagedWorldRegistrationTest(unittest.TestCase):
                 "jak3/assets/opengoal/archipelago.gc",
                 "jak3/assets/opengoal/archipelago-startup.gc",
                 "jak3/assets/opengoal/archipelago-diagnostics.gc",
+                "jak3/assets/opengoal/archipelago-items.gc",
                 "jak3/icons/jak3-logo.png",
             }.issubset(entries)
         )

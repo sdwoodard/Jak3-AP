@@ -94,9 +94,10 @@ exact order:
 
 1. `archipelago-startup.gc` in the pre-`(mi)` phase;
 2. `archipelago.gc` / `archipelago.o`; and
-3. `archipelago-diagnostics.gc` / `archipelago-diagnostics.o`.
+3. `archipelago-diagnostics.gc` / `archipelago-diagnostics.o`; and
+4. `archipelago-items.gc` / `archipelago-items.o`.
 
-The two objects are registered contiguously after `task-control.o`. Packaging,
+The three objects are registered contiguously after `task-control.o`. Packaging,
 standalone and installed-client repair, full compilation, bridge-only load,
 activation verification, and support summaries consume the manifest rather
 than wildcard discovery. Packaging recursively rejects every staged

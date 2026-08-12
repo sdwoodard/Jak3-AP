@@ -1,8 +1,7 @@
-"""Archipelago client for the protocol-3 Jak 3 observation/test bridge.
+"""Archipelago client for the Protocol 3 Jak 3 bridge.
 
-Milestone 7 binds persistent state to an observed native-save identity and
-persists harmless command receipts.  It still does not request items, submit
-locations, report a goal, intercept rewards, or modify mission state.
+Milestone 8 adds indexed permanent-item receipts while locations, goals,
+rewards, consumables, and mission state remain inactive.
 """
 
 from __future__ import annotations
@@ -17,11 +16,16 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+import CommonClient as common_client  # type: ignore[import-untyped]
 import colorama  # type: ignore[import-untyped]
 from CommonClient import ClientCommandProcessor, CommonContext, gui_enabled, server_loop
 
 from .agents.bridge_manifest import load_packaged_manifest
-from .agents.diagnostics import DiagnosticSession, hash_identifier
+from .agents.diagnostics import (
+    GOAL_EVENT_REGISTRY,
+    DiagnosticSession,
+    hash_identifier,
+)
 from .agents.launcher import (
     find_install,
     install_packaged_bridge,
@@ -37,6 +41,7 @@ from .agents.protocol import (
     NativeSaveEligibility as SnapshotSaveEligibility,
     ProtocolCommand,
     ProtocolCompatibilityError,
+    ProtocolResult,
     goal_path_literal,
     goal_string_literal,
     read_snapshot,
@@ -56,6 +61,16 @@ from .persistence import (
     StateSession,
     default_state_root,
 )
+from .received_items import (
+    PacketOutcome,
+    ReceivedItemsPacket,
+    ReceivedItemsPacketError,
+    apply_received_items_packet,
+    mark_pending_items_applied,
+    known_jak3_item_name,
+    parse_received_items_packet,
+    permanent_item_target_mask,
+)
 from .versions import (
     BRIDGE_RUNTIME_VERSION,
     ITEM_TABLE_VERSION,
@@ -68,6 +83,29 @@ from .versions import (
 
 logger = logging.getLogger("Client")
 BACKGROUND_TASKS: set[asyncio.Task] = set()
+_PREVALIDATED_RECEIVED_ITEMS_KEY = "__jak3_prevalidated_received_items_packet"
+_COMMONCLIENT_PROCESS_SERVER_CMD = common_client.process_server_cmd
+_GOAL_NATIVE_OPERATION_LOAD = 2
+
+
+async def _jak3_process_server_cmd(ctx: CommonContext, args: dict) -> None:
+    """Validate Jak 3 ReceivedItems before CommonClient mutates its item list."""
+
+    if args.get("cmd") == "ReceivedItems":
+        preprocessor = getattr(ctx, "_preprocess_received_items_packet", None)
+        if callable(preprocessor):
+            prepared = preprocessor(args)
+            if prepared is None:
+                return
+            args = prepared
+    await _COMMONCLIENT_PROCESS_SERVER_CMD(ctx, args)
+
+
+# CommonClient intentionally calls ``on_package`` after its generic packet
+# mutation. Install a context-qualified pre-dispatch hook so malformed Jak 3
+# packets can be rejected atomically while every other game/context continues
+# through the unmodified CommonClient handler.
+common_client.process_server_cmd = _jak3_process_server_cmd
 
 
 def _loaded_bridge_matches_current_contract(snapshot: BridgeSnapshot) -> bool:
@@ -246,8 +284,7 @@ class Jak3CommandProcessor(ClientCommandProcessor):
 
 class Jak3Context(CommonContext):
     game = GAME_NAME
-    # Milestone 7 deliberately asks the AP server for no ReceivedItems stream.
-    items_handling = 0
+    items_handling = 0b111
     command_processor = Jak3CommandProcessor
 
     def emit_diagnostic(self, event_name: str, **fields: object) -> None:
@@ -369,6 +406,20 @@ class Jak3Context(CommonContext):
         self._binding_rejection_projection: tuple[object, ...] | None = None
         self._timed_out_commands: dict[tuple[str, int], ProtocolCommand] = {}
         self._goal_game_session_nonce: str | None = None
+        self._received_item_packets: list[tuple[ReceivedItemsPacket, bool]] = []
+        self._item_worker_task: asyncio.Task | None = None
+        self._item_worker_lock = asyncio.Lock()
+        self._item_sync_projection: tuple[object, ...] | None = None
+        self._item_runtime_projection: tuple[object, ...] | None = None
+        self._item_confirmed_projection: tuple[object, ...] | None = None
+        self._item_queued_projection: tuple[object, ...] | None = None
+        self._item_failure_projection: tuple[object, ...] | None = None
+        self._item_rejection_projection: tuple[object, ...] | None = None
+        self._item_native_load_projection: tuple[object, ...] | None = None
+        self._item_diagnostic_drop_projection: tuple[int | None, int] | None = None
+        self._commonclient_received_item_count: int | None = None
+        self._item_reconcile_dirty = False
+        self._item_recovery_pending = False
         # This state survives BridgeProtocol recreation so a reconnect cannot
         # mistake a restarted or reloaded GOAL diagnostic ring for duplicates.
         self._goal_source_state: dict[str, int] = {}
@@ -562,6 +613,12 @@ class Jak3Context(CommonContext):
     def close_persistence(self, *, clean: bool) -> None:
         session = self.state_session
         self.state_session = None
+        self._item_runtime_projection = None
+        self._item_confirmed_projection = None
+        self._item_queued_projection = None
+        self._item_failure_projection = None
+        self._item_diagnostic_drop_projection = None
+        self._item_reconcile_dirty = True
         if session is not None:
             native_save_hash = hash_identifier(session.native_save.identity)
             closed_cleanly = False
@@ -822,6 +879,7 @@ class Jak3Context(CommonContext):
                     native_save.identity if native_save is not None else None
                 ),
             )
+        self._note_permanent_item_runtime(snapshot)
 
     def _persist_latest_harmless_receipt(self, snapshot: BridgeSnapshot) -> None:
         session = self.state_session
@@ -848,14 +906,746 @@ class Jak3Context(CommonContext):
             command_kind=receipt_kind.name,
             result=receipt.result.name,
         )
+        previous = session.state.last_observed_game_command_receipt
+        if previous is not None:
+            previous_nonce, separator, previous_id = previous.command_id.rpartition(":")
+            if (
+                separator
+                and previous_nonce == snapshot.session_nonce
+                and previous_id.isdecimal()
+                and int(previous_id) >= receipt.command_id
+            ):
+                return
         if session.state.last_observed_game_command_receipt != persisted:
             session.commit(
                 replace(session.state, last_observed_game_command_receipt=persisted),
                 category="command_receipt",
             )
 
+    def _ensure_item_runtime(self) -> None:
+        """Initialize Milestone 8 fields for lightweight test contexts too."""
+
+        if not hasattr(self, "_received_item_packets"):
+            self._received_item_packets = []
+        if not hasattr(self, "_item_worker_task"):
+            self._item_worker_task = None
+        if not hasattr(self, "_item_worker_lock"):
+            self._item_worker_lock = asyncio.Lock()
+        for name in (
+            "_item_sync_projection",
+            "_item_runtime_projection",
+            "_item_confirmed_projection",
+            "_item_queued_projection",
+            "_item_failure_projection",
+            "_item_rejection_projection",
+            "_item_native_load_projection",
+            "_item_diagnostic_drop_projection",
+        ):
+            if not hasattr(self, name):
+                setattr(self, name, None)
+        if not hasattr(self, "_item_reconcile_dirty"):
+            self._item_reconcile_dirty = False
+        if not hasattr(self, "_item_recovery_pending"):
+            self._item_recovery_pending = False
+        if not hasattr(self, "_commonclient_received_item_count"):
+            self._commonclient_received_item_count = None
+
+    def _note_permanent_item_runtime(self, snapshot: BridgeSnapshot) -> None:
+        self._ensure_item_runtime()
+        session = self.state_session
+        if session is None:
+            return
+        native_load_projection = self._latest_native_load_projection(snapshot)
+        native_load_completed = (
+            native_load_projection is not None
+            and native_load_projection != self._item_native_load_projection
+        )
+        if native_load_projection is not None:
+            self._item_native_load_projection = native_load_projection
+        diagnostic_drop_projection = (
+            snapshot.diagnostic_activation_generation,
+            snapshot.diagnostic_dropped_count,
+        )
+        previous_drop_projection = self._item_diagnostic_drop_projection
+        diagnostic_loss_detected = previous_drop_projection is not None and (
+            (
+                diagnostic_drop_projection[0] == previous_drop_projection[0]
+                and diagnostic_drop_projection[1] > previous_drop_projection[1]
+            )
+            or (
+                diagnostic_drop_projection[0] != previous_drop_projection[0]
+                and diagnostic_drop_projection[1] > 0
+            )
+        )
+        self._item_diagnostic_drop_projection = diagnostic_drop_projection
+        reconstruction_boundary = native_load_completed or diagnostic_loss_detected
+        projection = (
+            session.state.state_instance_id,
+            id(session),
+            snapshot.session_nonce,
+            snapshot.native_save_slot,
+            snapshot.native_save_identity,
+            snapshot.safe_to_apply_permanent_item,
+        )
+        previous = self._item_runtime_projection
+        lifecycle_changed = previous is None or projection[:5] != previous[:5]
+        became_safe = (
+            previous is not None
+            and not bool(previous[5])
+            and snapshot.safe_to_apply_permanent_item
+        )
+        if lifecycle_changed or became_safe or reconstruction_boundary:
+            self._item_reconcile_dirty = True
+            self._item_failure_projection = None
+        if lifecycle_changed or reconstruction_boundary:
+            self._item_confirmed_projection = None
+            self._item_queued_projection = None
+            self._item_recovery_pending = bool(
+                session.state.received_item_journal
+                or session.state.pending_item_application_indices
+            )
+            if self._item_recovery_pending:
+                self._emit_item_event(
+                    "item.recovery.started",
+                    "Permanent-item recovery started from the durable ledger.",
+                    snapshot=snapshot,
+                    revision=session.state.state_revision,
+                    target_mask=permanent_item_target_mask(session.state),
+                    outcome="started",
+                )
+            if (
+                not self._received_item_packets
+                and self._item_rejection_projection is None
+            ):
+                self._request_item_sync_once("binding_or_reconnect")
+        self._item_runtime_projection = projection
+        self._schedule_item_worker()
+
+    @staticmethod
+    def _latest_native_load_projection(
+        snapshot: BridgeSnapshot,
+    ) -> tuple[object, ...] | None:
+        load_sequences = tuple(
+            event.source_sequence
+            for event in snapshot.diagnostic_events
+            if (
+                (definition := GOAL_EVENT_REGISTRY.get(event.event_code)) is not None
+                and definition.name == "save.native_operation.succeeded"
+                and event.arg0 == _GOAL_NATIVE_OPERATION_LOAD
+            )
+        )
+        if not load_sequences:
+            return None
+        return snapshot.diagnostic_activation_generation, max(load_sequences)
+
+    def _emit_received_items_packet_observed(self, args: dict[str, Any]) -> None:
+        raw_items = args.get("items")
+        packet_index = args.get("index")
+        session = self.state_session
+        self._emit_item_event(
+            "ap.received_items.packet_observed",
+            "ReceivedItems packet observed.",
+            index=packet_index,
+            count=len(raw_items) if isinstance(raw_items, (list, tuple)) else None,
+            expected_index=(
+                session.state.next_received_item_index if session is not None else None
+            ),
+            revision=(session.state.state_revision if session is not None else None),
+            outcome="observed",
+        )
+
+    def _reject_received_items_packet(
+        self,
+        args: dict[str, Any],
+        error: ReceivedItemsPacketError,
+        *,
+        already_sent: bool,
+    ) -> None:
+        session = self.state_session
+        packet_index = args.get("index")
+        expected_index = (
+            session.state.next_received_item_index if session is not None else None
+        )
+        # The canonical index-zero response to a rejected incremental packet
+        # repeats the same invalid history. Exclude its transport index from the
+        # latch so one rejection produces exactly one diagnostic and one Sync.
+        rejection_projection = (
+            error.reason,
+            error.item_id,
+            error.item_index,
+            error.location_id,
+            error.source_player,
+            error.flags,
+        )
+        if self._item_rejection_projection == rejection_projection:
+            return
+        attribution = {
+            key: value
+            for key, value in (
+                ("location_id", error.location_id),
+                ("source_player", error.source_player),
+                ("flags", error.flags),
+            )
+            if value is not None
+        }
+        self._emit_item_event(
+            "item.receipt.rejected",
+            "ReceivedItems packet rejected before persistent mutation.",
+            item_id=error.item_id,
+            index=(error.item_index if error.item_index is not None else packet_index),
+            outcome="rejected",
+            reason=error.reason,
+            revision=(session.state.state_revision if session else None),
+            expected_index=expected_index,
+            target_mask=(
+                permanent_item_target_mask(session.state) if session else None
+            ),
+            attribution=attribution or None,
+        )
+        self._item_rejection_projection = rejection_projection
+        self._request_item_sync_once(
+            "packet_rejected",
+            packet_index,
+            already_sent=already_sent,
+        )
+
+    def _preprocess_received_items_packet(
+        self, args: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Validate and normalize ReceivedItems before CommonClient sees it."""
+
+        self._ensure_item_runtime()
+        self._emit_received_items_packet_observed(args)
+        try:
+            packet = parse_received_items_packet(args)
+        except ReceivedItemsPacketError as exc:
+            self._reject_received_items_packet(args, exc, already_sent=False)
+            return None
+
+        prepared = dict(args)
+        prepared["index"] = packet.index
+        prepared["items"] = [
+            (entry.item_id, entry.location_id, entry.source_player, entry.flags)
+            for entry in packet.entries
+        ]
+        prepared[_PREVALIDATED_RECEIVED_ITEMS_KEY] = packet
+        return prepared
+
+    def _observe_received_items(self, args: dict[str, Any]) -> None:
+        self._ensure_item_runtime()
+        raw_items = args.get("items") if isinstance(args, dict) else None
+        raw_count = len(raw_items) if isinstance(raw_items, (list, tuple)) else 0
+        packet_index = args.get("index") if isinstance(args, dict) else None
+        current_commonclient_count = len(getattr(self, "items_received", ()))
+        previous_commonclient_count = self._commonclient_received_item_count
+        if type(packet_index) is int and packet_index != 0:
+            commonclient_sync_sent = (
+                packet_index != previous_commonclient_count
+                if previous_commonclient_count is not None
+                else current_commonclient_count != packet_index + raw_count
+            )
+        else:
+            commonclient_sync_sent = False
+        self._commonclient_received_item_count = current_commonclient_count
+        prevalidated = args.get(_PREVALIDATED_RECEIVED_ITEMS_KEY)
+        if isinstance(prevalidated, ReceivedItemsPacket):
+            packet = prevalidated
+        else:
+            self._emit_received_items_packet_observed(args)
+            try:
+                packet = parse_received_items_packet(args)
+            except ReceivedItemsPacketError as exc:
+                self._reject_received_items_packet(
+                    args, exc, already_sent=commonclient_sync_sent
+                )
+                return
+        self._received_item_packets.append((packet, commonclient_sync_sent))
+        if packet.index == 0:
+            self._item_sync_projection = None
+            self._item_rejection_projection = None
+        self._schedule_item_worker()
+
+    def _schedule_item_worker(self) -> None:
+        self._ensure_item_runtime()
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = self._item_worker_task
+        if task is not None and not task.done():
+            return
+        self._item_worker_task = create_logged_task(
+            self._run_item_worker(),
+            "Milestone 8 ReceivedItems coordinator",
+            getattr(self, "diagnostics", None),
+        )
+
+    async def _run_item_worker(self) -> None:
+        async with self._item_worker_lock:
+            while True:
+                session = self.state_session
+                if session is None:
+                    return
+                if self._received_item_packets:
+                    packet, commonclient_sync_sent = self._received_item_packets.pop(0)
+                    if not await self._commit_received_items_packet(
+                        session, packet, commonclient_sync_sent=commonclient_sync_sent
+                    ):
+                        return
+                    continue
+                await self._reconcile_permanent_items(session)
+                return
+
+    async def _commit_received_items_packet(
+        self,
+        session: StateSession,
+        packet: ReceivedItemsPacket,
+        *,
+        commonclient_sync_sent: bool = False,
+    ) -> bool:
+        prior_target_mask = permanent_item_target_mask(session.state)
+        transition = apply_received_items_packet(session.state, packet)
+        expected = session.state.next_received_item_index
+        if transition.outcome in {
+            PacketOutcome.GAP,
+            PacketOutcome.CONFLICT,
+            PacketOutcome.PARTIAL_OVERLAP,
+        }:
+            event = (
+                "item.receipt.index_gap"
+                if transition.outcome is PacketOutcome.GAP
+                else "item.receipt.rejected"
+            )
+            self._emit_item_event(
+                event,
+                "ReceivedItems history does not match the durable expected index.",
+                index=packet.index,
+                count=len(packet.entries),
+                expected_index=expected,
+                revision=session.state.state_revision,
+                target_mask=permanent_item_target_mask(session.state),
+                outcome=transition.outcome.value,
+                reason=transition.outcome.value,
+            )
+            self._request_item_sync_once(
+                transition.outcome.value,
+                packet.index,
+                already_sent=commonclient_sync_sent,
+            )
+            return True
+        if transition.outcome is PacketOutcome.DUPLICATE:
+            self._emit_item_event(
+                "item.receipt.duplicate",
+                "Exact historical ReceivedItems packet replayed idempotently.",
+                index=packet.index,
+                count=len(packet.entries),
+                expected_index=expected,
+                revision=session.state.state_revision,
+                target_mask=permanent_item_target_mask(session.state),
+                outcome="duplicate",
+            )
+            return True
+
+        replay = transition.outcome is PacketOutcome.REPLACED
+        if replay:
+            self._emit_item_event(
+                "item.replay.started",
+                "Canonical index-zero item replay started.",
+                index=0,
+                count=len(packet.entries),
+                expected_index=expected,
+                revision=session.state.state_revision,
+                target_mask=prior_target_mask,
+                outcome="started",
+            )
+        if transition.changed:
+            try:
+                session.commit(transition.state, category="received_items")
+            except StateError as exc:
+                self._emit_item_event(
+                    "item.receipt.rejected",
+                    "Durable ReceivedItems commit failed.",
+                    index=packet.index,
+                    expected_index=expected,
+                    revision=session.state.state_revision,
+                    outcome="failed",
+                    reason=type(exc).__name__,
+                )
+                await self.mark_bridge_unavailable(exc)
+                return False
+
+        self._item_rejection_projection = None
+
+        if (
+            (transition.outcome is PacketOutcome.ACCEPTED and bool(packet.entries))
+            or replay
+            or prior_target_mask != permanent_item_target_mask(session.state)
+            or bool(session.state.pending_item_application_indices)
+        ):
+            self._item_reconcile_dirty = True
+        self._item_failure_projection = None
+        for entry in packet.entries:
+            self._emit_item_event(
+                "item.receipt.accepted",
+                "Permanent-item receipt durably accepted.",
+                item_id=entry.item_id,
+                index=entry.index,
+                expected_index=session.state.next_received_item_index,
+                revision=session.state.state_revision,
+                target_mask=permanent_item_target_mask(session.state),
+                outcome="accepted",
+                attribution={
+                    "location_id": entry.location_id,
+                    "source_player": entry.source_player,
+                    "flags": entry.flags,
+                },
+            )
+        if replay:
+            self._emit_item_event(
+                "item.replay.completed",
+                "Canonical index-zero item replay completed.",
+                index=0,
+                count=len(packet.entries),
+                expected_index=session.state.next_received_item_index,
+                revision=session.state.state_revision,
+                target_mask=permanent_item_target_mask(session.state),
+                outcome=(
+                    "history_mismatch"
+                    if transition.history_discrepancies
+                    else "complete"
+                ),
+                discrepancies=transition.history_discrepancies,
+            )
+        return True
+
+    async def _reconcile_permanent_items(self, session: StateSession) -> None:
+        protocol = self.protocol
+        snapshot = protocol.last_snapshot if protocol is not None else None
+        if protocol is None or snapshot is None or snapshot.session_nonce is None:
+            return
+        target_mask = permanent_item_target_mask(session.state)
+        projection = (
+            session.state.state_instance_id,
+            id(session),
+            snapshot.session_nonce,
+            snapshot.native_save_slot,
+            snapshot.native_save_identity,
+            target_mask,
+        )
+        if (
+            not self._item_reconcile_dirty
+            and not session.state.pending_item_application_indices
+            and self._item_confirmed_projection == projection
+        ):
+            return
+        if self._item_failure_projection == projection:
+            return
+        if not snapshot.safe_to_apply_permanent_item:
+            queued = projection + (self._permanent_item_safety_reason(snapshot),)
+            if self._item_queued_projection != queued:
+                self._emit_item_event(
+                    "item.application.queued",
+                    "Permanent-item reconciliation is queued until gameplay is safe.",
+                    snapshot=snapshot,
+                    revision=session.state.state_revision,
+                    target_mask=target_mask,
+                    outcome="unsafe_now",
+                    safety_reason=queued[-1],
+                )
+                self._item_queued_projection = queued
+            return
+
+        self._item_queued_projection = None
+        pending_entries = tuple(
+            session.state.received_item_journal[index]
+            for index in session.state.pending_item_application_indices
+        )
+        command_id = protocol.next_command_id
+        self._emit_item_event(
+            "item.reconciliation.started",
+            "Permanent-item native target reconciliation started.",
+            snapshot=snapshot,
+            revision=session.state.state_revision,
+            target_mask=target_mask,
+            command_id=command_id,
+            outcome="started",
+        )
+        for entry in pending_entries:
+            self._emit_item_event(
+                "item.application.command_submitted",
+                "Permanent-item native command submitted.",
+                snapshot=snapshot,
+                item_id=entry.item_id,
+                index=entry.index,
+                revision=session.state.state_revision,
+                target_mask=target_mask,
+                command_id=command_id,
+                outcome="submitted",
+                attribution={
+                    "location_id": entry.location_id,
+                    "source_player": entry.source_player,
+                    "flags": entry.flags,
+                },
+            )
+        try:
+            result_snapshot = await protocol.send_command(
+                ProtocolCommand.RECONCILE_PERMANENT_ITEMS, target_mask
+            )
+        except (ConnectionError, OSError) as exc:
+            self._emit_item_event(
+                "item.application.failed",
+                "Permanent-item command outcome was not durably observed.",
+                snapshot=snapshot,
+                revision=session.state.state_revision,
+                target_mask=target_mask,
+                command_id=command_id,
+                outcome="transport_lost",
+                reason=type(exc).__name__,
+            )
+            await self.mark_bridge_unavailable(exc)
+            return
+        except ValueError as exc:
+            self._item_failure_projection = projection
+            self._emit_item_event(
+                "item.application.failed",
+                "Permanent-item command was rejected by the local transport.",
+                snapshot=snapshot,
+                revision=session.state.state_revision,
+                target_mask=target_mask,
+                command_id=command_id,
+                outcome="failed",
+                reason=type(exc).__name__,
+            )
+            return
+
+        result = result_snapshot.last_command_result
+        if result in (ProtocolResult.APPLIED, ProtocolResult.ALREADY_APPLIED):
+            receipt = GameCommandReceipt(
+                command_id=(
+                    f"{result_snapshot.session_nonce}:{result_snapshot.last_command_id}"
+                ),
+                command_kind=ProtocolCommand.RECONCILE_PERMANENT_ITEMS.name,
+                result=result.name,
+            )
+            if self.state_session is not session:
+                self._item_reconcile_dirty = True
+                return
+            applied = mark_pending_items_applied(session.state, receipt)
+            try:
+                if applied != session.state:
+                    session.commit(applied, category="permanent_items_applied")
+            except StateError as exc:
+                self._emit_item_event(
+                    "item.application.failed",
+                    "Native target changed but its result was not durably committed.",
+                    snapshot=result_snapshot,
+                    revision=session.state.state_revision,
+                    target_mask=target_mask,
+                    command_id=result_snapshot.last_command_id,
+                    outcome="durable_observation_failed",
+                    reason=type(exc).__name__,
+                )
+                await self.mark_bridge_unavailable(exc)
+                return
+            event = (
+                "item.application.completed"
+                if result is ProtocolResult.APPLIED
+                else "item.application.already_applied"
+            )
+            for entry in pending_entries:
+                self._emit_item_event(
+                    event,
+                    "Permanent-item application durably observed.",
+                    snapshot=result_snapshot,
+                    item_id=entry.item_id,
+                    index=entry.index,
+                    revision=session.state.state_revision,
+                    target_mask=target_mask,
+                    command_id=result_snapshot.last_command_id,
+                    outcome=result.name.casefold(),
+                    attribution={
+                        "location_id": entry.location_id,
+                        "source_player": entry.source_player,
+                        "flags": entry.flags,
+                    },
+                )
+            self._item_confirmed_projection = projection
+            self._item_diagnostic_drop_projection = (
+                result_snapshot.diagnostic_activation_generation,
+                result_snapshot.diagnostic_dropped_count,
+            )
+            self._item_reconcile_dirty = False
+            self._item_failure_projection = None
+            self._emit_item_event(
+                "item.reconciliation.completed",
+                "Permanent-item native target reconciliation completed.",
+                snapshot=result_snapshot,
+                revision=session.state.state_revision,
+                target_mask=target_mask,
+                command_id=result_snapshot.last_command_id,
+                outcome=result.name.casefold(),
+            )
+            if self._item_recovery_pending:
+                self._emit_item_event(
+                    "item.recovery.completed",
+                    "Permanent-item recovery completed from the durable ledger.",
+                    snapshot=result_snapshot,
+                    revision=session.state.state_revision,
+                    target_mask=target_mask,
+                    command_id=result_snapshot.last_command_id,
+                    outcome=result.name.casefold(),
+                )
+                self._item_recovery_pending = False
+            return
+
+        if result is ProtocolResult.UNSAFE_NOW:
+            self._item_reconcile_dirty = True
+            self._item_queued_projection = None
+            self._emit_item_event(
+                "item.application.queued",
+                "Native safety changed before permanent-item dispatch completed.",
+                snapshot=result_snapshot,
+                revision=session.state.state_revision,
+                target_mask=target_mask,
+                command_id=result_snapshot.last_command_id,
+                outcome="unsafe_now",
+                safety_reason="command_time_safety_gate",
+            )
+            return
+
+        self._item_failure_projection = projection
+        self._emit_item_event(
+            "item.application.failed",
+            "Permanent-item native reconciliation failed without ledger advancement.",
+            snapshot=result_snapshot,
+            revision=session.state.state_revision,
+            target_mask=target_mask,
+            command_id=result_snapshot.last_command_id,
+            outcome=result.name.casefold(),
+            reason=result_snapshot.last_error_code.name.casefold(),
+        )
+
+    def _request_item_sync_once(
+        self, reason: str, index: object = None, *, already_sent: bool = False
+    ) -> None:
+        self._ensure_item_runtime()
+        session = self.state_session
+        expected = session.state.next_received_item_index if session else None
+        projection = (reason, index, expected)
+        if self._item_sync_projection == projection:
+            return
+        self._item_sync_projection = projection
+        if already_sent:
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        create_logged_task(
+            self._send_item_sync(projection),
+            "Milestone 8 canonical item Sync",
+            getattr(self, "diagnostics", None),
+        )
+
+    async def _send_item_sync(self, projection: tuple[object, ...]) -> None:
+        if not self.server:
+            if self._item_sync_projection == projection:
+                self._item_sync_projection = None
+            return
+        messages: list[dict[str, object]] = [{"cmd": "Sync"}]
+        locations_checked: set[int] = getattr(self, "locations_checked", set())
+        if locations_checked:
+            messages.append(
+                {"cmd": "LocationChecks", "locations": list(locations_checked)}
+            )
+        await self.send_msgs(messages)
+
+    def _emit_item_event(
+        self,
+        event_name: str,
+        message: str,
+        *,
+        snapshot: BridgeSnapshot | None = None,
+        item_id: object = None,
+        index: object = None,
+        count: object = None,
+        expected_index: object = None,
+        revision: object = None,
+        target_mask: object = None,
+        command_id: object = None,
+        safety_reason: object = None,
+        outcome: object = None,
+        reason: object = None,
+        attribution: object = None,
+        discrepancies: tuple[int, ...] | None = None,
+    ) -> None:
+        context = {
+            "item_id": item_id,
+            "item_name": (
+                known_jak3_item_name(item_id) if type(item_id) is int else None
+            ),
+            "item_index": index,
+            "packet_count": count,
+            "expected_index": expected_index,
+            "ledger_revision": revision,
+            "target_mask": target_mask,
+            "command_id": command_id,
+            "safety_reason": safety_reason,
+            "outcome": outcome,
+            "reason": reason,
+            "attribution": attribution,
+            "history_discrepancy_count": (
+                len(discrepancies) if discrepancies is not None else None
+            ),
+        }
+        self.emit_diagnostic(
+            event_name,
+            message=message,
+            source_component="client",
+            correlation_id=(
+                f"command:{command_id}"
+                if type(command_id) is int
+                else f"item:{index}"
+                if type(index) is int
+                else None
+            ),
+            runtime_state_sequence=(
+                snapshot.snapshot_revision if snapshot is not None else None
+            ),
+            persistent_state_revision=(revision if type(revision) is int else None),
+            context={key: value for key, value in context.items() if value is not None},
+        )
+
+    @staticmethod
+    def _permanent_item_safety_reason(snapshot: BridgeSnapshot) -> str:
+        if snapshot.loading:
+            return "loading"
+        if snapshot.in_cutscene:
+            return "cutscene"
+        if snapshot.dying_or_dead:
+            return "dying_or_dead"
+        if snapshot.mission_restarting:
+            return "mission_restarting"
+        if snapshot.level_transition:
+            return "level_transition"
+        if snapshot.in_vehicle:
+            return "vehicle"
+        if not snapshot.save_loaded:
+            return "save_not_loaded"
+        return "control_plane_unsafe"
+
     def on_package(self, cmd: str, args: dict) -> None:
         if cmd == "RoomInfo":
+            self._ensure_item_runtime()
+            self._received_item_packets.clear()
+            self._item_sync_projection = None
+            self._item_runtime_projection = None
+            self._item_confirmed_projection = None
+            self._item_rejection_projection = None
+            self._commonclient_received_item_count = len(
+                getattr(self, "items_received", ())
+            )
+            self._item_reconcile_dirty = False
             self.close_persistence(clean=True)
             self._set_protocol_save_identity_authorized(False)
             self.protocol_sync_event.set()
@@ -936,6 +1726,15 @@ class Jak3Context(CommonContext):
                 source_component="client",
                 context={"status": "accepted"},
             )
+            self._ensure_item_runtime()
+            self._item_reconcile_dirty = True
+            self._item_confirmed_projection = None
+            self._item_failure_projection = None
+            if self.state_session is not None:
+                self._request_item_sync_once("server_reconnect")
+                self._schedule_item_worker()
+        elif cmd == "ReceivedItems":
+            self._observe_received_items(args)
 
     def _write_diagnostic_snapshot(self, reason: str) -> None:
         diagnostic: dict[str, object] = {

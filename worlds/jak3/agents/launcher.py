@@ -173,6 +173,15 @@ def _validate_module_payloads(
                 or b"AP-DIAGNOSTIC-RING-CAPACITY 64" not in payload
             ):
                 raise ValueError("The OpenGOAL diagnostic module payload is invalid.")
+        elif module.name == "items":
+            if (
+                b"(in-package goal)" not in payload
+                or b"ap-items-reconcile-native-target!" not in payload
+                or b"*ap3-permanent-items-reconcile-hook*" not in payload
+            ):
+                raise ValueError(
+                    "The OpenGOAL permanent-item module payload is invalid."
+                )
 
 
 def _atomic_write(path: Path, payload: bytes) -> None:

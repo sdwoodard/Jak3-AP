@@ -310,6 +310,7 @@ class DeveloperInstallerTest(unittest.TestCase):
             project_text = project.read_text(encoding="utf-8")
             self.assertEqual(project_text.count('"archipelago.o"'), 1)
             self.assertEqual(project_text.count('"archipelago-diagnostics.o"'), 1)
+            self.assertEqual(project_text.count('"archipelago-items.o"'), 1)
             self.assertLess(
                 project_text.index('"task-control.o"'),
                 project_text.index('"archipelago.o"'),
@@ -318,9 +319,14 @@ class DeveloperInstallerTest(unittest.TestCase):
                 project_text.index('"archipelago.o"'),
                 project_text.index('"archipelago-diagnostics.o"'),
             )
+            self.assertLess(
+                project_text.index('"archipelago-diagnostics.o"'),
+                project_text.index('"archipelago-items.o"'),
+            )
             self.assertTrue(
                 destination.with_name("archipelago-diagnostics.gc").is_file()
             )
+            self.assertTrue(destination.with_name("archipelago-items.gc").is_file())
             self.assertTrue(destination.with_name("archipelago-startup.gc").is_file())
             self.assertTrue(
                 destination.with_name("archipelago-bridge-modules.json").is_file()
@@ -351,7 +357,10 @@ class DeveloperInstallerTest(unittest.TestCase):
                 '@("name", "order", "phase", "source", "resource", "destination", "object")',
                 script,
             )
-        self.assertIn('$expectedPhases = @("pre_mi", "bridge", "bridge")', installer)
+        self.assertIn(
+            '$expectedPhases = @("pre_mi", "bridge", "bridge", "bridge")',
+            installer,
+        )
         self.assertIn("$module.phase -ne $expectedPhases[$index]", installer)
 
     def test_powershell_consumers_behaviorally_reject_malformed_manifests(

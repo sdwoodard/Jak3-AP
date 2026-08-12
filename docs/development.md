@@ -36,10 +36,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\install_opengoal_bri
   -OpenGoalRepository D:\OpenGOAL\active\jak3\data
 ```
 
-It copies the manifest-declared startup, control, and diagnostics sources plus
-the manifest itself. It registers `archipelago.o` then
-`archipelago-diagnostics.o` immediately after `task-control.o`. The next normal
-client launch restores the exact source set carried by the installed APWorld.
+It copies the manifest-declared startup, control, diagnostics, and permanent-
+items sources plus the manifest itself. It registers `archipelago.o`,
+`archipelago-diagnostics.o`, then `archipelago-items.o` immediately after
+`task-control.o`. The next normal client launch restores the exact source set
+carried by the installed APWorld.
 
 ## Supported update and restart policy
 

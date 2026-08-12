@@ -53,9 +53,11 @@ not belong in the control plane.
 This directory mirrors the destination path beneath an OpenGOAL Jak 3 data
 tree. In protocol 3 the GOAL bridge owns a temporary runtime snapshot,
 version/session validation, an eight-entry command receipt ring, one harmless
-test target, and metadata-only native save/load wrappers for tag 900. It has no
-item delivery, location submission, reward interception, goal reporting,
-mission mutation, or gameplay HUD hooks.
+test target, descriptor-qualified permanent-item dispatch, and metadata-only
+native save/load wrappers for tag 900. `archipelago-items.gc` reconstructs only
+the Milestone 8 Jetboard, Blaster stage-1, and Armor stage-1 native targets. It
+has no consumable delivery, location submission, reward interception, goal
+reporting, mission mutation, or gameplay HUD hooks.
 
 ### OpenGOAL gameplay-module boundaries
 
