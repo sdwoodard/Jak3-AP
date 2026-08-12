@@ -1,7 +1,7 @@
 """Archipelago client for the Protocol 3 Jak 3 bridge.
 
-Milestone 8 adds indexed permanent-item receipts while locations, goals,
-rewards, consumables, and mission state remain inactive.
+Milestone 9 adds two finite persistent outgoing checks. Goals, reward
+suppression, consumables, and mission dispatch remain inactive.
 """
 
 from __future__ import annotations
@@ -14,16 +14,19 @@ import tempfile
 from collections.abc import Awaitable
 from dataclasses import replace
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 import CommonClient as common_client  # type: ignore[import-untyped]
 import colorama  # type: ignore[import-untyped]
 from CommonClient import ClientCommandProcessor, CommonContext, gui_enabled, server_loop
+from NetUtils import encode  # type: ignore[import-untyped]
 
 from .agents.bridge_manifest import load_packaged_manifest
 from .agents.diagnostics import (
     GOAL_EVENT_REGISTRY,
     DiagnosticSession,
+    GoalDiagnosticRecord,
     hash_identifier,
 )
 from .agents.launcher import (
@@ -49,11 +52,25 @@ from .agents.protocol import (
 )
 from .agents.repl_client import OpenGoalRepl
 from .game_id import GAME_NAME
+from .location_outbox import (
+    DEBUG_LOCATION_ID,
+    LOCATION_OBSERVED_GOAL_CODE,
+    LOCATION_RETRY_SECONDS,
+    LOCATION_SOURCES,
+    LOCATION_TASK_IDS,
+    LocationPacketError,
+    diagnostic_batch_id,
+    observe_local_location,
+    parse_server_location_update,
+    reconcile_connected,
+    reconcile_room_update,
+)
 from .persistence import (
     AuthenticatedSlot,
     GameCommandReceipt,
     NativeSaveDescriptor,
     NativeSaveEligibility,
+    PersistentState,
     StateBindingError,
     StateError,
     StateCompatibilityError,
@@ -84,12 +101,21 @@ from .versions import (
 logger = logging.getLogger("Client")
 BACKGROUND_TASKS: set[asyncio.Task] = set()
 _PREVALIDATED_RECEIVED_ITEMS_KEY = "__jak3_prevalidated_received_items_packet"
+_PREVALIDATED_LOCATION_UPDATE_KEY = "__jak3_prevalidated_location_update"
 _COMMONCLIENT_PROCESS_SERVER_CMD = common_client.process_server_cmd
 _GOAL_NATIVE_OPERATION_LOAD = 2
 
 
 async def _jak3_process_server_cmd(ctx: CommonContext, args: dict) -> None:
-    """Validate Jak 3 ReceivedItems before CommonClient mutates its item list."""
+    """Validate Jak 3 packets before CommonClient mutates local mirrors."""
+
+    if args.get("cmd") in {"Connected", "RoomUpdate"}:
+        preprocessor = getattr(ctx, "_preprocess_location_update", None)
+        if callable(preprocessor):
+            prepared = preprocessor(args)
+            if prepared is None:
+                return
+            args = prepared
 
     if args.get("cmd") == "ReceivedItems":
         preprocessor = getattr(ctx, "_preprocess_received_items_packet", None)
@@ -420,6 +446,16 @@ class Jak3Context(CommonContext):
         self._commonclient_received_item_count: int | None = None
         self._item_reconcile_dirty = False
         self._item_recovery_pending = False
+        self._location_read_only = False
+        self._location_read_only_failure = ""
+        self._server_checked_locations: frozenset[int] | None = None
+        self._location_server_updates: list[tuple[bool, tuple[int, ...]]] = []
+        self._location_reconciled_state_instance: str | None = None
+        self._location_send_task: asyncio.Task | None = None
+        self._location_last_send_projection: tuple[object, ...] | None = None
+        self._location_last_send_at = float("-inf")
+        self._location_connection_generation = 0
+        self._location_authenticated_server: object | None = None
         # This state survives BridgeProtocol recreation so a reconnect cannot
         # mistake a restarted or reloaded GOAL diagnostic ring for duplicates.
         self._goal_source_state: dict[str, int] = {}
@@ -492,7 +528,7 @@ class Jak3Context(CommonContext):
                 else previous.get("received_item_count", 0)
             ),
             "location_count": (
-                sum(word.bit_count() for word in state.checked_location_bits)
+                len(state.checked_location_bits)
                 if state
                 else previous.get("location_count", 0)
             ),
@@ -566,8 +602,29 @@ class Jak3Context(CommonContext):
         await self.get_username()
         await self.send_connect()
 
+    async def send_msgs(self, msgs: list[Any]) -> None:
+        """Keep CommonClient's volatile location mirror off the wire."""
+
+        messages = [
+            message
+            for message in msgs
+            if not (
+                isinstance(message, dict) and message.get("cmd") == "LocationChecks"
+            )
+        ]
+        if not messages:
+            return
+        if any(
+            isinstance(message, dict) and message.get("cmd") == "Sync"
+            for message in messages
+        ):
+            await self._send_sync_with_location_outbox(messages)
+            return
+        await super().send_msgs(messages)
+
     async def connection_closed(self) -> None:
         was_connected = self.server is not None
+        self._invalidate_location_transport()
         try:
             await super().connection_closed()
         finally:
@@ -611,8 +668,10 @@ class Jak3Context(CommonContext):
             )
 
     def close_persistence(self, *, clean: bool) -> None:
+        self._ensure_location_runtime()
         session = self.state_session
         self.state_session = None
+        self._location_reconciled_state_instance = None
         self._item_runtime_projection = None
         self._item_confirmed_projection = None
         self._item_queued_projection = None
@@ -640,10 +699,7 @@ class Jak3Context(CommonContext):
                 "received_item_count": sum(
                     count for _, count in getattr(state, "received_item_counts", ())
                 ),
-                "location_count": sum(
-                    word.bit_count()
-                    for word in getattr(state, "checked_location_bits", ())
-                ),
+                "location_count": len(getattr(state, "checked_location_bits", ())),
                 "has_recent_command": bool(
                     getattr(state, "last_observed_game_command_receipt", None)
                 ),
@@ -879,6 +935,8 @@ class Jak3Context(CommonContext):
                     native_save.identity if native_save is not None else None
                 ),
             )
+        self._drain_location_server_updates()
+        self._pump_location_outbox("heartbeat")
         self._note_permanent_item_runtime(snapshot)
 
     def _persist_latest_harmless_receipt(self, snapshot: BridgeSnapshot) -> None:
@@ -921,6 +979,552 @@ class Jak3Context(CommonContext):
                 replace(session.state, last_observed_game_command_receipt=persisted),
                 category="command_receipt",
             )
+
+    def _ensure_location_runtime(self) -> None:
+        """Initialize Milestone 9 fields for lightweight test contexts too."""
+
+        defaults: dict[str, object] = {
+            "_location_read_only": False,
+            "_location_read_only_failure": "",
+            "_server_checked_locations": None,
+            "_location_server_updates": [],
+            "_location_reconciled_state_instance": None,
+            "_location_send_task": None,
+            "_location_last_send_projection": None,
+            "_location_last_send_at": float("-inf"),
+            "_location_connection_generation": 0,
+            "_location_authenticated_server": None,
+        }
+        for name, value in defaults.items():
+            if not hasattr(self, name):
+                setattr(self, name, value)
+
+    def _invalidate_location_transport(self) -> None:
+        """Invalidate every send captured for the prior AP connection."""
+
+        self._ensure_location_runtime()
+        task = self._location_send_task
+        if task is not None and not task.done():
+            task.cancel()
+        self._location_send_task = None
+        self._location_connection_generation += 1
+        self._location_authenticated_server = None
+        self._location_last_send_projection = None
+
+    def _activate_location_transport(self) -> None:
+        """Authorize location sends only after a valid Connected packet."""
+
+        self._ensure_location_runtime()
+        self._location_connection_generation += 1
+        self._location_authenticated_server = self.server
+        self._location_last_send_projection = None
+
+    def _location_transport_ready(self) -> bool:
+        server = getattr(self, "server", None)
+        return bool(
+            server is not None
+            and server is self._location_authenticated_server
+            and getattr(self, "authenticated_slot", None) is not None
+            and not self._location_read_only
+        )
+
+    def _current_location_projection(
+        self, session: StateSession, pending: tuple[int, ...]
+    ) -> tuple[object, ...]:
+        return (
+            session.state.state_instance_id,
+            pending,
+            self._location_connection_generation,
+        )
+
+    def _reserve_location_batch(
+        self, requested_pending: tuple[int, ...] | None = None
+    ) -> tuple[StateSession, tuple[int, ...], tuple[object, ...]] | None:
+        """Reserve one current authenticated batch under the shared retry bound."""
+
+        self._ensure_location_runtime()
+        session = self.state_session
+        if session is None or not self._location_transport_ready():
+            return None
+        pending = tuple(session.state.pending_location_outbox)
+        if not pending or (
+            requested_pending is not None and tuple(requested_pending) != pending
+        ):
+            return None
+        projection = self._current_location_projection(session, pending)
+        now = monotonic()
+        if (
+            projection == self._location_last_send_projection
+            and now - self._location_last_send_at < LOCATION_RETRY_SECONDS
+        ):
+            return None
+        self._location_last_send_projection = projection
+        self._location_last_send_at = now
+        return session, pending, projection
+
+    def _reject_location_update(self, exc: Exception, *, source: str) -> None:
+        self._ensure_location_runtime()
+        self._location_read_only = True
+        self._location_read_only_failure = str(exc)
+        self.compatibility_error = True
+        self.persistence_read_only_failure = str(exc)
+        self.emit_diagnostic(
+            "location.reconciliation.rejected",
+            message="Server location state was rejected before CommonClient mutation.",
+            source_component="client",
+            context={
+                "source": source,
+                "outcome": "rejected",
+                "reason": type(exc).__name__,
+            },
+        )
+        logger.error("Jak 3 location handling entered read-only mode: %s", exc)
+
+    def _preprocess_location_update(self, args: dict[str, Any]) -> dict | None:
+        """Validate Connected/RoomUpdate location IDs before generic mutation."""
+
+        self._ensure_location_runtime()
+        connected = args.get("cmd") == "Connected"
+        if connected:
+            slot_data = args.get("slot_data")
+        else:
+            authenticated = getattr(self, "authenticated_slot", None)
+            slot_data = authenticated.contract if authenticated is not None else None
+        try:
+            update = parse_server_location_update(
+                args,
+                connected=connected,
+                slot_data=slot_data,
+            )
+        except (LocationPacketError, TypeError, ValueError) as exc:
+            self._reject_location_update(
+                exc, source="connected" if connected else "room_update"
+            )
+            return None
+        prepared = dict(args)
+        prepared[_PREVALIDATED_LOCATION_UPDATE_KEY] = update
+        return prepared
+
+    def _queue_server_location_update(self, args: dict[str, Any]) -> None:
+        self._ensure_location_runtime()
+        update = args.get(_PREVALIDATED_LOCATION_UPDATE_KEY)
+        if update is None:
+            prepared = self._preprocess_location_update(args)
+            if prepared is None:
+                return
+            update = prepared[_PREVALIDATED_LOCATION_UPDATE_KEY]
+        checked = tuple(update.checked_locations)
+        if update.full:
+            self._server_checked_locations = frozenset(checked)
+            self._location_server_updates = [(True, checked)]
+        else:
+            current = self._server_checked_locations or frozenset()
+            self._server_checked_locations = current | frozenset(checked)
+            if checked:
+                self._location_server_updates.append((False, checked))
+        self._drain_location_server_updates()
+
+    def _emit_location_event(
+        self,
+        event_name: str,
+        message: str,
+        *,
+        location_id: int | None = None,
+        location_ids: tuple[int, ...] | None = None,
+        task_id: int | None = None,
+        task_ids: tuple[int, ...] | None = None,
+        source: str,
+        outcome: str,
+        reason: str | None = None,
+        state: PersistentState | None = None,
+        batch_id: str | None = None,
+    ) -> None:
+        revision = getattr(state, "state_revision", None)
+        if batch_id is None and state is not None:
+            batch_id = diagnostic_batch_id(state)
+        context: dict[str, object] = {
+            "source": source,
+            "outcome": outcome,
+        }
+        if location_id is not None:
+            context["location_id"] = location_id
+        if location_ids is not None:
+            context["location_ids"] = list(location_ids)
+        if task_id is not None:
+            context["task_id"] = task_id
+        if task_ids is not None:
+            context["task_ids"] = list(task_ids)
+        if batch_id is not None:
+            context["batch_id"] = batch_id
+        if type(revision) is int:
+            context["revision"] = revision
+        if reason is not None:
+            context["reason"] = reason
+        self.emit_diagnostic(
+            event_name,
+            message=message,
+            source_component="client",
+            correlation_id=(
+                f"location:{location_id}" if location_id is not None else batch_id
+            ),
+            persistent_state_revision=(revision if type(revision) is int else None),
+            context=context,
+        )
+
+    @staticmethod
+    def _location_batch_metadata(
+        location_ids: tuple[int, ...],
+    ) -> tuple[tuple[int, ...], tuple[int, ...]]:
+        normalized = tuple(sorted(set(location_ids)))
+        task_ids = tuple(
+            LOCATION_TASK_IDS[location_id]
+            for location_id in normalized
+            if location_id in LOCATION_TASK_IDS
+        )
+        return normalized, task_ids
+
+    async def _send_location_messages_checked(
+        self,
+        messages: list[Any],
+        projection: tuple[object, ...],
+    ) -> None:
+        """Send location-bearing messages without CommonClient's closed no-op."""
+
+        session = self.state_session
+        if session is None or not self._location_transport_ready():
+            raise ConnectionError(
+                "Archipelago location transport is not authenticated."
+            )
+        pending = tuple(session.state.pending_location_outbox)
+        if projection != self._current_location_projection(session, pending):
+            raise ConnectionError("Archipelago location send projection is stale.")
+        server = getattr(self, "server", None)
+        if server is None:
+            raise ConnectionError("Archipelago server is disconnected.")
+        socket = getattr(server, "socket", None)
+        if socket is None:
+            raise ConnectionError("Archipelago server endpoint has no socket.")
+        if getattr(socket, "open", True) is False or bool(
+            getattr(socket, "closed", False)
+        ):
+            raise ConnectionError("Archipelago server socket is closed.")
+        await socket.send(encode(messages))
+
+    async def _send_reserved_location_batch(
+        self,
+        base_messages: list[Any],
+        *,
+        source: str,
+        reason: str,
+        requested_pending: tuple[int, ...] | None = None,
+    ) -> bool:
+        reservation = self._reserve_location_batch(requested_pending)
+        if reservation is None:
+            return False
+        session, pending, projection = reservation
+        state = session.state
+        batch_id = diagnostic_batch_id(state)
+        location_ids, task_ids = self._location_batch_metadata(pending)
+        messages = list(base_messages)
+        messages.append({"cmd": "LocationChecks", "locations": list(sorted(pending))})
+        try:
+            await self._send_location_messages_checked(messages, projection)
+        except Exception as exc:
+            self._emit_location_event(
+                "location.outbox.send_failed",
+                "LocationChecks batch send failed; durable entries remain pending.",
+                location_ids=location_ids,
+                task_ids=task_ids,
+                source=source,
+                outcome="failed",
+                reason=type(exc).__name__,
+                state=state,
+                batch_id=batch_id,
+            )
+            raise
+        self._emit_location_event(
+            "location.outbox.batch_sent",
+            "LocationChecks batch sent; entries remain pending until server state confirms.",
+            location_ids=location_ids,
+            task_ids=task_ids,
+            source=source,
+            outcome="sent",
+            reason=reason,
+            state=state,
+            batch_id=batch_id,
+        )
+        return True
+
+    async def _send_sync_with_location_outbox(self, messages: list[Any]) -> None:
+        sent_with_locations = await self._send_reserved_location_batch(
+            messages,
+            source="item_gap_sync",
+            reason="item_gap_sync",
+        )
+        if not sent_with_locations:
+            await super().send_msgs(messages)
+
+    def _commit_goal_location_observation(
+        self, record: GoalDiagnosticRecord
+    ) -> dict[str, object]:
+        """Commit the local bit and outbox before permitting a GOAL ack."""
+
+        self._ensure_location_runtime()
+        location_id = record.correlation_value
+        task_id = record.arg0
+        source_code = record.arg1
+        expected_task = LOCATION_TASK_IDS.get(location_id)
+        expected_source_code = 1 if location_id == DEBUG_LOCATION_ID else 0
+        if (
+            record.event_code != LOCATION_OBSERVED_GOAL_CODE
+            or record.correlation_kind != 3
+            or expected_task is None
+            or task_id != expected_task
+            or source_code != expected_source_code
+        ):
+            error = LocationPacketError("Malformed GOAL location observation.")
+            self._reject_location_update(error, source="goal")
+            raise error
+        if self._location_read_only:
+            raise LocationPacketError(self._location_read_only_failure)
+        session = self.state_session
+        if session is None or not session.state.is_bound:
+            raise StateBindingError(
+                "GOAL location observation awaits its exact bound persistent state."
+            )
+        source = LOCATION_SOURCES[location_id]
+        transition = observe_local_location(session.state, location_id)
+        if transition.changed:
+            try:
+                session.commit(transition.state, category="location_observed")
+            except StateError as exc:
+                self._location_read_only = True
+                self._location_read_only_failure = str(exc)
+                self._emit_location_event(
+                    "location.reconciliation.rejected",
+                    "Local location observation could not be committed durably.",
+                    location_id=location_id,
+                    task_id=task_id,
+                    source=source,
+                    outcome="rejected",
+                    reason=type(exc).__name__,
+                    state=session.state,
+                )
+                raise
+            committed = session.state
+            batch_id = diagnostic_batch_id(committed)
+            self._emit_location_event(
+                "location.committed_local",
+                "Local location completion was committed durably.",
+                location_id=location_id,
+                task_id=task_id,
+                source=source,
+                outcome="committed",
+                reason="first_observation",
+                state=committed,
+                batch_id=batch_id,
+            )
+            self._emit_location_event(
+                "location.outbox.enqueued",
+                "Durable location check was added to the outgoing outbox.",
+                location_id=location_id,
+                task_id=task_id,
+                source=source,
+                outcome="pending",
+                reason="awaiting_server_confirmation",
+                state=committed,
+                batch_id=batch_id,
+            )
+            self._pump_location_outbox("local_observation")
+            outcome = "committed"
+            reason = "first_observation"
+        else:
+            committed = session.state
+            batch_id = diagnostic_batch_id(committed)
+            self._emit_location_event(
+                "location.duplicate_ignored",
+                "Duplicate local location observation was ignored idempotently.",
+                location_id=location_id,
+                task_id=task_id,
+                source=source,
+                outcome="duplicate",
+                reason="already_checked",
+                state=committed,
+                batch_id=batch_id,
+            )
+            self._pump_location_outbox("duplicate_observation")
+            outcome = "duplicate"
+            reason = "already_checked"
+        return {
+            "location_id": location_id,
+            "task_id": task_id,
+            "batch_id": batch_id,
+            "revision": committed.state_revision,
+            "source": source,
+            "outcome": outcome,
+            "reason": reason,
+        }
+
+    def _ingest_goal_events(
+        self, records: tuple[GoalDiagnosticRecord, ...], dropped: int
+    ) -> int | None:
+        """Withhold location-event acknowledgement until its durable commit."""
+
+        safe_records: list[GoalDiagnosticRecord] = []
+        enrichments: dict[int, dict[str, object]] = {}
+        for record in sorted(records, key=lambda item: item.source_sequence):
+            if record.event_code == LOCATION_OBSERVED_GOAL_CODE:
+                try:
+                    enrichment = self._commit_goal_location_observation(record)
+                except (StateError, ValueError):
+                    break
+                enrichments[record.source_sequence] = enrichment
+            safe_records.append(record)
+        ingest = getattr(self.diagnostics, "ingest_goal_events", None)
+        if not callable(ingest):
+            return None
+        return ingest(
+            tuple(safe_records),
+            dropped_count=dropped,
+            record_context=enrichments,
+        )
+
+    def _drain_location_server_updates(self) -> None:
+        self._ensure_location_runtime()
+        session = self.state_session
+        if session is None or self._location_read_only:
+            return
+        if self._location_reconciled_state_instance != session.state.state_instance_id:
+            self._location_reconciled_state_instance = session.state.state_instance_id
+            if self._server_checked_locations is not None:
+                canonical = (True, tuple(sorted(self._server_checked_locations)))
+                # The accumulated server mirror is authoritative for a newly
+                # bound state. Replaying the earlier Connected/RoomUpdate
+                # history after it would manufacture a transient rollback.
+                self._location_server_updates = [canonical]
+        while self._location_server_updates:
+            full, checked = self._location_server_updates[0]
+            source = "connected" if full else "room_update"
+            before = session.state
+            transition = (
+                reconcile_connected(before, checked)
+                if full
+                else reconcile_room_update(before, checked)
+            )
+            reconciliation_ids, reconciliation_task_ids = self._location_batch_metadata(
+                tuple(
+                    sorted(
+                        set(checked)
+                        | set(transition.checked_added)
+                        | set(transition.confirmed_added)
+                        | set(transition.confirmed_removed)
+                        | set(transition.pending_added)
+                        | set(transition.pending_removed)
+                    )
+                )
+            )
+            self._emit_location_event(
+                "location.reconciliation.started",
+                "Authoritative server location reconciliation started.",
+                location_ids=reconciliation_ids,
+                task_ids=reconciliation_task_ids,
+                source=source,
+                outcome="started",
+                state=before,
+            )
+            try:
+                if transition.changed:
+                    session.commit(transition.state, category="location_reconciliation")
+            except StateError as exc:
+                self._location_read_only = True
+                self._location_read_only_failure = str(exc)
+                self._emit_location_event(
+                    "location.reconciliation.rejected",
+                    "Authoritative server location reconciliation failed durably.",
+                    location_ids=reconciliation_ids,
+                    task_ids=reconciliation_task_ids,
+                    source=source,
+                    outcome="rejected",
+                    reason=type(exc).__name__,
+                    state=session.state,
+                )
+                return
+            self._location_server_updates.pop(0)
+            for location_id in transition.confirmed_added:
+                self._emit_location_event(
+                    "location.server_confirmed",
+                    "Server confirmed a durable local location check.",
+                    location_id=location_id,
+                    task_id=LOCATION_TASK_IDS.get(location_id),
+                    source=source,
+                    outcome="confirmed",
+                    reason="authoritative_server_state",
+                    state=session.state,
+                )
+            self._emit_location_event(
+                "location.reconciliation.completed",
+                "Authoritative server location reconciliation completed.",
+                location_ids=reconciliation_ids,
+                task_ids=reconciliation_task_ids,
+                source=source,
+                outcome="completed",
+                reason=(
+                    "server_rollback_to_pending"
+                    if transition.confirmed_removed
+                    else "authoritative_merge"
+                ),
+                state=session.state,
+            )
+        self._pump_location_outbox("server_reconciliation")
+
+    def _pump_location_outbox(self, reason: str) -> None:
+        self._ensure_location_runtime()
+        session = self.state_session
+        if (
+            session is None
+            or not session.state.pending_location_outbox
+            or not self._location_transport_ready()
+        ):
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = self._location_send_task
+        if task is not None and not task.done():
+            return
+        pending = tuple(session.state.pending_location_outbox)
+        projection = self._current_location_projection(session, pending)
+        now = monotonic()
+        if (
+            projection == self._location_last_send_projection
+            and now - self._location_last_send_at < LOCATION_RETRY_SECONDS
+        ):
+            return
+        self._location_send_task = create_logged_task(
+            self._send_location_outbox(projection, pending, reason=reason),
+            "Milestone 9 persistent location outbox",
+            getattr(self, "diagnostics", None),
+        )
+
+    async def _send_location_outbox(
+        self,
+        projection: tuple[object, ...],
+        pending: tuple[int, ...],
+        *,
+        reason: str,
+    ) -> None:
+        session = self.state_session
+        if session is None or projection != self._current_location_projection(
+            session, tuple(session.state.pending_location_outbox)
+        ):
+            return
+        await self._send_reserved_location_batch(
+            [],
+            source="client_outbox",
+            reason=reason,
+            requested_pending=pending,
+        )
 
     def _ensure_item_runtime(self) -> None:
         """Initialize Milestone 8 fields for lightweight test contexts too."""
@@ -1552,13 +2156,7 @@ class Jak3Context(CommonContext):
             if self._item_sync_projection == projection:
                 self._item_sync_projection = None
             return
-        messages: list[dict[str, object]] = [{"cmd": "Sync"}]
-        locations_checked: set[int] = getattr(self, "locations_checked", set())
-        if locations_checked:
-            messages.append(
-                {"cmd": "LocationChecks", "locations": list(locations_checked)}
-            )
-        await self.send_msgs(messages)
+        await self.send_msgs([{"cmd": "Sync"}])
 
     def _emit_item_event(
         self,
@@ -1637,6 +2235,8 @@ class Jak3Context(CommonContext):
     def on_package(self, cmd: str, args: dict) -> None:
         if cmd == "RoomInfo":
             self._ensure_item_runtime()
+            self._ensure_location_runtime()
+            self._invalidate_location_transport()
             self._received_item_packets.clear()
             self._item_sync_projection = None
             self._item_runtime_projection = None
@@ -1646,6 +2246,12 @@ class Jak3Context(CommonContext):
                 getattr(self, "items_received", ())
             )
             self._item_reconcile_dirty = False
+            self._location_read_only = False
+            self._location_read_only_failure = ""
+            self._server_checked_locations = None
+            self._location_server_updates.clear()
+            self._location_reconciled_state_instance = None
+            self._location_last_send_projection = None
             self.close_persistence(clean=True)
             self._set_protocol_save_identity_authorized(False)
             self.protocol_sync_event.set()
@@ -1660,6 +2266,7 @@ class Jak3Context(CommonContext):
                 hash_identifier(self.room_seed),
             )
         elif cmd == "Connected":
+            self._invalidate_location_transport()
             try:
                 slot_name = self.slot_info[args["slot"]].name
                 self.authenticated_slot = AuthenticatedSlot.from_connected_packet(
@@ -1694,6 +2301,7 @@ class Jak3Context(CommonContext):
                 )
                 return
             self.slot_contract_error = ""
+            self.compatibility_error = False
             proposal_ready = self._set_protocol_save_identity_authorized(True)
             self.protocol_sync_event.set()
             self.persistence_contract_status = "validated"
@@ -1726,6 +2334,8 @@ class Jak3Context(CommonContext):
                 source_component="client",
                 context={"status": "accepted"},
             )
+            self._activate_location_transport()
+            self._queue_server_location_update(args)
             self._ensure_item_runtime()
             self._item_reconcile_dirty = True
             self._item_confirmed_projection = None
@@ -1733,6 +2343,9 @@ class Jak3Context(CommonContext):
             if self.state_session is not None:
                 self._request_item_sync_once("server_reconnect")
                 self._schedule_item_worker()
+            self._pump_location_outbox("server_reconnect")
+        elif cmd == "RoomUpdate":
+            self._queue_server_location_update(args)
         elif cmd == "ReceivedItems":
             self._observe_received_items(args)
 
@@ -2146,7 +2759,6 @@ class Jak3Context(CommonContext):
                 await self.repl.send_form("(set! *cheat-mode* #f)")
 
             event_sink = getattr(self.diagnostics, "event_sink", None)
-            goal_ingest = getattr(self.diagnostics, "ingest_goal_events", None)
             timed_out_commands = getattr(self, "_timed_out_commands", None)
             if timed_out_commands is None:
                 timed_out_commands = {}
@@ -2157,15 +2769,7 @@ class Jak3Context(CommonContext):
                 self.diagnostics.session_id,
                 self._create_authorized_save_identity,
                 event_sink=event_sink if callable(event_sink) else None,
-                goal_event_sink=(
-                    (
-                        lambda records, dropped: goal_ingest(
-                            records, dropped_count=dropped
-                        )
-                    )
-                    if callable(goal_ingest)
-                    else None
-                ),
+                goal_event_sink=self._ingest_goal_events,
                 goal_event_reset=reset_goal_source,
                 goal_source_state=goal_source_state,
                 timed_out_commands=timed_out_commands,

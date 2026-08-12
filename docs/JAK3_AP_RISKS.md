@@ -154,8 +154,15 @@ Owners are deliberately role-based until maintainers assign people.
   durably commits the approved permanent slice before native application,
   handles exact duplicates/gaps/index-zero replacement, and retries pending
   target reconciliation after client/game/process recovery. Automated tests
-  cover both crash windows. The location outbox, goal resend, and the remaining
-  item domains are still absent, so the full exit criteria remain open.
+  cover both crash windows. Milestone 9 adds the task-10 durable native observer,
+  the nREPL-only task-11 debug observer, and a Python-owned exact-partitioned
+  checked/confirmed/pending location state. Local bits and outbox entries commit
+  before GOAL drain acknowledgement or `LocationChecks`; successful sends do
+  not compact state, while validated `Connected` and `RoomUpdate` checked sets
+  do. Offline/restart/replay/reconnect/rollback behavior and failure isolation
+  are automated, but the bound-save native/server live matrix is not yet
+  recorded. The other location families, goal resend, and remaining item
+  domains are still absent, so the full exit criteria remain open.
 - Mitigation: Keep the Milestone 6 sidecar authoritative and add idempotent
   game/client acknowledgement and packet-gap handling before gameplay
   acceptance.

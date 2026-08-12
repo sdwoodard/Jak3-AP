@@ -86,8 +86,8 @@
     (set! (-> *ap-diagnostic-ring* arg1 index) arg1)
     (set! (-> *ap-diagnostic-ring* arg2 index) arg2)
     (+! (-> *ap-diagnostic-ring* next-sequence) 1)
-    (+! (-> *ap-diagnostic-ring* count) 1))
-  0)
+    (+! (-> *ap-diagnostic-ring* count) 1)
+    sequence))
 
 (defun ap-diagnostic-observe-transitions! ()
   (let ((connection (-> *ap-runtime* connection-ready))

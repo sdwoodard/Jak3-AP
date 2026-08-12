@@ -74,10 +74,11 @@ Useful recovery commands in Jak 3 Client are:
 - `/repl status` — show transport, source, versions, session, and heartbeat.
 - `/repl connect` — retry compilation and bridge attachment.
 
-Protocol 3 does not start gameplay, apply inventory, submit locations, report
-victory, modify missions, or show item messages. It observes live state and
-accepts only a duplicate-safe bridge-owned `SET_TEST_TARGET`; additive effects
-are explicitly forbidden.
+Protocol 3 does not start missions, report victory, suppress rewards, or show
+item messages. The current runtime applies only the Milestone 8 Jetboard,
+Blaster stage-1, and Armor stage-1 targets, and submits only task 10 plus the
+nREPL-only task-11 debug check through the Milestone 9 durable outbox. Other
+inventory, locations, and additive effects remain disabled.
 
 ## AP state backups and save copies
 

@@ -176,12 +176,7 @@ class ReceivedItemsLedgerTest(unittest.TestCase):
             await common_client.process_server_cmd(context, canonical)
             await asyncio.sleep(0)
 
-            context.send_msgs.assert_awaited_once_with(
-                [
-                    {"cmd": "Sync"},
-                    {"cmd": "LocationChecks", "locations": [743_020_002]},
-                ]
-            )
+            context.send_msgs.assert_awaited_once_with([{"cmd": "Sync"}])
             self.assertEqual(context._received_item_packets, [])
             self.assertEqual(emitted.count("item.receipt.rejected"), 1)
 

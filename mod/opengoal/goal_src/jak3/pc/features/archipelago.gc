@@ -4,7 +4,7 @@
 
 (defconstant AP-PROTOCOL-VERSION 3)
 (defconstant AP-GAME-INTEGRATION-VERSION 2)
-(defconstant AP-BRIDGE-RUNTIME-VERSION 3)
+(defconstant AP-BRIDGE-RUNTIME-VERSION 4)
 (defconstant AP-SLOT-DATA-VERSION 2)
 (defconstant AP-STATE-SCHEMA-VERSION 1)
 (defconstant AP-ITEM-TABLE-VERSION 2)
@@ -105,6 +105,7 @@
 (defconstant AP-DIAG-EVENT-ITEM-NATIVE-TARGET-APPLIED 500)
 (defconstant AP-DIAG-EVENT-ITEM-NATIVE-TARGET-ALREADY-CORRECT 501)
 (defconstant AP-DIAG-EVENT-ITEM-NATIVE-TARGET-FAILED 502)
+(defconstant AP-DIAG-EVENT-LOCATION-OBSERVED 600)
 (defconstant AP-DIAG-NATIVE-OP-NONE 0)
 (defconstant AP-DIAG-NATIVE-OP-SAVE 1)
 (defconstant AP-DIAG-NATIVE-OP-LOAD 2)
@@ -255,7 +256,7 @@
                                  (correlation-value int)
                                  (result int) (error int)
                                  (arg0 int) (arg1 int) (arg2 int))
-  0)
+  -1)
 
 (defun ap3-diagnostic-noop-export ((file file-stream)) 0)
 (defun ap3-diagnostic-noop-ack ((activation-generation int)
@@ -267,6 +268,16 @@
 (define *ap3-diagnostic-emit-hook* ap3-diagnostic-noop-emit)
 (define *ap3-diagnostic-export-hook* ap3-diagnostic-noop-export)
 (define *ap3-diagnostic-ack-hook* ap3-diagnostic-noop-ack)
+
+(defun ap3-locations-noop-observe () 0)
+(defun ap3-locations-noop-ack ((activation-generation int)
+                               (source-sequence int))
+  source-sequence)
+
+;; Location observation is owned by the manifest-ordered sibling module. The
+;; control plane only provides lifecycle hooks for export and durable drain ack.
+(define *ap3-locations-observe-hook* ap3-locations-noop-observe)
+(define *ap3-locations-ack-hook* ap3-locations-noop-ack)
 
 (defun ap3-permanent-items-noop-reconcile ((command-id int)
                                             (target-mask int))
@@ -288,7 +299,8 @@
      ,correlation-value ,result ,error ,arg0 ,arg1 ,arg2))
 
 (defun ap-diagnostic-ack! ((activation-generation int) (source-sequence int))
-  (*ap3-diagnostic-ack-hook* activation-generation source-sequence))
+  (*ap3-diagnostic-ack-hook* activation-generation source-sequence)
+  (*ap3-locations-ack-hook* activation-generation source-sequence))
 
 (defun ap3-copy-string! ((destination string) (source string) (limit int))
   (let ((src (-> source data)) (dst (-> destination data)) (count 0))
@@ -864,6 +876,7 @@
 
 (defun ap-export-state! ()
   (ap3-observe-runtime!)
+  (*ap3-locations-observe-hook*)
   (+! (-> *ap-runtime* snapshot-revision) 1)
   (let ((file (new 'stack 'file-stream *ap3-state-path* 'write))
         (revision (-> *ap-runtime* snapshot-revision)))

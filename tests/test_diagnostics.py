@@ -167,6 +167,26 @@ class StructuredDiagnosticsTest(unittest.TestCase):
             self.assertNotIn("hunter2", rendered)
             self.assertIn("diagnostics.event.rejected", rendered)
 
+    def test_location_batch_context_is_allowlisted_and_bounded(self) -> None:
+        with TemporaryDirectory() as directory:
+            session = DiagnosticSession.create(Path(directory), "location-batch")
+            location_ids = list(range(100))
+            self.assertTrue(
+                session.emit(
+                    "location.outbox.batch_sent",
+                    context={
+                        "location_ids": location_ids,
+                        "task_ids": [10, 11],
+                        "source": "client_outbox",
+                        "outcome": "sent",
+                    },
+                )
+            )
+
+            event = read_events(session.events_log)[0]
+            self.assertEqual(event["context"]["location_ids"], location_ids[:64])
+            self.assertEqual(event["context"]["task_ids"], [10, 11])
+
     def test_bundle_reader_rejects_undeclared_nested_event_fields(self) -> None:
         with TemporaryDirectory() as directory:
             session = DiagnosticSession.create(Path(directory), "nested-schema")

@@ -118,6 +118,14 @@ target bits idempotently and returns only `APPLIED`, `ALREADY_APPLIED`, or
 `FAILED`. Python sends a fresh command after an uncertain result and advances
 durable item state only after `APPLIED` or `ALREADY_APPLIED` is committed.
 
+Bridge runtime version 4 adds only the Milestone 9 location-observation and
+diagnostic-drain hooks used by the ordered `archipelago-locations.gc` module.
+It does not change Protocol 3, game integration 2, native tag 900, slot data,
+state schema, public location tables, or existing command/result/error
+meanings. Location confirmation comes only from authoritative
+`Connected.checked_locations` and `RoomUpdate.checked_locations`; a successful
+`LocationChecks` send is never treated as an acknowledgement.
+
 Permanent/test mutation is safe only with a compatible, loaded, bound native
 save during stable on-foot gameplay. Title, load, movie, death, resetter,
 transition/teleport, vehicle/transformation, and ambiguous task-manager state

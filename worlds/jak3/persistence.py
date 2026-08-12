@@ -1626,6 +1626,11 @@ def validate_state(
         raise StateCorruptionError(
             "Server-confirmed locations cannot remain in the pending outbox."
         )
+    if checked != confirmed | outbox:
+        raise StateCorruptionError(
+            "Checked locations must be exactly partitioned between server-confirmed "
+            "locations and the pending outbox."
+        )
 
     _validate_nonnegative_int(
         "local earned Precursor Orbs", state.local_earned_precursor_orbs

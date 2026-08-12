@@ -1,19 +1,19 @@
 # OpenGOAL bridge overlay
 
 This directory mirrors the source path installed beneath an active OpenGOAL
-Jak 3 `data` project. `bridge-modules.json` version 1 declares the startup
-overlay, stable Protocol 3 control module, and bounded diagnostic producer in
-their only supported order. `archipelago.gc` retains all version/session,
-native-save observation, runtime safety, heartbeat, and harmless-command
-decisions. `archipelago-diagnostics.gc` only buffers integer events and exports
-them through the existing temporary snapshot channel.
+Jak 3 `data` project. `bridge-modules.json` version 1 declares the startup,
+Protocol 3 control, diagnostics, permanent-item, and finite-location modules in
+their only supported order. `archipelago.gc` retains shared version/session,
+native-save observation, runtime safety, heartbeat, validation, and dispatch
+decisions. The sibling modules own their gameplay domains.
 
 `tools/build_apworld.ps1` embeds the manifest and every declared source in
 `jak3.apworld`. The installed client stages and validates the complete set,
-registers `archipelago.o` then `archipelago-diagnostics.o` immediately after
-`task-control.o`, and uses the ordered source-set hash for repair and reload
-activation. Both installation paths serialize the entire staged replacement
-with the same atomic directory lock.
+registers `archipelago.o`, `archipelago-diagnostics.o`, `archipelago-items.o`,
+then `archipelago-locations.o` immediately after `task-control.o`, and uses the
+ordered source-set hash for repair and reload activation. Both installation
+paths serialize the entire staged replacement with the same atomic directory
+lock.
 
 For development without rebuilding/reinstalling the APWorld, apply the working
 tree version manually with:
@@ -39,7 +39,9 @@ readiness records until acknowledgement, drops the oldest ordinary record on
 overflow, publishes a dropped count, and supports idempotent Python
 acknowledgement qualified by the producer activation generation. A delayed
 acknowledgement from an old loaded object cannot drain the new ring after a
-reload. It contains no item, location, reward, or mission behavior.
+reload. `archipelago-locations.gc` re-publishes its two descriptor-qualified
+observations through that ring until Python durably commits them; the ring ack
+is only the GOAL-to-Python handoff and is not an Archipelago packet ack.
 Python tracks the producer activation and next sequence across reconnects,
 resets its drain high-water mark after a diagnostic reload/restart, and latches
 persistent optional-channel/drain/acknowledgement gaps until recovery. Ring

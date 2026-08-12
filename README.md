@@ -5,11 +5,11 @@ world and client, the in-game OpenGOAL bridge, development tooling, design
 records, and the future installer/release packaging.
 
 The repository is currently an **integration scaffold**, not a playable
-release. The active protocol-3 runtime publishes a conservative live snapshot,
-binds the Python-owned schema-1 sidecar to metadata tag 900 in a native save,
-durably authorizes each proposed tag UUID to the current AP slot before first
-binding, and provides duplicate-safe harmless test commands. It still does not process
-items, locations, rewards, goals, or mission state.
+release. The active Protocol 3 runtime binds the Python-owned schema-1 sidecar
+to native-save metadata tag 900, applies the Milestone 8 three-item permanent
+slice, and implements the Milestone 9 persistent outbox for task 10 plus one
+nREPL-only task-11 debug check. The other 145 locations, rewards, goals,
+consumables, and mission dispatch remain inactive.
 
 ## Repository layout
 
@@ -68,12 +68,12 @@ Starting **Jak 3 Client** from Archipelago Launcher automatically:
 4. attaches to the target and runs the Jak 3 recompile;
 5. loads the runtime bridge;
 6. verifies protocol 3 and game integration 2; and
-7. exchanges a session hello, live snapshot, and harmless heartbeat.
+7. exchanges a session hello and live snapshot, then reconciles the supported
+   permanent-item and persistent-location slices.
 
-The client does not request `ReceivedItems`, submit checks, report victory, or
-change inventory, submit checks, report victory, or change mission state in
-this milestone. The only native-save change is the version-1 identity metadata
-tag; the only command mutation is a bridge-owned test boolean.
+The client requests indexed `ReceivedItems` for the three Milestone 8 items and
+can submit only location IDs `743001010` and `743001011` through the Milestone 9
+outbox. It does not suppress rewards, report victory, or dispatch missions.
 
 Every launch also creates a matched `Jak3Client_<session>.txt` and
 `Jak3OpenGOAL_<session>.txt` support pair. The latter combines game and compiler

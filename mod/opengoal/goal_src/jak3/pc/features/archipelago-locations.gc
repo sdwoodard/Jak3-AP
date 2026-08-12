@@ -1,0 +1,138 @@
+;; Jak 3 Archipelago finite location observation for Milestone 9.
+(in-package goal)
+
+(defconstant AP-LOCATION-ARENA-TRAINING 743001010)
+(defconstant AP-LOCATION-DEBUG-TASK-11 743001011)
+(defconstant AP-LOCATION-MASK-ARENA-TRAINING 1)
+(defconstant AP-LOCATION-MASK-DEBUG-TASK-11 2)
+(defconstant AP-LOCATION-SOURCE-NATIVE 0)
+(defconstant AP-LOCATION-SOURCE-DEBUG 1)
+
+(deftype ap-location-observer-state (basic)
+  ((descriptor-slot int32)
+   (observed-mask int32)
+   (pending-mask int32)
+   (arena-published-sequence int32)
+   (arena-published-generation int32)
+   (debug-published-sequence int32)
+   (debug-published-generation int32)))
+
+(define *ap-location-observer* (new 'global 'ap-location-observer-state))
+(define *ap-location-descriptor-identity* (new 'global 'string 97 "-"))
+
+(defun ap-locations-descriptor-ready? ()
+  (and *game-info*
+       (nonzero? (-> *ap-runtime* save-loaded))
+       (nonzero? (-> *ap-runtime* ap-state-loaded))
+       (nonzero? (-> *ap-runtime* ap-state-bound))
+       (>= (-> *ap-runtime* native-save-slot) 0)
+       (< (-> *ap-runtime* native-save-slot) 4)
+       (not (string= *ap3-native-save-identity* "-"))))
+
+(defun ap-locations-clear-descriptor! ()
+  (set! (-> *ap-location-observer* descriptor-slot) -1)
+  (set! (-> *ap-location-observer* observed-mask) 0)
+  (set! (-> *ap-location-observer* pending-mask) 0)
+  (set! (-> *ap-location-observer* arena-published-sequence) -1)
+  (set! (-> *ap-location-observer* arena-published-generation) -1)
+  (set! (-> *ap-location-observer* debug-published-sequence) -1)
+  (set! (-> *ap-location-observer* debug-published-generation) -1)
+  (ap3-copy-string! *ap-location-descriptor-identity* "-" 96)
+  0)
+
+(defun ap-locations-refresh-descriptor! ()
+  (if (ap-locations-descriptor-ready?)
+      (when (or (!= (-> *ap-location-observer* descriptor-slot)
+                     (-> *ap-runtime* native-save-slot))
+                (not (string= *ap-location-descriptor-identity*
+                              *ap3-native-save-identity*)))
+        (ap-locations-clear-descriptor!)
+        (set! (-> *ap-location-observer* descriptor-slot)
+              (-> *ap-runtime* native-save-slot))
+        (ap3-copy-string! *ap-location-descriptor-identity*
+                          *ap3-native-save-identity* 96))
+      (ap-locations-clear-descriptor!))
+  0)
+
+(defun ap-locations-queue-once! ((mask int))
+  (when (not (logtest? (-> *ap-location-observer* observed-mask) mask))
+    (logior! (-> *ap-location-observer* observed-mask) mask)
+    (logior! (-> *ap-location-observer* pending-mask) mask))
+  0)
+
+(defun ap-locations-publish! ((mask int) (location-id int)
+                              (task-id int) (source int))
+  ;; Re-publish until Python has durably committed the local bit and outbox.
+  ;; The most recent sequence prevents a later unrelated diagnostic ack from
+  ;; acknowledging an observation that was overwritten by ring pressure.
+  (when (logtest? (-> *ap-location-observer* pending-mask) mask)
+    (let ((sequence
+            (ap-diagnostic-emit! AP-DIAG-EVENT-LOCATION-OBSERVED
+                                 AP-DIAG-SEVERITY-INFO 3 location-id
+                                 AP-RESULT-OK AP-ERROR-NONE task-id source 0)))
+      (when (>= sequence 0)
+        (if (= mask AP-LOCATION-MASK-ARENA-TRAINING)
+            (begin
+              (set! (-> *ap-location-observer* arena-published-sequence)
+                    sequence)
+              (set! (-> *ap-location-observer* arena-published-generation)
+                    *ap-diagnostic-activation-generation*))
+            (begin
+              (set! (-> *ap-location-observer* debug-published-sequence)
+                    sequence)
+              (set! (-> *ap-location-observer* debug-published-generation)
+                    *ap-diagnostic-activation-generation*))))))
+  0)
+
+(defun ap-locations-observe! ()
+  (ap-locations-refresh-descriptor!)
+  (when (ap-locations-descriptor-ready?)
+    ;; task-complete? reads the save-persistent task-perm-list completion bit.
+    ;; It does not invoke, suppress, or replay the mission's native reward.
+    (when (task-complete? *game-info* (game-task arena-training-1))
+      (ap-locations-queue-once! AP-LOCATION-MASK-ARENA-TRAINING))
+    (ap-locations-publish! AP-LOCATION-MASK-ARENA-TRAINING
+                           AP-LOCATION-ARENA-TRAINING 10
+                           AP-LOCATION-SOURCE-NATIVE)
+    (ap-locations-publish! AP-LOCATION-MASK-DEBUG-TASK-11
+                           AP-LOCATION-DEBUG-TASK-11 11
+                           AP-LOCATION-SOURCE-DEBUG))
+  0)
+
+(defun ap-locations-ack-one! ((mask int) (activation-generation int)
+                              (source-sequence int) (published-generation int)
+                              (published-sequence int))
+  (when (and (= activation-generation published-generation)
+             (>= published-sequence 0)
+             (<= published-sequence source-sequence))
+    (logclear! (-> *ap-location-observer* pending-mask) mask))
+  0)
+
+(defun ap-locations-ack! ((activation-generation int) (source-sequence int))
+  ;; This is only the existing GOAL-to-Python diagnostic-drain ack. AP server
+  ;; confirmation is reconciled separately from Connected/RoomUpdate packets.
+  (ap-locations-ack-one!
+    AP-LOCATION-MASK-ARENA-TRAINING activation-generation source-sequence
+    (-> *ap-location-observer* arena-published-generation)
+    (-> *ap-location-observer* arena-published-sequence))
+  (ap-locations-ack-one!
+    AP-LOCATION-MASK-DEBUG-TASK-11 activation-generation source-sequence
+    (-> *ap-location-observer* debug-published-generation)
+    (-> *ap-location-observer* debug-published-sequence))
+  source-sequence)
+
+(defun ap-locations-debug-complete! ()
+  ;; Explicit nREPL-only check. No client command or player-facing input calls it.
+  (ap-locations-refresh-descriptor!)
+  (if (ap-locations-descriptor-ready?)
+      (begin
+        (ap-locations-queue-once! AP-LOCATION-MASK-DEBUG-TASK-11)
+        (ap-export-state!)
+        1)
+      0))
+
+(ap-locations-clear-descriptor!)
+(set! *ap3-locations-observe-hook* ap-locations-observe!)
+(set! *ap3-locations-ack-hook* ap-locations-ack!)
+(ap-export-state!)
+(format #t "[JAK3-AP] locations initialized native-task=10 debug-task=11~%")

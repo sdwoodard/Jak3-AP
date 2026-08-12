@@ -35,11 +35,16 @@ class BridgeManifestTest(unittest.TestCase):
     def test_manifest_has_exact_deterministic_lifecycle_order(self) -> None:
         self.assertEqual(
             tuple(module.name for module in self.manifest.modules),
-            ("startup", "control", "diagnostics", "items"),
+            ("startup", "control", "diagnostics", "items", "locations"),
         )
         self.assertEqual(
             tuple(module.object_name for module in self.manifest.runtime_modules),
-            ("archipelago.o", "archipelago-diagnostics.o", "archipelago-items.o"),
+            (
+                "archipelago.o",
+                "archipelago-diagnostics.o",
+                "archipelago-items.o",
+                "archipelago-locations.o",
+            ),
         )
         self.assertEqual(
             self.manifest.source_set_sha256(self.payloads),
@@ -106,6 +111,7 @@ class BridgeManifestTest(unittest.TestCase):
             "assets/opengoal/archipelago-diagnostics.gc"
         ].decode()
         items = self.payloads["assets/opengoal/archipelago-items.gc"].decode()
+        locations = self.payloads["assets/opengoal/archipelago-locations.gc"].decode()
         self.assertNotIn("ap-set-log-path!", control)
         self.assertNotIn("'append", control)
         self.assertNotIn("ap-diagnostic-ring-state", control)
@@ -131,6 +137,26 @@ class BridgeManifestTest(unittest.TestCase):
         self.assertIn("game-feature armor0", items)
         for forbidden in ("precursor", "skull", "ammo", "health", "mission"):
             self.assertNotIn(forbidden, items.casefold())
+        self.assertIn("(game-task arena-training-1)", locations)
+        self.assertIn("(task-complete? *game-info*", locations)
+        self.assertIn("(defun ap-locations-debug-complete! ()", locations)
+        self.assertIn("AP-DIAG-EVENT-LOCATION-OBSERVED", locations)
+        publish = locations[
+            locations.index("(defun ap-locations-publish!") : locations.index(
+                "(defun ap-locations-observe!"
+            )
+        ]
+        self.assertIn("(when (>= sequence 0)", publish)
+        self.assertNotIn("logclear!", publish)
+        self.assertIn(
+            "logclear!", locations[locations.index("(defun ap-locations-ack-one!") :]
+        )
+        self.assertNotIn("close-task", locations)
+        self.assertNotIn("(-> *game-info* task-perm-list)", locations)
+        self.assertNotIn("actor", locations.casefold())
+        self.assertNotIn("address", locations.casefold())
+        self.assertNotIn("mission-reward", locations.casefold())
+        self.assertNotIn("arena-training-1", control)
 
     def test_blaster_target_requires_its_generic_gun_dependency(self) -> None:
         items = self.payloads["assets/opengoal/archipelago-items.gc"].decode()

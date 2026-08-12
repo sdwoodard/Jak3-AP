@@ -11,11 +11,10 @@ DESIGN_VERSION = "0.3"
 # command transport.  Gameplay delivery and location reporting remain absent.
 PROTOCOL_VERSION = 3
 GAME_INTEGRATION_VERSION = 2
-# This implementation revision is snapshot-only compatibility metadata. It
-# distinguishes corrected bridge objects whose public protocol/data contract
-# is intentionally unchanged, allowing a new client to replace stale live code
-# without resetting an ordinary reconnect.
-BRIDGE_RUNTIME_VERSION = 3
+# This implementation revision is compatibility metadata for the ordered
+# runtime modules. It adds Milestone 9's location-observation hook without
+# changing Protocol 3 or any table, slot-data, integration, or state schema.
+BRIDGE_RUNTIME_VERSION = 4
 
 SLOT_DATA_VERSION = 2
 STATE_SCHEMA_VERSION = 1

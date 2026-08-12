@@ -28,7 +28,7 @@ BRIDGE_PAYLOAD = b""";; test bridge
 (in-package goal)
 (defconstant AP-PROTOCOL-VERSION 3)
 (defconstant AP-GAME-INTEGRATION-VERSION 2)
-(defconstant AP-BRIDGE-RUNTIME-VERSION 3)
+(defconstant AP-BRIDGE-RUNTIME-VERSION 4)
 """
 STARTUP_PAYLOAD = (
     b";; test startup\n(in-package goal)\n"
@@ -215,6 +215,7 @@ class OpenGoalBridgeInstallerTest(unittest.TestCase):
             self.assertEqual(project_text.count('"archipelago.o"'), 1)
             self.assertEqual(project_text.count('"archipelago-diagnostics.o"'), 1)
             self.assertEqual(project_text.count('"archipelago-items.o"'), 1)
+            self.assertEqual(project_text.count('"archipelago-locations.o"'), 1)
             self.assertLess(
                 project_text.index('"task-control.o"'),
                 project_text.index('"archipelago.o"'),
@@ -227,6 +228,10 @@ class OpenGoalBridgeInstallerTest(unittest.TestCase):
                 project_text.index('"archipelago-diagnostics.o"'),
                 project_text.index('"archipelago-items.o"'),
             )
+            self.assertLess(
+                project_text.index('"archipelago-items.o"'),
+                project_text.index('"archipelago-locations.o"'),
+            )
             self.assertTrue(first.manifest_path.is_file())
             self.assertEqual(
                 {path.name for path in first.source_paths},
@@ -235,6 +240,7 @@ class OpenGoalBridgeInstallerTest(unittest.TestCase):
                     "archipelago.gc",
                     "archipelago-diagnostics.gc",
                     "archipelago-items.gc",
+                    "archipelago-locations.gc",
                 },
             )
             project_bytes = first.project_path.read_bytes()
@@ -244,7 +250,7 @@ class OpenGoalBridgeInstallerTest(unittest.TestCase):
                 install_packaged_bridge(
                     install,
                     BRIDGE_PAYLOAD.replace(
-                        b"AP-BRIDGE-RUNTIME-VERSION 3",
+                        b"AP-BRIDGE-RUNTIME-VERSION 4",
                         b"AP-BRIDGE-RUNTIME-VERSION 2",
                     ),
                     STARTUP_PAYLOAD,
@@ -288,15 +294,18 @@ class OpenGoalBridgeInstallerTest(unittest.TestCase):
                 self.assertEqual(project_text.count('"archipelago.o"'), 1)
                 self.assertEqual(project_text.count('"archipelago-diagnostics.o"'), 1)
                 self.assertEqual(project_text.count('"archipelago-items.o"'), 1)
+                self.assertEqual(project_text.count('"archipelago-locations.o"'), 1)
                 anchor = project_text.index('"task-control.o"')
                 control = project_text.index('"archipelago.o"')
                 diagnostics = project_text.index('"archipelago-diagnostics.o"')
                 items = project_text.index('"archipelago-items.o"')
+                locations = project_text.index('"archipelago-locations.o"')
                 scene = project_text.index('"scene.o"')
                 self.assertLess(anchor, control)
                 self.assertLess(control, diagnostics)
                 self.assertLess(diagnostics, items)
-                self.assertLess(items, scene)
+                self.assertLess(items, locations)
+                self.assertLess(locations, scene)
 
     def test_concurrent_installs_publish_one_coherent_source_set(self) -> None:
         with TemporaryDirectory() as directory:

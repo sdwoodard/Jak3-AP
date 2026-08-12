@@ -311,6 +311,7 @@ class DeveloperInstallerTest(unittest.TestCase):
             self.assertEqual(project_text.count('"archipelago.o"'), 1)
             self.assertEqual(project_text.count('"archipelago-diagnostics.o"'), 1)
             self.assertEqual(project_text.count('"archipelago-items.o"'), 1)
+            self.assertEqual(project_text.count('"archipelago-locations.o"'), 1)
             self.assertLess(
                 project_text.index('"task-control.o"'),
                 project_text.index('"archipelago.o"'),
@@ -323,10 +324,15 @@ class DeveloperInstallerTest(unittest.TestCase):
                 project_text.index('"archipelago-diagnostics.o"'),
                 project_text.index('"archipelago-items.o"'),
             )
+            self.assertLess(
+                project_text.index('"archipelago-items.o"'),
+                project_text.index('"archipelago-locations.o"'),
+            )
             self.assertTrue(
                 destination.with_name("archipelago-diagnostics.gc").is_file()
             )
             self.assertTrue(destination.with_name("archipelago-items.gc").is_file())
+            self.assertTrue(destination.with_name("archipelago-locations.gc").is_file())
             self.assertTrue(destination.with_name("archipelago-startup.gc").is_file())
             self.assertTrue(
                 destination.with_name("archipelago-bridge-modules.json").is_file()
@@ -358,7 +364,7 @@ class DeveloperInstallerTest(unittest.TestCase):
                 script,
             )
         self.assertIn(
-            '$expectedPhases = @("pre_mi", "bridge", "bridge", "bridge")',
+            '$expectedPhases = @("pre_mi", "bridge", "bridge", "bridge", "bridge")',
             installer,
         )
         self.assertIn("$module.phase -ne $expectedPhases[$index]", installer)

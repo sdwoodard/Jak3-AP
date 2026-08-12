@@ -234,6 +234,17 @@ _ITEM_CONTEXT = _fields(
     "target_mask",
 )
 _ITEM_ATTRIBUTION_FIELDS = _fields("flags", "location_id", "source_player")
+_LOCATION_CONTEXT = _fields(
+    "batch_id",
+    "location_id",
+    "location_ids",
+    "outcome",
+    "reason",
+    "revision",
+    "source",
+    "task_id",
+    "task_ids",
+)
 _PERSISTENCE_CONTEXT = _fields(
     "category",
     "native_save_hash",
@@ -326,6 +337,8 @@ def _context_allowlist(name: str, goal_code: int | None) -> frozenset[str]:
         selected = _COMMAND_CONTEXT
     elif name.startswith(("ap.received_items.", "item.")):
         selected = _ITEM_CONTEXT
+    elif name.startswith("location."):
+        selected = _LOCATION_CONTEXT
     elif name.startswith("persistence."):
         selected = _PERSISTENCE_CONTEXT
     elif name.startswith("server."):
@@ -403,6 +416,8 @@ def _registry() -> Mapping[str, EventDefinition]:
         "item.receipt.rejected",
         "item.application.failed",
         "item.native_target.failed",
+        "location.outbox.send_failed",
+        "location.reconciliation.rejected",
     }
     warning_names = {
         "diagnostics.events_dropped_or_suppressed",
@@ -423,6 +438,7 @@ def _registry() -> Mapping[str, EventDefinition]:
         "persistence.shutdown.unclean",
         "item.receipt.index_gap",
         "item.application.queued",
+        "location.duplicate_ignored",
     }
     names = (
         "diagnostics.session.started",
@@ -532,6 +548,16 @@ def _registry() -> Mapping[str, EventDefinition]:
         "item.native_target.applied",
         "item.native_target.already_correct",
         "item.native_target.failed",
+        "location.observed",
+        "location.duplicate_ignored",
+        "location.committed_local",
+        "location.outbox.enqueued",
+        "location.outbox.batch_sent",
+        "location.outbox.send_failed",
+        "location.server_confirmed",
+        "location.reconciliation.started",
+        "location.reconciliation.completed",
+        "location.reconciliation.rejected",
         "persistence.writer_lock.acquired",
         "persistence.writer_lock.refused",
         "persistence.writer_lock.released",
@@ -578,6 +604,7 @@ def _registry() -> Mapping[str, EventDefinition]:
         "item.native_target.applied": 500,
         "item.native_target.already_correct": 501,
         "item.native_target.failed": 502,
+        "location.observed": 600,
     }
     definitions = {
         name: EventDefinition(
@@ -880,6 +907,8 @@ def _goal_correlation(kind: int, value: int) -> tuple[str | None, dict[str, int]
         return f"native-slot:{value}", {"native_save_slot": value}
     if kind == 2:
         return f"command:{value}", {"command_id": value}
+    if kind == 3:
+        return f"location:{value}", {"location_id": value}
     if kind:
         return f"goal-kind-{kind}:{value}", {}
     return None, {}
@@ -1789,6 +1818,7 @@ class DiagnosticSession:
         records: tuple[GoalDiagnosticRecord, ...],
         *,
         dropped_count: int = 0,
+        record_context: Mapping[int, Mapping[str, object]] | None = None,
     ) -> int | None:
         """Drain idempotently ordered GOAL ring records into the Python timeline."""
 
@@ -1867,6 +1897,8 @@ class DiagnosticSession:
                 "error_code": record.error,
                 **correlation_context,
             }
+            if record_context is not None:
+                goal_context.update(record_context.get(record.source_sequence, {}))
             written = self.emit(
                 definition.name,
                 message="GOAL bridge event.",

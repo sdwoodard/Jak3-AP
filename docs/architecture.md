@@ -55,9 +55,11 @@ tree. In protocol 3 the GOAL bridge owns a temporary runtime snapshot,
 version/session validation, an eight-entry command receipt ring, one harmless
 test target, descriptor-qualified permanent-item dispatch, and metadata-only
 native save/load wrappers for tag 900. `archipelago-items.gc` reconstructs only
-the Milestone 8 Jetboard, Blaster stage-1, and Armor stage-1 native targets. It
-has no consumable delivery, location submission, reward interception, goal
-reporting, mission mutation, or gameplay HUD hooks.
+the Milestone 8 Jetboard, Blaster stage-1, and Armor stage-1 native targets.
+`archipelago-locations.gc` observes only native task 10 plus the nREPL-only
+task-11 debug check and publishes them to the Python-owned persistent outbox.
+The overlay has no consumable delivery, other location observation, reward
+interception, goal reporting, mission mutation, or gameplay HUD hooks.
 
 ### OpenGOAL gameplay-module boundaries
 
@@ -174,8 +176,9 @@ dependencies.
 - Live client readiness requires a fresh pong. A stale file is never enough.
 - Communication failure closes the client transport and does not invoke a game
   mutation.
-- Protocol 3 has no AP inventory, native mission state, or network-location
-  behavior.
+- Protocol 3 meanings remain frozen; implementation-only runtime revisions add
+  narrow sibling-module hooks. AP inventory remains distinct from native state,
+  and location confirmation comes only from server checked-location state.
 
 ## Default implementation boundary
 
@@ -186,8 +189,9 @@ item. The active generator consumes the versioned first-release registry and
 creates the exact 26 progression, 28 useful, and 93 weighted filler instances.
 Its single always-open region and immediately reachable event locations are
 explicitly non-playable Milestone 5 scaffolding; Standard reachability remains
-Milestone 13 work. The runtime observes safety and save identity but does not
-submit these locations or apply these items.
+later work. The runtime applies only the Milestone 8 three-item slice and
+submits only the two Milestone 9 location IDs; the rest of the generated pool
+has no runtime hooks.
 
 
 ## Collectible-sanity ownership and data flow

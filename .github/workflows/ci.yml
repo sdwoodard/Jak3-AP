@@ -51,6 +51,7 @@ jobs:
             worlds/jak3/registry.py `
             worlds/jak3/slot_data.py `
             worlds/jak3/persistence.py `
+            worlds/jak3/location_outbox.py `
             worlds/jak3/received_items.py `
             worlds/jak3/client.py `
             worlds/jak3/agents/bridge_manifest.py `
@@ -61,6 +62,7 @@ jobs:
             tests/test_registry.py `
             tests/test_slot_data.py `
             tests/test_persistence.py `
+            tests/test_location_outbox.py `
             tests/test_bridge_manifest.py `
             tests/test_client.py `
             tests/test_diagnostics.py `
@@ -83,6 +85,7 @@ jobs:
           worlds/jak3/registry.py
           worlds/jak3/slot_data.py
           worlds/jak3/persistence.py
+          worlds/jak3/location_outbox.py
           worlds/jak3/received_items.py
           worlds/jak3/client.py
           worlds/jak3/agents/bridge_manifest.py

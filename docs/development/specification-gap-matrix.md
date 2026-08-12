@@ -6,7 +6,7 @@ normative first-release default in
 and
 [`../../config/templates/Jak3.yaml`](../../config/templates/Jak3.yaml).
 
-Snapshot date: **2026-08-09**
+Snapshot date: **2026-08-11**
 
 ## Status vocabulary
 
@@ -23,7 +23,7 @@ Snapshot date: **2026-08-09**
 | Contract | Specification default | Current implementation | Status |
 | --- | --- | --- | --- |
 | Network locations | 147 | All 147 frozen registry records are active. | Implemented generator |
-| Story completions | 61: tasks 10–35 and 37–71 | Exactly 61 active network locations; runtime hooks remain absent. | Implemented generator / runtime missing |
+| Story completions | 61: tasks 10–35 and 37–71 | Exactly 61 active network locations. Task 10 alone has a native durable-bit observer; task 11 is available only through an explicit nREPL debug trigger. | Implemented generator / runtime slice unverified live |
 | Major reward moments | 38 | Exactly 38 active registry locations; runtime reward hooks remain absent. | Implemented generator / runtime missing |
 | Selected side challenges | 24: tasks 114–137 | Exactly 24 active registry locations. | Implemented generator |
 | Orb bundles | 24: thresholds 25–600 by 25 | Exactly 24 active thresholds; local-earned tracking remains absent. | Implemented generator / runtime missing |
@@ -35,8 +35,8 @@ Snapshot date: **2026-08-09**
 
 The static pool now has the exact required arithmetic, names, classifications,
 and exclusions. It is not yet playable: all locations and events are exposed
-through an immediate-access scaffold, and runtime receipt/check behavior is
-still absent.
+through an immediate-access scaffold, and runtime check behavior exists for
+only the two-location Milestone 9 slice.
 
 ## Packaging, installation, and startup
 
@@ -119,9 +119,9 @@ notes must keep that distinction explicit.
 
 | Requirement | Current state | Status | Risk |
 | --- | --- | --- | --- |
-| Finite, monotonic, persistent checks | Schema 1 validates sorted explicit location-ID sets and an outbox, but no game hook records a check. | Storage contract / gameplay missing | `R-007` |
+| Finite, monotonic, persistent checks | Task 10 and the task-11 debug trigger atomically populate exact-partitioned durable checked/confirmed/pending sets. Duplicate/replay, restart, rollback-to-pending, and confirmation compaction are automated; the controlled native/server matrix is pending. | Implemented slice / runtime acceptance pending | `R-007` |
 | Explicit stable public IDs | Literal first-release records, permanent reservations, table versions/hashes, authenticated slot-data validation, and persistent-state ID rejection are automated. GOAL gameplay enforcement remains deferred. | Implemented Python contract / GOAL runtime pending | `R-012` |
-| Story task checks | Exactly 61 registry identities are generated; native task-close hooks remain absent. | Implemented generator / runtime missing | `R-007` |
+| Story task checks | Exactly 61 registry identities are generated. Task 10 polls the save-persistent `task-complete?` bit while the exact AP save is loaded and bound; the other 60 native hooks remain deferred. | Partial runtime slice | `R-007` |
 | Major reward checks | Exactly 38 audited registry identities are generated; reward hooks remain absent. | Implemented generator / runtime missing | `R-006` |
 | Selected side checks | Exactly the 24 tasks 114–137 are generated. | Implemented generator | `R-003` |
 | Safe challenge exclusions | IDs 127, 129, 130, 131, 132, and 136 are `EXCLUDED` and reject progression/useful placement. | Implemented generator | `R-003` |
@@ -137,12 +137,12 @@ notes must keep that distinction explicit.
 | --- | --- | --- | --- |
 | Persistent identity includes seed/team/slot/save/table version | Schema 1 atomically persists and one-time binds the full identity/contract. Real fresh/repeated load, A → B → A, wrong-slot copy rejection, untagged vanilla rejection, Continue Without Save, New Game identity, normal recovery, and supported clean/unclean full-process recovery passed. Warm replacement attachment and external bank interference remain unsupported. | Automated plus runtime accepted with limitations | `R-007`, `R-012`, `R-019` |
 | Durable received-item ledger/index | Per-index `received`/`pending`/`applied` records, counts, and pending indices are schema-defined and round-trip tested; the client still requests no `ReceivedItems`. | Automated empty/storage model / gameplay missing | `R-007` |
-| Durable location bitset | Sorted explicit registry IDs are schema-defined and validated; no location hook populates them. | Automated storage model / gameplay missing | `R-007` |
-| Durable pending-check outbox | Schema-defined and relationship-validated; no location hook or network drain exists. | Automated storage model / gameplay missing | `R-007` |
-| Offline completion later sends exactly once | Not guaranteed. | Missing | `R-007` |
+| Durable location bitset | Sorted explicit registry IDs are schema-defined, exact-partition validated, and populated before GOAL acknowledgement or network send for the two Milestone 9 IDs. The durable bit is monotonic across server rollback and confirmation. | Implemented slice / live acceptance pending | `R-007` |
+| Durable pending-check outbox | Python atomically enqueues local observations, sends sorted pending IDs, retries after five seconds or reconnect, and compacts only from authoritative `Connected`/`RoomUpdate` state. | Implemented slice / live acceptance pending | `R-007` |
+| Offline completion later sends exactly once | Offline persistence, restart reopen, duplicate-safe resend, and server-confirmation compaction are automated. Archipelago intentionally permits duplicate uploads, so “exactly once” means one durable check identity rather than one packet. | Automated slice / live acceptance pending | `R-007` |
 | New-game reconstruction | Absent from the handshake milestone. | Missing | `R-011` |
 | Load-save reconstruction | Absent; protocol 2 has no `/game` command or inventory sync. | Missing | `R-006`, `R-011` |
-| Reconnect/replay idempotence | Protocol 3 harmless commands passed one effect, exact duplicate receipt replay, `ALREADY_APPLIED`, stale-game-session reset, and title-menu unsafe rejection. Gameplay item replay is absent. Supported full-process recovery passed after clean and unclean client loss; warm replacement attachment remains unsupported. | Control transport and supported process recovery accepted | `R-007`, `R-010`, `R-019` |
+| Reconnect/replay idempotence | The prior Protocol 3 and Milestone 8 behavior remains. For the Milestone 9 slice, duplicate GOAL observations do not advance the revision, pending checks resend after reconnect, and only authoritative server checked sets compact the outbox. | Automated slice; live location recovery pending | `R-007`, `R-010`, `R-019` |
 | Packet-gap/out-of-order handling | Not implemented because Protocol 3 still requests no item stream. | Missing | `R-007` |
 
 ## Diagnostics and user feedback

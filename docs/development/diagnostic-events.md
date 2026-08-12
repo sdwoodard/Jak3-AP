@@ -131,6 +131,26 @@ when emitted and when an existing segment is validated for export.
 - `item.native_target.already_correct` (GOAL 501)
 - `item.native_target.failed` (GOAL 502)
 
+## Milestone 9 persistent location outbox
+
+- `location.observed` (GOAL 600)
+- `location.duplicate_ignored`
+- `location.committed_local`
+- `location.outbox.enqueued`
+- `location.outbox.batch_sent`
+- `location.outbox.send_failed`
+- `location.server_confirmed`
+- `location.reconciliation.started`
+- `location.reconciliation.completed`
+- `location.reconciliation.rejected`
+
+Location events allow only `location_id`, bounded `location_ids`, `task_id`,
+bounded `task_ids`, `batch_id`, `revision`, `source`, `outcome`, and `reason` in
+their context. Batch IDs hash the persistent state-instance ID together with
+the committed revision; raw save/state identity is never logged. GOAL code 600
+uses location correlation kind 3, task ID in `arg0`, and the bounded
+native/debug source code in `arg1`.
+
 ## Persistence and recovery
 
 - `persistence.writer_lock.acquired`

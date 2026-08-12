@@ -52,6 +52,15 @@ _EXPECTED_MODULES = (
         "goal_src/jak3/pc/features/archipelago-items.gc",
         "archipelago-items.o",
     ),
+    (
+        "locations",
+        50,
+        "bridge",
+        "goal_src/jak3/pc/features/archipelago-locations.gc",
+        "assets/opengoal/archipelago-locations.gc",
+        "goal_src/jak3/pc/features/archipelago-locations.gc",
+        "archipelago-locations.o",
+    ),
 )
 
 
@@ -208,8 +217,8 @@ def parse_bridge_manifest(raw: bytes) -> BridgeManifest:
     )
     if actual_contract != _EXPECTED_MODULES:
         raise ValueError(
-            "Bridge module manifest must declare startup, control, diagnostics, and items "
-            "in the canonical version 1 order."
+            "Bridge module manifest must declare startup, control, diagnostics, items, "
+            "and locations in the canonical version 1 order."
         )
     for module in modules:
         if module.source.name != module.resource.name:

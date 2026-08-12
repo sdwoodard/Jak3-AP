@@ -38,6 +38,15 @@
       "resource": "assets/opengoal/archipelago-items.gc",
       "destination": "goal_src/jak3/pc/features/archipelago-items.gc",
       "object": "archipelago-items.o"
+    },
+    {
+      "name": "locations",
+      "order": 50,
+      "phase": "bridge",
+      "source": "goal_src/jak3/pc/features/archipelago-locations.gc",
+      "resource": "assets/opengoal/archipelago-locations.gc",
+      "destination": "goal_src/jak3/pc/features/archipelago-locations.gc",
+      "object": "archipelago-locations.o"
     }
   ]
 }
