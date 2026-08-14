@@ -52,6 +52,12 @@ class BridgeManifestTest(unittest.TestCase):
             self.manifest.source_set_sha256(dict(reversed(self.payloads.items()))),
         )
 
+    def test_manifest_hash_inputs_use_canonical_lf_line_endings(self) -> None:
+        hash_inputs = {"bridge-modules.json": self.raw, **self.payloads}
+        for name, payload in hash_inputs.items():
+            with self.subTest(name=name):
+                self.assertNotIn(b"\r", payload)
+
     def test_every_manifest_or_source_mutation_changes_source_set_hash(self) -> None:
         baseline = self.manifest.source_set_sha256(self.payloads)
         for resource in self.payloads:

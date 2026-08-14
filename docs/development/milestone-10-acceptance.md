@@ -57,7 +57,7 @@ Status: **Implementation and non-interactive gates pass; connected live gameplay
 
 | Gate | Result |
 | --- | --- |
-| Complete packaged suite | **PASS — 362 tests**, expected optional C++ speedup warning only |
+| Complete packaged suite | **PASS — 363 tests**, expected optional C++ speedup warning only |
 | Ruff | **PASS** — lint plus 29-file format check |
 | mypy | **PASS** — 13 compatibility modules |
 | Source audit | **PASS** — all six task/reward/milestone groups |
