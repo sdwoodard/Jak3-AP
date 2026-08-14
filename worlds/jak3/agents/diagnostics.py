@@ -240,10 +240,29 @@ _LOCATION_CONTEXT = _fields(
     "location_ids",
     "outcome",
     "reason",
+    "reward_node_id",
     "revision",
     "source",
     "task_id",
     "task_ids",
+)
+_REWARD_CONTEXT = _fields(
+    "ap_applying_item",
+    "decision",
+    "location_id",
+    "outcome",
+    "reward_node_id",
+    "task_id",
+    "target_mask",
+)
+_GOAL_STATUS_CONTEXT = _fields(
+    "connection_generation",
+    "location_ids",
+    "outcome",
+    "reason",
+    "revision",
+    "status",
+    "task_id",
 )
 _PERSISTENCE_CONTEXT = _fields(
     "category",
@@ -277,10 +296,13 @@ _PROVIDER_FIELDS = MappingProxyType(
             "game_attached",
             "game_session_nonce_hash",
             "game_status",
+            "items_module_active",
             "last_bridge_error_present",
+            "locations_module_active",
             "native_save_hash",
             "native_save_slot",
             "repl_connected",
+            "reward_module_active",
             "safe_consumable",
             "safe_mission",
             "safe_permanent",
@@ -339,6 +361,10 @@ def _context_allowlist(name: str, goal_code: int | None) -> frozenset[str]:
         selected = _ITEM_CONTEXT
     elif name.startswith("location."):
         selected = _LOCATION_CONTEXT
+    elif name.startswith("reward."):
+        selected = _REWARD_CONTEXT
+    elif name.startswith("goal."):
+        selected = _GOAL_STATUS_CONTEXT
     elif name.startswith("persistence."):
         selected = _PERSISTENCE_CONTEXT
     elif name.startswith("server."):
@@ -418,6 +444,8 @@ def _registry() -> Mapping[str, EventDefinition]:
         "item.native_target.failed",
         "location.outbox.send_failed",
         "location.reconciliation.rejected",
+        "reward.shape_mismatch",
+        "goal.status.failed",
     }
     warning_names = {
         "diagnostics.events_dropped_or_suppressed",
@@ -439,6 +467,7 @@ def _registry() -> Mapping[str, EventDefinition]:
         "item.receipt.index_gap",
         "item.application.queued",
         "location.duplicate_ignored",
+        "reward.native_preserved",
     }
     names = (
         "diagnostics.session.started",
@@ -558,6 +587,15 @@ def _registry() -> Mapping[str, EventDefinition]:
         "location.reconciliation.started",
         "location.reconciliation.completed",
         "location.reconciliation.rejected",
+        "reward.native_preserved",
+        "reward.permanent_suppressed",
+        "reward.shape_mismatch",
+        "reward.item_application_guarded",
+        "goal.completed",
+        "goal.status.queued",
+        "goal.status.sent",
+        "goal.status.resent",
+        "goal.status.failed",
         "persistence.writer_lock.acquired",
         "persistence.writer_lock.refused",
         "persistence.writer_lock.released",
@@ -605,6 +643,10 @@ def _registry() -> Mapping[str, EventDefinition]:
         "item.native_target.already_correct": 501,
         "item.native_target.failed": 502,
         "location.observed": 600,
+        "reward.native_preserved": 700,
+        "reward.permanent_suppressed": 701,
+        "reward.shape_mismatch": 702,
+        "reward.item_application_guarded": 703,
     }
     definitions = {
         name: EventDefinition(
@@ -634,6 +676,11 @@ GOAL_EVENT_REGISTRY = MappingProxyType(
         if definition.goal_code is not None
     }
 )
+
+REWARD_NATIVE_PRESERVED_GOAL_CODE = 700
+REWARD_PERMANENT_SUPPRESSED_GOAL_CODE = 701
+REWARD_SHAPE_MISMATCH_GOAL_CODE = 702
+REWARD_ITEM_GUARD_GOAL_CODE = 703
 
 
 @dataclass(frozen=True)

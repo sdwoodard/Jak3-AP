@@ -363,6 +363,39 @@ class StructuredDiagnosticsTest(unittest.TestCase):
             self.assertEqual(applied["correlation_id"], "command:42")
             self.assertEqual(applied["context"]["command_id"], 42)
 
+    def test_reward_goal_event_keeps_bounded_node_and_decision_context(self) -> None:
+        with TemporaryDirectory() as directory:
+            session = DiagnosticSession.create(Path(directory), "reward-context")
+            record = GoalDiagnosticRecord(
+                0, 10, 1, 701, 3, 743_020_036, 1, 0, 16, 36, 1
+            )
+
+            self.assertEqual(
+                session.ingest_goal_events(
+                    (record,),
+                    record_context={
+                        0: {
+                            "task_id": 16,
+                            "reward_node_id": 36,
+                            "location_id": 743_020_036,
+                            "decision": "armor_suppressed",
+                            "outcome": "completed",
+                        }
+                    },
+                ),
+                0,
+            )
+
+            reward = next(
+                event
+                for event in read_events(session.events_log)
+                if event["event_name"] == "reward.permanent_suppressed"
+            )
+            self.assertEqual(reward["correlation_id"], "location:743020036")
+            self.assertEqual(reward["context"]["task_id"], 16)
+            self.assertEqual(reward["context"]["reward_node_id"], 36)
+            self.assertEqual(reward["context"]["decision"], "armor_suppressed")
+
     def test_goal_record_is_not_acknowledged_until_serialized(self) -> None:
         with TemporaryDirectory() as directory:
             session = DiagnosticSession.create(Path(directory), "goal-write")

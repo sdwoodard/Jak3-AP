@@ -53,6 +53,7 @@ class PackagedWorldRegistrationTest(unittest.TestCase):
                 "jak3/assets/opengoal/archipelago-diagnostics.gc",
                 "jak3/assets/opengoal/archipelago-items.gc",
                 "jak3/assets/opengoal/archipelago-locations.gc",
+                "jak3/assets/opengoal/archipelago-rewards.gc",
                 "jak3/icons/jak3-logo.png",
             }.issubset(entries)
         )

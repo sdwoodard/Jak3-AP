@@ -95,7 +95,9 @@
         (save-loaded (-> *ap-runtime* save-loaded))
         (state-loaded (-> *ap-runtime* ap-state-loaded))
         (state-bound (-> *ap-runtime* ap-state-bound))
-        (safety (+ (-> *ap-runtime* safe-permanent)
+        (safety (+ (if (*ap3-permanent-items-reconciliation-suspended-hook*)
+                       0
+                       (-> *ap-runtime* safe-permanent))
                    (* (-> *ap-runtime* safe-consumable) 2)
                    (* (-> *ap-runtime* safe-mission) 4))))
     (when (or (!= connection (-> *ap-diagnostic-ring* last-connection))

@@ -1,21 +1,34 @@
-;; Jak 3 Archipelago finite location observation for Milestone 9.
+;; Jak 3 Archipelago finite location observation for Milestone 10.
 (in-package goal)
 
-(defconstant AP-LOCATION-ARENA-TRAINING 743001010)
-(defconstant AP-LOCATION-DEBUG-TASK-11 743001011)
-(defconstant AP-LOCATION-MASK-ARENA-TRAINING 1)
-(defconstant AP-LOCATION-MASK-DEBUG-TASK-11 2)
-(defconstant AP-LOCATION-SOURCE-NATIVE 0)
-(defconstant AP-LOCATION-SOURCE-DEBUG 1)
+(defconstant AP-LOCATION-TASK-10 743001010)
+(defconstant AP-LOCATION-TASK-11 743001011)
+(defconstant AP-LOCATION-TASK-12 743001012)
+(defconstant AP-LOCATION-TASK-13 743001013)
+(defconstant AP-LOCATION-TASK-14 743001014)
+(defconstant AP-LOCATION-TASK-15 743001015)
+(defconstant AP-LOCATION-TASK-16 743001016)
+(defconstant AP-LOCATION-REWARD-ARMOR-1 743020036)
+
+(defconstant AP-LOCATION-MASK-TASK-10 1)
+(defconstant AP-LOCATION-MASK-TASK-11 2)
+(defconstant AP-LOCATION-MASK-TASK-12 4)
+(defconstant AP-LOCATION-MASK-TASK-13 8)
+(defconstant AP-LOCATION-MASK-TASK-14 16)
+(defconstant AP-LOCATION-MASK-TASK-15 32)
+(defconstant AP-LOCATION-MASK-TASK-16 64)
+(defconstant AP-LOCATION-MASK-REWARD-ARMOR-1 128)
+
+(defconstant AP-LOCATION-SOURCE-NATIVE-TASK 0)
+(defconstant AP-LOCATION-SOURCE-NATIVE-REWARD 1)
+(defconstant AP-REWARD-NODE-ARMOR-1 36)
 
 (deftype ap-location-observer-state (basic)
   ((descriptor-slot int32)
    (observed-mask int32)
    (pending-mask int32)
-   (arena-published-sequence int32)
-   (arena-published-generation int32)
-   (debug-published-sequence int32)
-   (debug-published-generation int32)))
+   (published-sequence int32 8)
+   (published-generation int32 8)))
 
 (define *ap-location-observer* (new 'global 'ap-location-observer-state))
 (define *ap-location-descriptor-identity* (new 'global 'string 97 "-"))
@@ -33,10 +46,9 @@
   (set! (-> *ap-location-observer* descriptor-slot) -1)
   (set! (-> *ap-location-observer* observed-mask) 0)
   (set! (-> *ap-location-observer* pending-mask) 0)
-  (set! (-> *ap-location-observer* arena-published-sequence) -1)
-  (set! (-> *ap-location-observer* arena-published-generation) -1)
-  (set! (-> *ap-location-observer* debug-published-sequence) -1)
-  (set! (-> *ap-location-observer* debug-published-generation) -1)
+  (dotimes (index 8)
+    (set! (-> *ap-location-observer* published-sequence index) -1)
+    (set! (-> *ap-location-observer* published-generation index) -1))
   (ap3-copy-string! *ap-location-descriptor-identity* "-" 96)
   0)
 
@@ -60,79 +72,121 @@
     (logior! (-> *ap-location-observer* pending-mask) mask))
   0)
 
-(defun ap-locations-publish! ((mask int) (location-id int)
-                              (task-id int) (source int))
+(defun ap-locations-publish! ((index int) (mask int) (location-id int)
+                              (task-id int) (source int) (native-node-id int))
   ;; Re-publish until Python has durably committed the local bit and outbox.
-  ;; The most recent sequence prevents a later unrelated diagnostic ack from
-  ;; acknowledging an observation that was overwritten by ring pressure.
   (when (logtest? (-> *ap-location-observer* pending-mask) mask)
     (let ((sequence
             (ap-diagnostic-emit! AP-DIAG-EVENT-LOCATION-OBSERVED
                                  AP-DIAG-SEVERITY-INFO 3 location-id
-                                 AP-RESULT-OK AP-ERROR-NONE task-id source 0)))
+                                 AP-RESULT-OK AP-ERROR-NONE
+                                 task-id source native-node-id)))
       (when (>= sequence 0)
-        (if (= mask AP-LOCATION-MASK-ARENA-TRAINING)
-            (begin
-              (set! (-> *ap-location-observer* arena-published-sequence)
-                    sequence)
-              (set! (-> *ap-location-observer* arena-published-generation)
-                    *ap-diagnostic-activation-generation*))
-            (begin
-              (set! (-> *ap-location-observer* debug-published-sequence)
-                    sequence)
-              (set! (-> *ap-location-observer* debug-published-generation)
-                    *ap-diagnostic-activation-generation*))))))
+        (set! (-> *ap-location-observer* published-sequence index) sequence)
+        (set! (-> *ap-location-observer* published-generation index)
+              *ap-diagnostic-activation-generation*))))
+  0)
+
+(defun ap-locations-observe-reward! ((native-node-id int))
+  ;; The reward wrapper provides the immediate observation. The persistent
+  ;; node poll below is the restart/reload recovery path.
+  (ap-locations-refresh-descriptor!)
+  (when (and (ap-locations-descriptor-ready?)
+             (= native-node-id AP-REWARD-NODE-ARMOR-1))
+    (ap-locations-queue-once! AP-LOCATION-MASK-REWARD-ARMOR-1)
+    (ap-locations-publish! 7 AP-LOCATION-MASK-REWARD-ARMOR-1
+                           AP-LOCATION-REWARD-ARMOR-1 16
+                           AP-LOCATION-SOURCE-NATIVE-REWARD
+                           AP-REWARD-NODE-ARMOR-1))
   0)
 
 (defun ap-locations-observe! ()
   (ap-locations-refresh-descriptor!)
   (when (ap-locations-descriptor-ready?)
-    ;; task-complete? reads the save-persistent task-perm-list completion bit.
-    ;; It does not invoke, suppress, or replay the mission's native reward.
+    ;; task-complete? and task-node-closed? read save-persistent native state.
     (when (task-complete? *game-info* (game-task arena-training-1))
-      (ap-locations-queue-once! AP-LOCATION-MASK-ARENA-TRAINING))
-    (ap-locations-publish! AP-LOCATION-MASK-ARENA-TRAINING
-                           AP-LOCATION-ARENA-TRAINING 10
-                           AP-LOCATION-SOURCE-NATIVE)
-    (ap-locations-publish! AP-LOCATION-MASK-DEBUG-TASK-11
-                           AP-LOCATION-DEBUG-TASK-11 11
-                           AP-LOCATION-SOURCE-DEBUG))
+      (ap-locations-queue-once! AP-LOCATION-MASK-TASK-10))
+    (when (task-complete? *game-info* (game-task arena-fight-1))
+      (ap-locations-queue-once! AP-LOCATION-MASK-TASK-11))
+    (when (task-complete? *game-info* (game-task wascity-chase))
+      (ap-locations-queue-once! AP-LOCATION-MASK-TASK-12))
+    (when (task-complete? *game-info* (game-task wascity-pre-game))
+      (ap-locations-queue-once! AP-LOCATION-MASK-TASK-13))
+    (when (task-complete? *game-info* (game-task desert-turtle-training))
+      (ap-locations-queue-once! AP-LOCATION-MASK-TASK-14))
+    (when (task-complete? *game-info* (game-task desert-course-race))
+      (ap-locations-queue-once! AP-LOCATION-MASK-TASK-15))
+    (when (task-complete? *game-info* (game-task desert-artifact-race-1))
+      (ap-locations-queue-once! AP-LOCATION-MASK-TASK-16))
+    (when (and (task-node-closed?
+                 (game-task-node desert-artifact-race-1-resolution))
+               (*ap3-reward-location-recovery-eligible-hook*
+                 AP-REWARD-NODE-ARMOR-1))
+      (ap-locations-queue-once! AP-LOCATION-MASK-REWARD-ARMOR-1))
+
+    (ap-locations-publish! 0 AP-LOCATION-MASK-TASK-10
+                           AP-LOCATION-TASK-10 10
+                           AP-LOCATION-SOURCE-NATIVE-TASK 0)
+    (ap-locations-publish! 1 AP-LOCATION-MASK-TASK-11
+                           AP-LOCATION-TASK-11 11
+                           AP-LOCATION-SOURCE-NATIVE-TASK 0)
+    (ap-locations-publish! 2 AP-LOCATION-MASK-TASK-12
+                           AP-LOCATION-TASK-12 12
+                           AP-LOCATION-SOURCE-NATIVE-TASK 0)
+    (ap-locations-publish! 3 AP-LOCATION-MASK-TASK-13
+                           AP-LOCATION-TASK-13 13
+                           AP-LOCATION-SOURCE-NATIVE-TASK 0)
+    (ap-locations-publish! 4 AP-LOCATION-MASK-TASK-14
+                           AP-LOCATION-TASK-14 14
+                           AP-LOCATION-SOURCE-NATIVE-TASK 0)
+    (ap-locations-publish! 5 AP-LOCATION-MASK-TASK-15
+                           AP-LOCATION-TASK-15 15
+                           AP-LOCATION-SOURCE-NATIVE-TASK 0)
+    (ap-locations-publish! 6 AP-LOCATION-MASK-TASK-16
+                           AP-LOCATION-TASK-16 16
+                           AP-LOCATION-SOURCE-NATIVE-TASK 0)
+    (ap-locations-publish! 7 AP-LOCATION-MASK-REWARD-ARMOR-1
+                           AP-LOCATION-REWARD-ARMOR-1 16
+                           AP-LOCATION-SOURCE-NATIVE-REWARD
+                           AP-REWARD-NODE-ARMOR-1))
   0)
 
-(defun ap-locations-ack-one! ((mask int) (activation-generation int)
-                              (source-sequence int) (published-generation int)
-                              (published-sequence int))
-  (when (and (= activation-generation published-generation)
-             (>= published-sequence 0)
-             (<= published-sequence source-sequence))
+(defun ap-locations-ack-one! ((index int) (mask int)
+                              (activation-generation int)
+                              (source-sequence int))
+  (when (and (= activation-generation
+                (-> *ap-location-observer* published-generation index))
+             (>= (-> *ap-location-observer* published-sequence index) 0)
+             (<= (-> *ap-location-observer* published-sequence index)
+                 source-sequence))
     (logclear! (-> *ap-location-observer* pending-mask) mask))
   0)
 
 (defun ap-locations-ack! ((activation-generation int) (source-sequence int))
-  ;; This is only the existing GOAL-to-Python diagnostic-drain ack. AP server
-  ;; confirmation is reconciled separately from Connected/RoomUpdate packets.
-  (ap-locations-ack-one!
-    AP-LOCATION-MASK-ARENA-TRAINING activation-generation source-sequence
-    (-> *ap-location-observer* arena-published-generation)
-    (-> *ap-location-observer* arena-published-sequence))
-  (ap-locations-ack-one!
-    AP-LOCATION-MASK-DEBUG-TASK-11 activation-generation source-sequence
-    (-> *ap-location-observer* debug-published-generation)
-    (-> *ap-location-observer* debug-published-sequence))
+  ;; This only acknowledges the GOAL-to-Python diagnostic drain. AP server
+  ;; confirmation remains a separate Connected/RoomUpdate reconciliation.
+  (ap-locations-ack-one! 0 AP-LOCATION-MASK-TASK-10
+                         activation-generation source-sequence)
+  (ap-locations-ack-one! 1 AP-LOCATION-MASK-TASK-11
+                         activation-generation source-sequence)
+  (ap-locations-ack-one! 2 AP-LOCATION-MASK-TASK-12
+                         activation-generation source-sequence)
+  (ap-locations-ack-one! 3 AP-LOCATION-MASK-TASK-13
+                         activation-generation source-sequence)
+  (ap-locations-ack-one! 4 AP-LOCATION-MASK-TASK-14
+                         activation-generation source-sequence)
+  (ap-locations-ack-one! 5 AP-LOCATION-MASK-TASK-15
+                         activation-generation source-sequence)
+  (ap-locations-ack-one! 6 AP-LOCATION-MASK-TASK-16
+                         activation-generation source-sequence)
+  (ap-locations-ack-one! 7 AP-LOCATION-MASK-REWARD-ARMOR-1
+                         activation-generation source-sequence)
   source-sequence)
-
-(defun ap-locations-debug-complete! ()
-  ;; Explicit nREPL-only check. No client command or player-facing input calls it.
-  (ap-locations-refresh-descriptor!)
-  (if (ap-locations-descriptor-ready?)
-      (begin
-        (ap-locations-queue-once! AP-LOCATION-MASK-DEBUG-TASK-11)
-        (ap-export-state!)
-        1)
-      0))
 
 (ap-locations-clear-descriptor!)
 (set! *ap3-locations-observe-hook* ap-locations-observe!)
 (set! *ap3-locations-ack-hook* ap-locations-ack!)
+(set! *ap3-reward-location-observe-hook* ap-locations-observe-reward!)
+(set! *ap3-locations-module-active* 1)
 (ap-export-state!)
-(format #t "[JAK3-AP] locations initialized native-task=10 debug-task=11~%")
+(format #t "[JAK3-AP] locations initialized tasks=10-16 reward-node=36~%")

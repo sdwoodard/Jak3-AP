@@ -18,6 +18,7 @@ from worlds.jak3.agents.launcher import (
     _atomic_write,
     _launch_logged_process,
     _mirror_process_output,
+    _validate_module_payloads,
     build_launch_commands,
     install_packaged_bridge,
     load_packaged_bridge_set,
@@ -28,7 +29,7 @@ BRIDGE_PAYLOAD = b""";; test bridge
 (in-package goal)
 (defconstant AP-PROTOCOL-VERSION 3)
 (defconstant AP-GAME-INTEGRATION-VERSION 2)
-(defconstant AP-BRIDGE-RUNTIME-VERSION 4)
+(defconstant AP-BRIDGE-RUNTIME-VERSION 5)
 """
 STARTUP_PAYLOAD = (
     b";; test startup\n(in-package goal)\n"
@@ -37,6 +38,61 @@ STARTUP_PAYLOAD = (
 
 
 class OpenGoalBridgeInstallerTest(unittest.TestCase):
+    def test_slice_dependency_payloads_must_install_activation_attestations(
+        self,
+    ) -> None:
+        manifest, payloads = load_packaged_bridge_set()
+        cases = (
+            (
+                "items",
+                b"(set! *ap3-items-module-active* 1)",
+                "permanent-item module payload is invalid",
+            ),
+            (
+                "locations",
+                b"(set! *ap3-locations-module-active* 1)",
+                "location module payload is invalid",
+            ),
+        )
+        for module_name, attestation, message in cases:
+            with self.subTest(module=module_name):
+                module = next(
+                    candidate
+                    for candidate in manifest.modules
+                    if candidate.name == module_name
+                )
+                damaged = dict(payloads)
+                damaged[str(module.resource)] = damaged[str(module.resource)].replace(
+                    attestation, b""
+                )
+
+                with self.assertRaisesRegex(ValueError, message):
+                    _validate_module_payloads(manifest, damaged)
+
+    def test_reward_payload_must_install_its_activation_attestation(self) -> None:
+        manifest, payloads = load_packaged_bridge_set()
+        rewards = next(
+            module for module in manifest.modules if module.name == "rewards"
+        )
+        damaged = dict(payloads)
+        damaged[str(rewards.resource)] = b"(in-package goal)\n"
+
+        with self.assertRaisesRegex(ValueError, "reward module payload is invalid"):
+            _validate_module_payloads(manifest, damaged)
+
+    def test_reward_payload_must_publish_its_activation_attestation(self) -> None:
+        manifest, payloads = load_packaged_bridge_set()
+        rewards = next(
+            module for module in manifest.modules if module.name == "rewards"
+        )
+        damaged = dict(payloads)
+        damaged[str(rewards.resource)] = damaged[str(rewards.resource)].replace(
+            b"(ap-export-state!)", b""
+        )
+
+        with self.assertRaisesRegex(ValueError, "reward module payload is invalid"):
+            _validate_module_payloads(manifest, damaged)
+
     def test_launched_process_uses_bounded_pipe_without_raw_spool(self) -> None:
         process = Mock(pid=101, stdout=io.BytesIO())
         with TemporaryDirectory() as directory:
@@ -216,6 +272,7 @@ class OpenGoalBridgeInstallerTest(unittest.TestCase):
             self.assertEqual(project_text.count('"archipelago-diagnostics.o"'), 1)
             self.assertEqual(project_text.count('"archipelago-items.o"'), 1)
             self.assertEqual(project_text.count('"archipelago-locations.o"'), 1)
+            self.assertEqual(project_text.count('"archipelago-rewards.o"'), 1)
             self.assertLess(
                 project_text.index('"task-control.o"'),
                 project_text.index('"archipelago.o"'),
@@ -232,6 +289,10 @@ class OpenGoalBridgeInstallerTest(unittest.TestCase):
                 project_text.index('"archipelago-items.o"'),
                 project_text.index('"archipelago-locations.o"'),
             )
+            self.assertLess(
+                project_text.index('"archipelago-locations.o"'),
+                project_text.index('"archipelago-rewards.o"'),
+            )
             self.assertTrue(first.manifest_path.is_file())
             self.assertEqual(
                 {path.name for path in first.source_paths},
@@ -241,6 +302,7 @@ class OpenGoalBridgeInstallerTest(unittest.TestCase):
                     "archipelago-diagnostics.gc",
                     "archipelago-items.gc",
                     "archipelago-locations.gc",
+                    "archipelago-rewards.gc",
                 },
             )
             project_bytes = first.project_path.read_bytes()
@@ -250,7 +312,7 @@ class OpenGoalBridgeInstallerTest(unittest.TestCase):
                 install_packaged_bridge(
                     install,
                     BRIDGE_PAYLOAD.replace(
-                        b"AP-BRIDGE-RUNTIME-VERSION 4",
+                        b"AP-BRIDGE-RUNTIME-VERSION 5",
                         b"AP-BRIDGE-RUNTIME-VERSION 2",
                     ),
                     STARTUP_PAYLOAD,
@@ -295,17 +357,20 @@ class OpenGoalBridgeInstallerTest(unittest.TestCase):
                 self.assertEqual(project_text.count('"archipelago-diagnostics.o"'), 1)
                 self.assertEqual(project_text.count('"archipelago-items.o"'), 1)
                 self.assertEqual(project_text.count('"archipelago-locations.o"'), 1)
+                self.assertEqual(project_text.count('"archipelago-rewards.o"'), 1)
                 anchor = project_text.index('"task-control.o"')
                 control = project_text.index('"archipelago.o"')
                 diagnostics = project_text.index('"archipelago-diagnostics.o"')
                 items = project_text.index('"archipelago-items.o"')
                 locations = project_text.index('"archipelago-locations.o"')
+                rewards = project_text.index('"archipelago-rewards.o"')
                 scene = project_text.index('"scene.o"')
                 self.assertLess(anchor, control)
                 self.assertLess(control, diagnostics)
                 self.assertLess(diagnostics, items)
                 self.assertLess(items, locations)
-                self.assertLess(locations, scene)
+                self.assertLess(locations, rewards)
+                self.assertLess(rewards, scene)
 
     def test_concurrent_installs_publish_one_coherent_source_set(self) -> None:
         with TemporaryDirectory() as directory:

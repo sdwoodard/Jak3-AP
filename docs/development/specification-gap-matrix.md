@@ -6,7 +6,7 @@ normative first-release default in
 and
 [`../../config/templates/Jak3.yaml`](../../config/templates/Jak3.yaml).
 
-Snapshot date: **2026-08-11**
+Snapshot date: **2026-08-14**
 
 ## Status vocabulary
 
@@ -23,8 +23,8 @@ Snapshot date: **2026-08-11**
 | Contract | Specification default | Current implementation | Status |
 | --- | --- | --- | --- |
 | Network locations | 147 | All 147 frozen registry records are active. | Implemented generator |
-| Story completions | 61: tasks 10–35 and 37–71 | Exactly 61 active network locations. Task 10 alone has a native durable-bit observer; task 11 is available only through an explicit nREPL debug trigger. | Implemented generator / runtime slice unverified live |
-| Major reward moments | 38 | Exactly 38 active registry locations; runtime reward hooks remain absent. | Implemented generator / runtime missing |
+| Story completions | 61: tasks 10–35 and 37–71 | Exactly 61 active network locations. Persistent native observation is implemented for tasks 10–16. | Implemented generator / eight-check runtime slice unverified live |
+| Major reward moments | 38 | Exactly 38 active registry locations; task-16 reward node 36 is the sole runtime interception. | Implemented generator / one-reward runtime slice unverified live |
 | Selected side challenges | 24: tasks 114–137 | Exactly 24 active registry locations. | Implemented generator |
 | Orb bundles | 24: thresholds 25–600 by 25 | Exactly 24 active thresholds; local-earned tracking remains absent. | Implemented generator / runtime missing |
 | Victory event | Task 72 City Win, non-networked | One locked code-less task-72 event consumes no pool slot; it is immediately reachable in the temporary scaffold. | Implemented generator / Standard logic and runtime missing |
@@ -36,7 +36,7 @@ Snapshot date: **2026-08-11**
 The static pool now has the exact required arithmetic, names, classifications,
 and exclusions. It is not yet playable: all locations and events are exposed
 through an immediate-access scaffold, and runtime check behavior exists for
-only the two-location Milestone 9 slice.
+only the eight-location Milestone 10 slice.
 
 ## Packaging, installation, and startup
 
@@ -87,7 +87,7 @@ notes must keep that distinction explicit.
 
 | Requirement | Current state | Status | Risk |
 | --- | --- | --- | --- |
-| AP inventory independent of native inventory | Schema 1 defines a Python-owned received-item journal/count ledger, but no item stream populates it and no native inventory is changed. | Storage contract / gameplay missing | `R-006`, `R-007` |
+| AP inventory independent of native inventory | Schema 1's Python-owned indexed receipt journal reconstructs Jetboard, Blaster stage 1, and Armor stage 1 through idempotent native target reconciliation. Native mission state is not used as an AP receipt. | Implemented slice | `R-006`, `R-007` |
 | Exact 26 progression pool | Exact registry multiplicities and classifications are generated. | Implemented generator | `R-003` |
 | Exact 28 useful pool | Exact registry multiplicities and classifications are generated. | Implemented generator | `R-003` |
 | Route authorizations | All eight are present in the generated progression pool; receipt behavior and rules are absent. | Partial | `R-003`, `R-006` |
@@ -111,18 +111,18 @@ notes must keep that distinction explicit.
 | Bootstrap grants never become AP receipts | No bootstrap subsystem exists. | Missing | `R-008` |
 | Simplified native story shadow state | Separate task-30/task-63 profile identifiers are frozen; native state behavior remains unimplemented. | Contract only | `R-008` |
 | Shadow state excluded from `RELICS(n)` | No relic ledger/shadow separation exists. | Missing | `R-006`, `R-008` |
-| Major native reward interception | Reward-node table is audited but not hooked. | Missing | `R-006` |
-| Suppress only permanent native grant | No reward suppression/recursion guard exists. | Missing | `R-006` |
-| Reconcile after reward/load/exit | Receive cursor can request replay; it does not reconstruct all required AP/shadow state. | Partial | `R-006`, `R-007` |
+| Major native reward interception | Exactly task-16 reward node 36 is hooked for the Milestone 10 slice; every other audited reward remains deferred. | Implemented single-node slice | `R-006` |
+| Suppress only permanent native grant | The exact-shape bound-AP path preserves Jak C and suppresses only Armor 1. AP-off, unbound, item-application, and mismatch paths invoke the complete native evaluator. The connected native gameplay matrix is pending. | Implemented slice / runtime acceptance pending | `R-006` |
+| Reconcile after reward/load/exit | The permanent three-item receipt ledger reconstructs its target state after reload/restart and removes unowned Armor 1 after binding; broader AP/shadow reconstruction remains deferred. | Implemented item slice / broader work missing | `R-006`, `R-007` |
 
 ## Location identity and sanity checks
 
 | Requirement | Current state | Status | Risk |
 | --- | --- | --- | --- |
-| Finite, monotonic, persistent checks | Task 10 and the task-11 debug trigger atomically populate exact-partitioned durable checked/confirmed/pending sets. Duplicate/replay, restart, rollback-to-pending, and confirmation compaction are automated; the controlled native/server matrix is pending. | Implemented slice / runtime acceptance pending | `R-007` |
+| Finite, monotonic, persistent checks | Real task completion for tasks 10–16 plus reward node 36 atomically populates exact-partitioned durable checked/confirmed/pending sets. Duplicate/replay, restart, rollback-to-pending, persistent reward recovery, and confirmation compaction are automated; the connected native/server gameplay matrix is pending. | Implemented slice / runtime acceptance pending | `R-007` |
 | Explicit stable public IDs | Literal first-release records, permanent reservations, table versions/hashes, authenticated slot-data validation, and persistent-state ID rejection are automated. GOAL gameplay enforcement remains deferred. | Implemented Python contract / GOAL runtime pending | `R-012` |
-| Story task checks | Exactly 61 registry identities are generated. Task 10 polls the save-persistent `task-complete?` bit while the exact AP save is loaded and bound; the other 60 native hooks remain deferred. | Partial runtime slice | `R-007` |
-| Major reward checks | Exactly 38 audited registry identities are generated; reward hooks remain absent. | Implemented generator / runtime missing | `R-006` |
+| Story task checks | Exactly 61 registry identities are generated. Tasks 10-16 poll their save-persistent `task-complete?` bits while the exact AP save is loaded and bound; the other 54 native task hooks remain deferred. | Partial runtime slice | `R-007` |
+| Major reward checks | Exactly 38 audited registry identities are generated. Reward node 36 is the sole active native reward hook; the other 37 reward hooks remain deferred. | Partial runtime slice | `R-006` |
 | Selected side checks | Exactly the 24 tasks 114–137 are generated. | Implemented generator | `R-003` |
 | Safe challenge exclusions | IDs 127, 129, 130, 131, 132, and 136 are `EXCLUDED` and reject progression/useful placement. | Implemented generator | `R-003` |
 | Free side/purchase costs | No cost bypass or pre-opened Ratchet & Clank course state. | Missing | `R-014` |
@@ -136,14 +136,14 @@ notes must keep that distinction explicit.
 | Requirement | Current state | Status | Risk |
 | --- | --- | --- | --- |
 | Persistent identity includes seed/team/slot/save/table version | Schema 1 atomically persists and one-time binds the full identity/contract. Real fresh/repeated load, A → B → A, wrong-slot copy rejection, untagged vanilla rejection, Continue Without Save, New Game identity, normal recovery, and supported clean/unclean full-process recovery passed. Warm replacement attachment and external bank interference remain unsupported. | Automated plus runtime accepted with limitations | `R-007`, `R-012`, `R-019` |
-| Durable received-item ledger/index | Per-index `received`/`pending`/`applied` records, counts, and pending indices are schema-defined and round-trip tested; the client still requests no `ReceivedItems`. | Automated empty/storage model / gameplay missing | `R-007` |
-| Durable location bitset | Sorted explicit registry IDs are schema-defined, exact-partition validated, and populated before GOAL acknowledgement or network send for the two Milestone 9 IDs. The durable bit is monotonic across server rollback and confirmation. | Implemented slice / live acceptance pending | `R-007` |
+| Durable received-item ledger/index | Per-index `received`/`pending`/`applied` records drive the accepted Jetboard, Blaster, and stage-1 Armor native target. Index-zero replay, gaps, duplicates, crash windows, and restart reconstruction are automated and Milestone 8 has live acceptance. | Implemented three-item slice | `R-007` |
+| Durable location bitset | Sorted explicit registry IDs are schema-defined, exact-partition validated, and populated before GOAL acknowledgement or network send for tasks 10–16 and reward node 36. The durable bit is monotonic across server rollback and confirmation. | Implemented eight-check slice / live acceptance pending | `R-007` |
 | Durable pending-check outbox | Python atomically enqueues local observations, sends sorted pending IDs, retries after five seconds or reconnect, and compacts only from authoritative `Connected`/`RoomUpdate` state. | Implemented slice / live acceptance pending | `R-007` |
 | Offline completion later sends exactly once | Offline persistence, restart reopen, duplicate-safe resend, and server-confirmation compaction are automated. Archipelago intentionally permits duplicate uploads, so “exactly once” means one durable check identity rather than one packet. | Automated slice / live acceptance pending | `R-007` |
 | New-game reconstruction | Absent from the handshake milestone. | Missing | `R-011` |
 | Load-save reconstruction | Absent; protocol 2 has no `/game` command or inventory sync. | Missing | `R-006`, `R-011` |
-| Reconnect/replay idempotence | The prior Protocol 3 and Milestone 8 behavior remains. For the Milestone 9 slice, duplicate GOAL observations do not advance the revision, pending checks resend after reconnect, and only authoritative server checked sets compact the outbox. | Automated slice; live location recovery pending | `R-007`, `R-010`, `R-019` |
-| Packet-gap/out-of-order handling | Not implemented because Protocol 3 still requests no item stream. | Missing | `R-007` |
+| Reconnect/replay idempotence | Duplicate task/reward observations do not advance the revision, pending checks resend after reconnect, only authoritative server checked sets compact the outbox, native Armor is reconstructed from the ledger, and the temporary goal resends once per authenticated connection. | Automated slice; connected live matrix pending | `R-007`, `R-010`, `R-019` |
+| Packet-gap/out-of-order handling | Whole-packet validation rejects gaps, partial overlaps, conflicts, unknown IDs, and valid-but-unsupported Jak 3 items before mutation, then requests canonical sync. | Implemented three-item slice | `R-007` |
 
 ## Diagnostics and user feedback
 

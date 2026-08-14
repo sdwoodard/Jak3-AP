@@ -4,15 +4,29 @@ from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
+
+from websockets.exceptions import ConnectionClosed
 
 from worlds.jak3 import location_outbox
-from worlds.jak3.agents.diagnostics import GoalDiagnosticRecord
-from worlds.jak3.client import Jak3Context, common_client
+from worlds.jak3.agents.diagnostics import (
+    GoalDiagnosticRecord,
+    REWARD_PERMANENT_SUPPRESSED_GOAL_CODE,
+    REWARD_SHAPE_MISMATCH_GOAL_CODE,
+)
+from worlds.jak3.client import (
+    Jak3Context,
+    _parse_milestone_10_test_goal,
+    common_client,
+)
 from worlds.jak3.location_outbox import (
     ARENA_TRAINING_LOCATION_ID,
-    DEBUG_LOCATION_ID,
+    FIRST_ARMOR_REWARD_LOCATION_ID,
+    FIRST_WAR_AMULET_LOCATION_ID,
+    LOCATION_NATIVE_NODE_IDS,
     LOCATION_OBSERVED_GOAL_CODE,
+    LOCATION_SOURCE_CODES,
+    LOCATION_TASK_IDS,
     LocationPacketError,
     diagnostic_batch_id,
     observe_local_location,
@@ -37,6 +51,9 @@ from worlds.jak3.slot_data import build_slot_data
 
 SAVE_ID = "00000000-0000-4000-8000-000000000090"
 STATE_ID = "00000000-0000-4000-8000-000000000091"
+# Milestone 9 tests used this name for location 743001011. Keep the test alias
+# local while exercising the same ID as the real task-11 native observation.
+DEBUG_LOCATION_ID = FIRST_WAR_AMULET_LOCATION_ID
 
 
 def descriptor() -> NativeSaveDescriptor:
@@ -61,7 +78,11 @@ def empty_state() -> PersistentState:
 
 
 def goal_observation(
-    location_id: int, task_id: int, source: int, *, sequence: int = 4
+    location_id: int,
+    task_id: int | None = None,
+    source: int | None = None,
+    *,
+    sequence: int = 4,
 ) -> GoalDiagnosticRecord:
     return GoalDiagnosticRecord(
         source_sequence=sequence,
@@ -72,13 +93,39 @@ def goal_observation(
         correlation_value=location_id,
         result=1,
         error=0,
-        arg0=task_id,
-        arg1=source,
-        arg2=0,
+        arg0=LOCATION_TASK_IDS[location_id] if task_id is None else task_id,
+        arg1=LOCATION_SOURCE_CODES[location_id] if source is None else source,
+        arg2=LOCATION_NATIVE_NODE_IDS[location_id],
     )
 
 
 class LocationTransitionTest(unittest.TestCase):
+    def test_milestone_10_observer_allowlist_has_exactly_eight_locations(self) -> None:
+        self.assertEqual(
+            set(LOCATION_TASK_IDS),
+            {
+                743_001_010,
+                743_001_011,
+                743_001_012,
+                743_001_013,
+                743_001_014,
+                743_001_015,
+                743_001_016,
+                743_020_036,
+            },
+        )
+        self.assertEqual(LOCATION_SOURCE_CODES[FIRST_WAR_AMULET_LOCATION_ID], 0)
+        self.assertEqual(LOCATION_SOURCE_CODES[FIRST_ARMOR_REWARD_LOCATION_ID], 1)
+        self.assertEqual(LOCATION_NATIVE_NODE_IDS[FIRST_ARMOR_REWARD_LOCATION_ID], 36)
+
+        state = empty_state()
+        for location_id in reversed(tuple(LOCATION_TASK_IDS)):
+            state = observe_local_location(state, location_id).state
+        self.assertEqual(state.checked_location_bits, tuple(sorted(LOCATION_TASK_IDS)))
+        self.assertEqual(
+            state.pending_location_outbox, tuple(sorted(LOCATION_TASK_IDS))
+        )
+
     def test_first_completion_and_both_replays_are_idempotent(self) -> None:
         first = observe_local_location(empty_state(), ARENA_TRAINING_LOCATION_ID)
         self.assertTrue(first.changed)
@@ -244,9 +291,304 @@ class LocationPersistenceAndClientTest(unittest.TestCase):
                 session.state.pending_location_outbox,
                 (ARENA_TRAINING_LOCATION_ID,),
             )
-            self.assertEqual(context._ingest_goal_events((record,), 0), 4)
+            self.assertEqual(
+                context._ingest_goal_events((replace(record, source_sequence=5),), 0),
+                5,
+            )
             self.assertEqual(session.state.state_revision, committed_revision)
             session.close(clean=False)
+
+    def test_location_republication_invalidates_items_once_per_goal_activation(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            session = StateRepository(Path(directory)).open(descriptor(), slot())
+            context = self.context(session)
+            context._goal_source_state = {"activation_generation": 7}
+            schedule = Mock()
+            context._schedule_permanent_item_reconciliation_after_native_rebuild = (
+                schedule
+            )
+            record = goal_observation(ARENA_TRAINING_LOCATION_ID, sequence=4)
+
+            self.assertEqual(context._ingest_goal_events((record,), 0), 4)
+            self.assertEqual(context._ingest_goal_events((record,), 0), 4)
+            self.assertEqual(
+                context._ingest_goal_events((replace(record, source_sequence=5),), 0),
+                5,
+            )
+            schedule.assert_called_once_with()
+
+            context._goal_source_state["activation_generation"] = 8
+            self.assertEqual(
+                context._ingest_goal_events((replace(record, source_sequence=1),), 0),
+                1,
+            )
+            self.assertEqual(schedule.call_count, 2)
+            session.close(clean=True)
+
+    def test_reward_record_replay_invalidates_items_only_for_new_invocations(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            session = StateRepository(Path(directory)).open(descriptor(), slot())
+            context = self.context(session)
+            context._goal_source_state = {"activation_generation": 7}
+            schedule = Mock()
+            context._schedule_permanent_item_reconciliation_after_native_rebuild = (
+                schedule
+            )
+            reward_decision = GoalDiagnosticRecord(
+                source_sequence=5,
+                game_tick=101,
+                severity=1,
+                event_code=REWARD_PERMANENT_SUPPRESSED_GOAL_CODE,
+                correlation_kind=3,
+                correlation_value=FIRST_ARMOR_REWARD_LOCATION_ID,
+                result=1,
+                error=0,
+                arg0=16,
+                arg1=36,
+                arg2=1,
+            )
+
+            self.assertEqual(context._ingest_goal_events((reward_decision,), 0), 5)
+            self.assertEqual(context._ingest_goal_events((reward_decision,), 0), 5)
+            schedule.assert_called_once_with()
+
+            replay = replace(reward_decision, source_sequence=6, game_tick=102)
+            self.assertEqual(context._ingest_goal_events((replay,), 0), 6)
+            self.assertEqual(schedule.call_count, 2)
+            session.close(clean=True)
+
+    def test_temporary_goal_environment_is_strict_and_opt_in(self) -> None:
+        self.assertFalse(_parse_milestone_10_test_goal(None))
+        self.assertTrue(_parse_milestone_10_test_goal("task16"))
+        for value in ("", "TASK16", "task72", "1"):
+            with (
+                self.subTest(value=value),
+                self.assertRaisesRegex(ValueError, "must be unset or exactly"),
+            ):
+                _parse_milestone_10_test_goal(value)
+
+    def test_temporary_goal_commits_with_second_check_and_resends_per_connection(
+        self,
+    ) -> None:
+        async def scenario() -> None:
+            with TemporaryDirectory() as directory:
+                session = StateRepository(Path(directory)).open(descriptor(), slot())
+                context = self.context(session)
+                context._temporary_test_goal_enabled = True
+
+                story = goal_observation(743_001_016, sequence=4)
+                reward = goal_observation(FIRST_ARMOR_REWARD_LOCATION_ID, sequence=5)
+                self.assertEqual(context._ingest_goal_events((story,), 0), 4)
+                self.assertFalse(session.state.goal_completed)
+                revision_before_reward = session.state.state_revision
+                self.assertEqual(context._ingest_goal_events((reward,), 0), 5)
+                self.assertEqual(
+                    session.state.state_revision, revision_before_reward + 1
+                )
+                self.assertTrue(session.state.goal_completed)
+                self.assertFalse(session.state.goal_status_sent)
+
+                socket_send = AsyncMock()
+                context.server = SimpleNamespace(
+                    socket=SimpleNamespace(open=True, closed=False, send=socket_send)
+                )
+                with patch(
+                    "worlds.jak3.client.encode", side_effect=lambda value: value
+                ):
+                    self.authenticate(context)
+                    context._pump_temporary_goal_status("first_connection")
+                    await asyncio.sleep(0)
+                    await asyncio.sleep(0)
+                    self.assertEqual(socket_send.await_count, 1)
+                    self.assertEqual(
+                        socket_send.await_args.args[0][0]["cmd"], "StatusUpdate"
+                    )
+                    self.assertTrue(session.state.goal_status_sent)
+
+                    context._pump_temporary_goal_status("duplicate")
+                    await asyncio.sleep(0)
+                    self.assertEqual(socket_send.await_count, 1)
+
+                    context._invalidate_location_transport()
+                    self.authenticate(context)
+                    context._pump_temporary_goal_status("reconnect")
+                    await asyncio.sleep(0)
+                    await asyncio.sleep(0)
+                    self.assertEqual(socket_send.await_count, 2)
+                session.close(clean=False)
+
+                restarted = StateRepository(Path(directory)).open(descriptor(), slot())
+                self.assertTrue(restarted.state.goal_completed)
+                self.assertTrue(restarted.state.goal_status_sent)
+                restarted_context = self.context(restarted)
+                restarted_context._temporary_test_goal_enabled = True
+                restart_send = AsyncMock()
+                restarted_context.server = SimpleNamespace(
+                    socket=SimpleNamespace(open=True, closed=False, send=restart_send)
+                )
+                with patch(
+                    "worlds.jak3.client.encode", side_effect=lambda value: value
+                ):
+                    self.authenticate(restarted_context)
+                    restarted_context._pump_temporary_goal_status("client_restart")
+                    await asyncio.sleep(0)
+                    await asyncio.sleep(0)
+                self.assertEqual(restart_send.await_count, 1)
+                restarted.close(clean=True)
+
+        asyncio.run(scenario())
+
+    def test_temporary_goal_send_failure_does_not_set_durable_sent_flag(self) -> None:
+        async def scenario() -> None:
+            with TemporaryDirectory() as directory:
+                session = StateRepository(Path(directory)).open(descriptor(), slot())
+                completed = replace(
+                    session.state,
+                    checked_location_bits=tuple(
+                        sorted(
+                            _id for _id in (743_001_016, FIRST_ARMOR_REWARD_LOCATION_ID)
+                        )
+                    ),
+                    pending_location_outbox=tuple(
+                        sorted(
+                            _id for _id in (743_001_016, FIRST_ARMOR_REWARD_LOCATION_ID)
+                        )
+                    ),
+                    goal_completed=True,
+                )
+                session.commit(completed, category="temporary_goal_completed")
+                context = self.context(session)
+                context._temporary_test_goal_enabled = True
+                emitted: list[tuple[str, dict[str, object]]] = []
+
+                def capture_event(event_name: str, **kwargs: object) -> None:
+                    emitted.append((event_name, kwargs))
+
+                context.emit_diagnostic = capture_event
+                socket_send = AsyncMock(side_effect=ConnectionClosed(None, None))
+                context.server = SimpleNamespace(
+                    socket=SimpleNamespace(open=True, closed=False, send=socket_send)
+                )
+                self.authenticate(context)
+                with patch(
+                    "worlds.jak3.client.encode", side_effect=lambda value: value
+                ):
+                    context._pump_temporary_goal_status("failure")
+                    await asyncio.sleep(0)
+                    await asyncio.sleep(0)
+                self.assertFalse(session.state.goal_status_sent)
+                self.assertIsNone(context._goal_sent_connection_generation)
+                self.assertEqual(emitted[-1][0], "goal.status.failed")
+                self.assertEqual(
+                    emitted[-1][1]["context"]["reason"], "ConnectionClosed"
+                )
+                session.close(clean=True)
+
+        asyncio.run(scenario())
+
+    def test_temporary_goal_sent_flag_failure_does_not_duplicate_same_connection(
+        self,
+    ) -> None:
+        class FailingCommitSession:
+            def __init__(self, state: PersistentState) -> None:
+                self.state = state
+
+            def commit(self, _state: PersistentState, *, category: str) -> None:
+                raise StateError(f"failed {category}")
+
+        async def scenario() -> None:
+            completed = replace(
+                empty_state().bind(slot()),
+                checked_location_bits=(
+                    743_001_016,
+                    FIRST_ARMOR_REWARD_LOCATION_ID,
+                ),
+                pending_location_outbox=(
+                    743_001_016,
+                    FIRST_ARMOR_REWARD_LOCATION_ID,
+                ),
+                goal_completed=True,
+            )
+            session = FailingCommitSession(completed)
+            context = self.context(session)
+            context._temporary_test_goal_enabled = True
+            socket_send = AsyncMock()
+            context.server = SimpleNamespace(
+                socket=SimpleNamespace(open=True, closed=False, send=socket_send)
+            )
+            self.authenticate(context)
+            generation = context._location_connection_generation
+            with patch("worlds.jak3.client.encode", side_effect=lambda value: value):
+                context._pump_temporary_goal_status("sent_flag_failure")
+                await asyncio.sleep(0)
+                await asyncio.sleep(0)
+                self.assertEqual(socket_send.await_count, 1)
+                self.assertEqual(context._goal_sent_connection_generation, generation)
+                self.assertFalse(session.state.goal_status_sent)
+
+                context._pump_temporary_goal_status("same_connection")
+                await asyncio.sleep(0)
+                self.assertEqual(socket_send.await_count, 1)
+
+        asyncio.run(scenario())
+
+    def test_temporary_goal_send_completed_on_stale_connection_resends(self) -> None:
+        async def scenario() -> None:
+            with TemporaryDirectory() as directory:
+                session = StateRepository(Path(directory)).open(descriptor(), slot())
+                completed = replace(
+                    session.state,
+                    checked_location_bits=(
+                        743_001_016,
+                        FIRST_ARMOR_REWARD_LOCATION_ID,
+                    ),
+                    pending_location_outbox=(
+                        743_001_016,
+                        FIRST_ARMOR_REWARD_LOCATION_ID,
+                    ),
+                    goal_completed=True,
+                )
+                session.commit(completed, category="temporary_goal_completed")
+                context = self.context(session)
+                context._temporary_test_goal_enabled = True
+                release = asyncio.Event()
+
+                async def delayed_send(_payload: object) -> None:
+                    await release.wait()
+
+                old_send = AsyncMock(side_effect=delayed_send)
+                old_server = SimpleNamespace(
+                    socket=SimpleNamespace(open=True, closed=False, send=old_send)
+                )
+                context.server = old_server
+                self.authenticate(context)
+                with patch(
+                    "worlds.jak3.client.encode", side_effect=lambda value: value
+                ):
+                    context._pump_temporary_goal_status("old_connection")
+                    await asyncio.sleep(0)
+                    context._invalidate_location_transport()
+                    new_send = AsyncMock()
+                    context.server = SimpleNamespace(
+                        socket=SimpleNamespace(open=True, closed=False, send=new_send)
+                    )
+                    self.authenticate(context)
+                    release.set()
+                    await asyncio.sleep(0)
+                    await asyncio.sleep(0)
+                    self.assertIsNone(context._goal_sent_connection_generation)
+                    context._pump_temporary_goal_status("new_connection")
+                    await asyncio.sleep(0)
+                    await asyncio.sleep(0)
+                self.assertEqual(old_send.await_count, 1)
+                self.assertEqual(new_send.await_count, 1)
+                session.close(clean=True)
+
+        asyncio.run(scenario())
 
     def test_commit_failure_withholds_ack_and_does_not_mutate_state(self) -> None:
         class FailingSession:
@@ -259,11 +601,88 @@ class LocationPersistenceAndClientTest(unittest.TestCase):
         bound = empty_state().bind(slot())
         failing = FailingSession(bound)
         context = self.context(failing)
-        record = goal_observation(DEBUG_LOCATION_ID, 11, 1)
+        record = goal_observation(FIRST_WAR_AMULET_LOCATION_ID)
 
         self.assertIsNone(context._ingest_goal_events((record,), 0))
         self.assertEqual(failing.state.checked_location_bits, ())
         self.assertEqual(failing.state.pending_location_outbox, ())
+
+    def test_reward_observation_requires_node_36_and_commits_before_ack(self) -> None:
+        with TemporaryDirectory() as directory:
+            session = StateRepository(Path(directory)).open(descriptor(), slot())
+            context = self.context(session)
+            reward = goal_observation(FIRST_ARMOR_REWARD_LOCATION_ID)
+
+            self.assertEqual(context._ingest_goal_events((reward,), 0), 4)
+            self.assertEqual(
+                session.state.pending_location_outbox,
+                (FIRST_ARMOR_REWARD_LOCATION_ID,),
+            )
+            malformed = replace(reward, source_sequence=5, arg2=35)
+            self.assertIsNone(context._ingest_goal_events((malformed,), 0))
+            self.assertTrue(context._location_read_only)
+            session.close(clean=False)
+
+    def test_native_task_and_reward_events_dirty_permanent_item_reconciliation(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as directory:
+            session = StateRepository(Path(directory)).open(descriptor(), slot())
+            context = self.context(session)
+            schedule = Mock()
+            context._schedule_item_worker = schedule
+
+            context._item_reconcile_dirty = False
+            context._item_failure_projection = ("stale failure",)
+            self.assertEqual(
+                context._ingest_goal_events(
+                    (goal_observation(ARENA_TRAINING_LOCATION_ID),), 0
+                ),
+                4,
+            )
+            self.assertTrue(context._item_reconcile_dirty)
+            self.assertIsNone(context._item_failure_projection)
+            schedule.assert_called_once_with()
+
+            context._item_reconcile_dirty = False
+            context._item_failure_projection = ("stale failure",)
+            schedule.reset_mock()
+            reward_decision = GoalDiagnosticRecord(
+                source_sequence=5,
+                game_tick=101,
+                severity=1,
+                event_code=REWARD_PERMANENT_SUPPRESSED_GOAL_CODE,
+                correlation_kind=3,
+                correlation_value=FIRST_ARMOR_REWARD_LOCATION_ID,
+                result=1,
+                error=0,
+                arg0=16,
+                arg1=36,
+                arg2=1,
+            )
+            self.assertEqual(context._ingest_goal_events((reward_decision,), 0), 5)
+            self.assertTrue(context._item_reconcile_dirty)
+            self.assertIsNone(context._item_failure_projection)
+            schedule.assert_called_once_with()
+
+            context._item_reconcile_dirty = False
+            context._item_failure_projection = ("preserve native fallback",)
+            schedule.reset_mock()
+            shape_mismatch = replace(
+                reward_decision,
+                source_sequence=6,
+                event_code=REWARD_SHAPE_MISMATCH_GOAL_CODE,
+                result=3,
+                error=11,
+                arg2=13,
+            )
+            self.assertEqual(context._ingest_goal_events((shape_mismatch,), 0), 6)
+            self.assertFalse(context._item_reconcile_dirty)
+            self.assertEqual(
+                context._item_failure_projection, ("preserve native fallback",)
+            )
+            schedule.assert_not_called()
+            session.close(clean=True)
 
     def test_diagnostic_failure_after_commit_withholds_ack_without_corruption(
         self,
@@ -293,8 +712,12 @@ class LocationPersistenceAndClientTest(unittest.TestCase):
                 session.state.pending_location_outbox,
                 (ARENA_TRAINING_LOCATION_ID,),
             )
-            self.assertEqual(context._ingest_goal_events((record,), 0), 4)
+            self.assertEqual(
+                context._ingest_goal_events((replace(record, source_sequence=5),), 0),
+                5,
+            )
             self.assertEqual(session.state.state_revision, committed_revision)
+            self.assertEqual(context._item_native_rebuild_generation, 1)
             session.close(clean=True)
 
     def test_invalid_room_update_is_rejected_before_commonclient_mutation(self) -> None:

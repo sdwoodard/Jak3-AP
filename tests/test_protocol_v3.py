@@ -141,6 +141,7 @@ class FakeGame:
             level_transition=self.transition,
             in_vehicle=self.vehicle,
             safe_to_apply_permanent_item=self.safe,
+            permanent_item_native_target_mask=self.permanent_item_target_mask,
             safe_to_apply_consumable=False,
             safe_to_mutate_mission_state=self.safe,
             test_target=self.test_target,
@@ -1464,6 +1465,19 @@ class ProtocolLifecycleTest(unittest.IsolatedAsyncioTestCase):
                 lambda _: True, "snapshot", check_versions=True
             )
 
+        for field in (
+            "items_module_active",
+            "locations_module_active",
+            "reward_module_active",
+        ):
+            with self.subTest(module_attestation=field):
+                inactive = replace(game.snapshot(), **{field: False})
+                self.path.write_text(format_snapshot(inactive), encoding="utf-8")
+                with self.assertRaisesRegex(DataContractMismatch, field):
+                    await self.bridge(game, field)._wait_for(
+                        lambda _: True, "snapshot", check_versions=True
+                    )
+
         game = FakeGame(self.path)
         bridge = await self.ready(game, "overlength-table-hash")
         snapshot = game.snapshot()
@@ -1533,6 +1547,7 @@ class SnapshotContractTest(unittest.TestCase):
             current_task_node=42,
             at_title_menu=False,
             safe_to_apply_permanent_item=True,
+            permanent_item_native_target_mask=5,
             test_target=True,
             last_command_id=12,
             last_command_kind=ProtocolCommand.SET_TEST_TARGET,
@@ -1593,6 +1608,19 @@ class SnapshotContractTest(unittest.TestCase):
             complete.replace("snapshot_end 0", "snapshot_end 1"),
             complete.replace("loading 0", "loading maybe"),
             complete.replace("loading 0", "loading 0\nloading 0"),
+            complete.replace("items_module_active 1\n", ""),
+            complete.replace("items_module_active 1\n", "items_module_active 2\n"),
+            complete.replace("locations_module_active 1\n", ""),
+            complete.replace(
+                "locations_module_active 1\n", "locations_module_active 2\n"
+            ),
+            complete.replace("reward_module_active 1\n", ""),
+            complete.replace("reward_module_active 1\n", "reward_module_active 2\n"),
+            complete.replace("permanent_item_native_target_mask -1\n", ""),
+            complete.replace(
+                "permanent_item_native_target_mask -1\n",
+                "permanent_item_native_target_mask 8\n",
+            ),
             complete.replace(f"bridge_runtime_version {BRIDGE_RUNTIME_VERSION}\n", ""),
             complete.replace("bridge_activation_generation 1\n", ""),
             complete.replace(

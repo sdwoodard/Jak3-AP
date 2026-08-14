@@ -178,10 +178,32 @@ def _validate_module_payloads(
                 b"(in-package goal)" not in payload
                 or b"ap-items-reconcile-native-target!" not in payload
                 or b"*ap3-permanent-items-reconcile-hook*" not in payload
+                or b"*ap3-permanent-items-native-target-hook*" not in payload
+                or b"(set! *ap3-items-module-active* 1)" not in payload
             ):
                 raise ValueError(
                     "The OpenGOAL permanent-item module payload is invalid."
                 )
+        elif module.name == "locations":
+            if (
+                b"(in-package goal)" not in payload
+                or b"ap-locations-observe!" not in payload
+                or b"*ap3-locations-observe-hook*" not in payload
+                or b"*ap3-locations-ack-hook*" not in payload
+                or b"*ap3-reward-location-observe-hook*" not in payload
+                or b"(set! *ap3-locations-module-active* 1)" not in payload
+                or b"(ap-export-state!)" not in payload
+            ):
+                raise ValueError("The OpenGOAL location module payload is invalid.")
+        elif module.name == "rewards":
+            if (
+                b"(in-package goal)" not in payload
+                or b"ap3-eval-game-task-cmd-wrapper" not in payload
+                or b"(method-set! game-task-node-info 13" not in payload
+                or b"(set! *ap3-reward-module-active* 1)" not in payload
+                or b"(ap-export-state!)" not in payload
+            ):
+                raise ValueError("The OpenGOAL reward module payload is invalid.")
 
 
 def _atomic_write(path: Path, payload: bytes) -> None:

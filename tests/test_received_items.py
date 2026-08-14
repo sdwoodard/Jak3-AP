@@ -15,8 +15,10 @@ from worlds.jak3.agents.protocol import (
 )
 from worlds.jak3.agents.diagnostics import GoalDiagnosticRecord
 from worlds.jak3.client import Jak3Context, common_client
+from worlds.jak3.option_resolution import SUPPORTED_FIRST_RELEASE_OPTIONS
 
 from worlds.jak3.persistence import (
+    AuthenticatedSlot,
     GameCommandReceipt,
     NativeSaveDescriptor,
     NativeSaveEligibility,
@@ -25,6 +27,7 @@ from worlds.jak3.persistence import (
     StateError,
     StateRepository,
 )
+from worlds.jak3.slot_data import build_slot_data
 from worlds.jak3.received_items import (
     ARMOR_STAGE_ONE_TARGET_BIT,
     BLASTER_ITEM_ID,
@@ -54,6 +57,15 @@ def empty_state() -> PersistentState:
     )
 
 
+def authenticated_slot() -> AuthenticatedSlot:
+    contract = build_slot_data(
+        SUPPORTED_FIRST_RELEASE_OPTIONS, seed_identifier="milestone-10-item-race"
+    )
+    return AuthenticatedSlot.from_connected_packet(
+        contract, team=0, slot=1, slot_name="Jak"
+    )
+
+
 def packet(index: int, *items: tuple[int, int, int, int]):
     return parse_received_items_packet({"index": index, "items": list(items)})
 
@@ -70,6 +82,7 @@ class NativeMaskProtocol:
             native_save_identity=SAVE_ID,
             save_loaded=True,
             safe_to_apply_permanent_item=True,
+            permanent_item_native_target_mask=target_mask,
         )
 
     async def send_command(
@@ -92,8 +105,25 @@ class NativeMaskProtocol:
             last_command_kind=kind,
             last_command_result=result,
             last_error_code=ProtocolError.NONE,
+            permanent_item_native_target_mask=self.target_mask,
         )
         return self.last_snapshot
+
+
+class BlockingNativeMaskProtocol(NativeMaskProtocol):
+    def __init__(self, *, target_mask: int = 0) -> None:
+        super().__init__(target_mask=target_mask)
+        self.first_command_applied = asyncio.Event()
+        self.release_first_result = asyncio.Event()
+
+    async def send_command(
+        self, kind: ProtocolCommand, target_mask: int
+    ) -> BridgeSnapshot:
+        result = await super().send_command(kind, target_mask)
+        if len(self.results) == 1:
+            self.first_command_applied.set()
+            await self.release_first_result.wait()
+        return result
 
 
 class FailingAppliedCommitSession:
@@ -140,6 +170,53 @@ class ReceivedItemsLedgerTest(unittest.TestCase):
         self.assertEqual(
             context._received_item_packets[0][0].entries[0].item_id, JETBOARD_ITEM_ID
         )
+
+    def test_native_rebuild_racing_command_result_reconciles_again(self) -> None:
+        descriptor = NativeSaveDescriptor(
+            slot=0,
+            identity=SAVE_ID,
+            eligibility=NativeSaveEligibility.FRESH_UNPROGRESSED,
+        )
+        with TemporaryDirectory() as directory:
+            session = StateRepository(Path(directory)).open(
+                descriptor, authenticated_slot()
+            )
+            received = apply_received_items_packet(
+                session.state, packet(0, (JETBOARD_ITEM_ID, 1, 1, 0))
+            ).state
+            session.commit(
+                mark_pending_items_applied(
+                    received,
+                    GameCommandReceipt(
+                        "earlier-session:1",
+                        "RECONCILE_PERMANENT_ITEMS",
+                        "APPLIED",
+                    ),
+                ),
+                category="permanent_items_applied",
+            )
+            protocol = BlockingNativeMaskProtocol(target_mask=0)
+            context = reconciliation_context(session, protocol)
+
+            async def scenario() -> None:
+                context._schedule_item_worker()
+                worker = context._item_worker_task
+                assert worker is not None
+                await protocol.first_command_applied.wait()
+
+                # Native task closure rebuilds the feature mask after the
+                # first command applied but before its result reaches Python.
+                protocol.target_mask = 0
+                context._schedule_permanent_item_reconciliation_after_native_rebuild()
+                protocol.release_first_result.set()
+                await worker
+
+                self.assertEqual(protocol.results, [ProtocolResult.APPLIED] * 2)
+                self.assertEqual(protocol.target_mask, JETBOARD_TARGET_BIT)
+                self.assertFalse(context._item_reconcile_dirty)
+
+            asyncio.run(scenario())
+            session.close(clean=True)
 
     def test_rejection_requests_one_canonical_sync_across_index_zero_replay(
         self,
@@ -898,7 +975,7 @@ class ReceivedItemsLedgerTest(unittest.TestCase):
             asyncio.run(scenario())
             session.close(clean=True)
 
-    def test_diagnostic_overflow_reconciles_when_load_record_was_evicted(
+    def test_native_target_readback_repairs_unreported_task_mask_rebuild(
         self,
     ) -> None:
         descriptor = NativeSaveDescriptor(
@@ -907,7 +984,125 @@ class ReceivedItemsLedgerTest(unittest.TestCase):
             eligibility=NativeSaveEligibility.FRESH_UNPROGRESSED,
         )
         with TemporaryDirectory() as directory:
-            session = StateRepository(Path(directory)).open(descriptor)
+            session = StateRepository(Path(directory)).open(
+                descriptor, authenticated_slot()
+            )
+            received = apply_received_items_packet(
+                session.state, packet(0, (JETBOARD_ITEM_ID, 1, 1, 0))
+            ).state
+            session.commit(
+                mark_pending_items_applied(
+                    received,
+                    GameCommandReceipt(
+                        "earlier-session:1",
+                        "RECONCILE_PERMANENT_ITEMS",
+                        "APPLIED",
+                    ),
+                ),
+                category="permanent_items_applied",
+            )
+            protocol = NativeMaskProtocol(target_mask=JETBOARD_TARGET_BIT)
+            context = reconciliation_context(session, protocol)
+
+            async def scenario() -> None:
+                context._note_permanent_item_runtime(protocol.last_snapshot)
+                await context._item_worker_task
+                self.assertEqual(protocol.results, [ProtocolResult.ALREADY_APPLIED])
+
+                # A death/retry path can rebuild native features after the
+                # location event was already acknowledged. No new diagnostic
+                # event is available, so the next ordinary heartbeat must
+                # detect the ledger/native mismatch directly.
+                protocol.target_mask = 0
+                rebuilt_snapshot = replace(
+                    protocol.last_snapshot,
+                    snapshot_revision=protocol.last_snapshot.snapshot_revision + 1,
+                    permanent_item_native_target_mask=0,
+                    diagnostic_events=(),
+                )
+                protocol.last_snapshot = rebuilt_snapshot
+
+                context._note_permanent_item_runtime(rebuilt_snapshot)
+                await context._item_worker_task
+
+                self.assertEqual(
+                    protocol.results,
+                    [ProtocolResult.ALREADY_APPLIED, ProtocolResult.APPLIED],
+                )
+                self.assertEqual(protocol.target_mask, JETBOARD_TARGET_BIT)
+                self.assertEqual(
+                    protocol.last_snapshot.permanent_item_native_target_mask,
+                    JETBOARD_TARGET_BIT,
+                )
+
+            asyncio.run(scenario())
+            session.close(clean=True)
+
+    def test_shape_mismatch_snapshot_preserves_native_armor_across_client_restart(
+        self,
+    ) -> None:
+        descriptor = NativeSaveDescriptor(
+            slot=0,
+            identity=SAVE_ID,
+            eligibility=NativeSaveEligibility.FRESH_UNPROGRESSED,
+        )
+        with TemporaryDirectory() as directory:
+            session = StateRepository(Path(directory)).open(
+                descriptor, authenticated_slot()
+            )
+            protocol = NativeMaskProtocol(target_mask=ARMOR_STAGE_ONE_TARGET_BIT)
+            incompatible = replace(
+                protocol.last_snapshot,
+                safe_to_apply_permanent_item=False,
+                permanent_item_native_target_mask=-1,
+            )
+            protocol.last_snapshot = incompatible
+
+            async def scenario() -> None:
+                first_context = reconciliation_context(session, protocol)
+                first_context._note_permanent_item_runtime(incompatible)
+                await first_context._item_worker_task
+                self.assertEqual(protocol.results, [])
+                self.assertEqual(protocol.target_mask, ARMOR_STAGE_ONE_TARGET_BIT)
+
+                # A fresh client has no in-memory diagnostic latch. The GOAL
+                # snapshot sentinel must independently keep reconciliation
+                # suspended and retain the fail-open native reward.
+                restarted_context = reconciliation_context(session, protocol)
+                restarted_context._note_permanent_item_runtime(incompatible)
+                await restarted_context._item_worker_task
+                self.assertEqual(protocol.results, [])
+                self.assertEqual(protocol.target_mask, ARMOR_STAGE_ONE_TARGET_BIT)
+
+                # Once the audited source shape is restored, ordinary native
+                # readback resumes ledger-authoritative reconciliation.
+                compatible = replace(
+                    incompatible,
+                    snapshot_revision=incompatible.snapshot_revision + 1,
+                    safe_to_apply_permanent_item=True,
+                    permanent_item_native_target_mask=ARMOR_STAGE_ONE_TARGET_BIT,
+                )
+                protocol.last_snapshot = compatible
+                restarted_context._note_permanent_item_runtime(compatible)
+                await restarted_context._item_worker_task
+                self.assertEqual(protocol.results, [ProtocolResult.APPLIED])
+                self.assertEqual(protocol.target_mask, 0)
+
+            asyncio.run(scenario())
+            session.close(clean=True)
+
+    def test_native_readback_repairs_once_while_diagnostic_overflow_keeps_rising(
+        self,
+    ) -> None:
+        descriptor = NativeSaveDescriptor(
+            slot=0,
+            identity=SAVE_ID,
+            eligibility=NativeSaveEligibility.FRESH_UNPROGRESSED,
+        )
+        with TemporaryDirectory() as directory:
+            session = StateRepository(Path(directory)).open(
+                descriptor, authenticated_slot()
+            )
             received = apply_received_items_packet(
                 session.state, packet(0, (JETBOARD_ITEM_ID, 1, 1, 0))
             ).state
@@ -937,8 +1132,8 @@ class ReceivedItemsLedgerTest(unittest.TestCase):
                 self.assertEqual(protocol.results, [ProtocolResult.ALREADY_APPLIED])
 
                 # The bounded GOAL ring evicted the load-success record before the
-                # next heartbeat. Its increased dropped counter must conservatively
-                # invalidate the confirmed native projection.
+                # next heartbeat. Native target readback, not the dropped counter,
+                # remains the authoritative reconstruction signal.
                 protocol.target_mask = 0
                 overflow_snapshot = replace(
                     protocol.last_snapshot,
@@ -946,6 +1141,7 @@ class ReceivedItemsLedgerTest(unittest.TestCase):
                     diagnostic_dropped_count=1,
                     diagnostic_next_sequence=77,
                     diagnostic_events=(),
+                    permanent_item_native_target_mask=0,
                 )
                 protocol.last_snapshot = overflow_snapshot
 
@@ -958,9 +1154,21 @@ class ReceivedItemsLedgerTest(unittest.TestCase):
                 )
                 self.assertEqual(protocol.target_mask, JETBOARD_TARGET_BIT)
 
-                context._note_permanent_item_runtime(overflow_snapshot)
-                await context._item_worker_task
-                self.assertEqual(len(protocol.results), 2)
+                # A prolonged acknowledgement/writer failure can increase the
+                # dropped counter on every heartbeat. Once the native target is
+                # correct, those increments must not submit more commands.
+                for dropped_count in (2, 3, 4):
+                    rising_overflow = replace(
+                        protocol.last_snapshot,
+                        snapshot_revision=protocol.last_snapshot.snapshot_revision + 1,
+                        diagnostic_dropped_count=dropped_count,
+                        diagnostic_next_sequence=77 + dropped_count,
+                        diagnostic_events=(),
+                    )
+                    protocol.last_snapshot = rising_overflow
+                    context._note_permanent_item_runtime(rising_overflow)
+                    await context._item_worker_task
+                    self.assertEqual(len(protocol.results), 2)
 
             asyncio.run(scenario())
             session.close(clean=True)

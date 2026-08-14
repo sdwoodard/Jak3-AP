@@ -154,6 +154,9 @@ class BridgeSnapshot:
     game_integration_version: int = GAME_INTEGRATION_VERSION
     bridge_runtime_version: int = BRIDGE_RUNTIME_VERSION
     bridge_activation_generation: int = 1
+    items_module_active: bool = True
+    locations_module_active: bool = True
+    reward_module_active: bool = True
     state_schema_version: int = STATE_SCHEMA_VERSION
     slot_data_version: int = SLOT_DATA_VERSION
     item_table_version: int = ITEM_TABLE_VERSION
@@ -190,6 +193,7 @@ class BridgeSnapshot:
     level_transition: bool = False
     in_vehicle: bool = False
     safe_to_apply_permanent_item: bool = False
+    permanent_item_native_target_mask: int = -1
     safe_to_apply_consumable: bool = False
     safe_to_mutate_mission_state: bool = False
     test_target: bool = False
@@ -319,6 +323,7 @@ _INT_FIELDS = {
     "current_act",
     "current_task",
     "current_task_node",
+    "permanent_item_native_target_mask",
     "last_command_id",
     "last_command_kind",
     "last_command_result",
@@ -326,6 +331,9 @@ _INT_FIELDS = {
     "recent_command_count",
 }
 _BOOL_FIELDS = {
+    "items_module_active",
+    "locations_module_active",
+    "reward_module_active",
     "connection_ready",
     "game_running",
     "source_loaded",
@@ -477,6 +485,9 @@ def parse_snapshot_text(text: str) -> BridgeSnapshot | None:
             bridge_activation_generation=_parse_int(
                 values["bridge_activation_generation"]
             ),
+            items_module_active=_parse_bool(values["items_module_active"]),
+            locations_module_active=_parse_bool(values["locations_module_active"]),
+            reward_module_active=_parse_bool(values["reward_module_active"]),
             state_schema_version=_parse_int(values["state_schema_version"]),
             slot_data_version=_parse_int(values["slot_data_version"]),
             item_table_version=_parse_int(values["item_table_version"]),
@@ -517,6 +528,9 @@ def parse_snapshot_text(text: str) -> BridgeSnapshot | None:
             safe_to_apply_permanent_item=_parse_bool(
                 values["safe_to_apply_permanent_item"]
             ),
+            permanent_item_native_target_mask=_parse_int(
+                values["permanent_item_native_target_mask"]
+            ),
             safe_to_apply_consumable=_parse_bool(values["safe_to_apply_consumable"]),
             safe_to_mutate_mission_state=_parse_bool(
                 values["safe_to_mutate_mission_state"]
@@ -547,6 +561,8 @@ def parse_snapshot_text(text: str) -> BridgeSnapshot | None:
     if snapshot.native_save_slot not in (-1, 0, 1, 2, 3):
         return None
     if snapshot.current_act not in (0, 1, 2, 3):
+        return None
+    if not -1 <= snapshot.permanent_item_native_target_mask <= 7:
         return None
     if any(receipt.command_id < 0 for receipt in snapshot.recent_command_receipts):
         return None
@@ -592,6 +608,9 @@ def format_snapshot(snapshot: BridgeSnapshot) -> str:
         ("game_integration_version", snapshot.game_integration_version),
         ("bridge_runtime_version", snapshot.bridge_runtime_version),
         ("bridge_activation_generation", snapshot.bridge_activation_generation),
+        ("items_module_active", int(snapshot.items_module_active)),
+        ("locations_module_active", int(snapshot.locations_module_active)),
+        ("reward_module_active", int(snapshot.reward_module_active)),
         ("state_schema_version", snapshot.state_schema_version),
         ("slot_data_version", snapshot.slot_data_version),
         ("item_table_version", snapshot.item_table_version),
@@ -628,6 +647,10 @@ def format_snapshot(snapshot: BridgeSnapshot) -> str:
         ("level_transition", int(snapshot.level_transition)),
         ("in_vehicle", int(snapshot.in_vehicle)),
         ("safe_to_apply_permanent_item", int(snapshot.safe_to_apply_permanent_item)),
+        (
+            "permanent_item_native_target_mask",
+            snapshot.permanent_item_native_target_mask,
+        ),
         ("safe_to_apply_consumable", int(snapshot.safe_to_apply_consumable)),
         ("safe_to_mutate_mission_state", int(snapshot.safe_to_mutate_mission_state)),
         ("test_target", int(snapshot.test_target)),
@@ -698,6 +721,9 @@ def format_snapshot(snapshot: BridgeSnapshot) -> str:
 
 _EXPECTED_CONTRACT: tuple[tuple[str, int | str], ...] = (
     ("bridge_runtime_version", BRIDGE_RUNTIME_VERSION),
+    ("items_module_active", True),
+    ("locations_module_active", True),
+    ("reward_module_active", True),
     ("state_schema_version", STATE_SCHEMA_VERSION),
     ("slot_data_version", SLOT_DATA_VERSION),
     ("item_table_version", ITEM_TABLE_VERSION),

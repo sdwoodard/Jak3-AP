@@ -1,7 +1,7 @@
 """Archipelago client for the Protocol 3 Jak 3 bridge.
 
-Milestone 9 adds two finite persistent outgoing checks. Goals, reward
-suppression, consumables, and mission dispatch remain inactive.
+Milestone 10 joins the permanent-item ledger and durable location outbox for a
+small native gameplay slice. Consumables and mission dispatch remain inactive.
 """
 
 from __future__ import annotations
@@ -20,13 +20,17 @@ from typing import Any
 import CommonClient as common_client  # type: ignore[import-untyped]
 import colorama  # type: ignore[import-untyped]
 from CommonClient import ClientCommandProcessor, CommonContext, gui_enabled, server_loop
-from NetUtils import encode  # type: ignore[import-untyped]
+from NetUtils import ClientStatus as APClientStatus, encode  # type: ignore[import-untyped]
 
 from .agents.bridge_manifest import load_packaged_manifest
 from .agents.diagnostics import (
     GOAL_EVENT_REGISTRY,
     DiagnosticSession,
     GoalDiagnosticRecord,
+    REWARD_ITEM_GUARD_GOAL_CODE,
+    REWARD_NATIVE_PRESERVED_GOAL_CODE,
+    REWARD_PERMANENT_SUPPRESSED_GOAL_CODE,
+    REWARD_SHAPE_MISMATCH_GOAL_CODE,
     hash_identifier,
 )
 from .agents.launcher import (
@@ -53,9 +57,12 @@ from .agents.protocol import (
 from .agents.repl_client import OpenGoalRepl
 from .game_id import GAME_NAME
 from .location_outbox import (
-    DEBUG_LOCATION_ID,
+    ARTIFACT_RACE_LOCATION_ID,
+    FIRST_ARMOR_REWARD_LOCATION_ID,
     LOCATION_OBSERVED_GOAL_CODE,
+    LOCATION_NATIVE_NODE_IDS,
     LOCATION_RETRY_SECONDS,
+    LOCATION_SOURCE_CODES,
     LOCATION_SOURCES,
     LOCATION_TASK_IDS,
     LocationPacketError,
@@ -104,6 +111,22 @@ _PREVALIDATED_RECEIVED_ITEMS_KEY = "__jak3_prevalidated_received_items_packet"
 _PREVALIDATED_LOCATION_UPDATE_KEY = "__jak3_prevalidated_location_update"
 _COMMONCLIENT_PROCESS_SERVER_CMD = common_client.process_server_cmd
 _GOAL_NATIVE_OPERATION_LOAD = 2
+_MILESTONE_10_TEST_GOAL_ENV = "JAK3_AP_M10_TEST_GOAL"
+_MILESTONE_10_TEST_GOAL_VALUE = "task16"
+_MILESTONE_10_TEST_GOAL_LOCATIONS = frozenset(
+    (ARTIFACT_RACE_LOCATION_ID, FIRST_ARMOR_REWARD_LOCATION_ID)
+)
+
+
+def _parse_milestone_10_test_goal(value: str | None) -> bool:
+    if value is None:
+        return False
+    if value == _MILESTONE_10_TEST_GOAL_VALUE:
+        return True
+    raise ValueError(
+        f"{_MILESTONE_10_TEST_GOAL_ENV} must be unset or exactly "
+        f"{_MILESTONE_10_TEST_GOAL_VALUE!r}."
+    )
 
 
 async def _jak3_process_server_cmd(ctx: CommonContext, args: dict) -> None:
@@ -442,9 +465,11 @@ class Jak3Context(CommonContext):
         self._item_failure_projection: tuple[object, ...] | None = None
         self._item_rejection_projection: tuple[object, ...] | None = None
         self._item_native_load_projection: tuple[object, ...] | None = None
-        self._item_diagnostic_drop_projection: tuple[int | None, int] | None = None
         self._commonclient_received_item_count: int | None = None
         self._item_reconcile_dirty = False
+        self._item_native_rebuild_event_scope: tuple[object, ...] | None = None
+        self._item_native_rebuild_location_ids: set[int] = set()
+        self._item_native_rebuild_reward_sequence = -1
         self._item_recovery_pending = False
         self._location_read_only = False
         self._location_read_only_failure = ""
@@ -456,6 +481,13 @@ class Jak3Context(CommonContext):
         self._location_last_send_at = float("-inf")
         self._location_connection_generation = 0
         self._location_authenticated_server: object | None = None
+        self._temporary_test_goal_enabled = _parse_milestone_10_test_goal(
+            os.environ.get(_MILESTONE_10_TEST_GOAL_ENV)
+        )
+        self._goal_send_task: asyncio.Task | None = None
+        self._goal_sent_connection_generation: int | None = None
+        self._goal_last_send_projection: tuple[object, ...] | None = None
+        self._goal_last_send_at = float("-inf")
         # This state survives BridgeProtocol recreation so a reconnect cannot
         # mistake a restarted or reloaded GOAL diagnostic ring for duplicates.
         self._goal_source_state: dict[str, int] = {}
@@ -482,6 +514,13 @@ class Jak3Context(CommonContext):
             "game_attached": self.game_attached,
             "source_loaded": self.source_loaded,
             "bridge_ready": self.bridge_ready,
+            "items_module_active": (snapshot.items_module_active if snapshot else None),
+            "locations_module_active": (
+                snapshot.locations_module_active if snapshot else None
+            ),
+            "reward_module_active": (
+                snapshot.reward_module_active if snapshot else None
+            ),
             "client_status": self.client_status.name,
             "snapshot_revision": snapshot.snapshot_revision if snapshot else None,
             "game_status": snapshot.game_status.name if snapshot else None,
@@ -676,7 +715,7 @@ class Jak3Context(CommonContext):
         self._item_confirmed_projection = None
         self._item_queued_projection = None
         self._item_failure_projection = None
-        self._item_diagnostic_drop_projection = None
+        self._reset_permanent_item_rebuild_event_dedup()
         self._item_reconcile_dirty = True
         if session is not None:
             native_save_hash = hash_identifier(session.native_save.identity)
@@ -936,6 +975,7 @@ class Jak3Context(CommonContext):
                 ),
             )
         self._drain_location_server_updates()
+        self._refresh_temporary_goal_completion()
         self._pump_location_outbox("heartbeat")
         self._note_permanent_item_runtime(snapshot)
 
@@ -981,7 +1021,7 @@ class Jak3Context(CommonContext):
             )
 
     def _ensure_location_runtime(self) -> None:
-        """Initialize Milestone 9 fields for lightweight test contexts too."""
+        """Initialize location and test-goal fields for lightweight contexts."""
 
         defaults: dict[str, object] = {
             "_location_read_only": False,
@@ -998,6 +1038,16 @@ class Jak3Context(CommonContext):
         for name, value in defaults.items():
             if not hasattr(self, name):
                 setattr(self, name, value)
+        goal_defaults: dict[str, object] = {
+            "_temporary_test_goal_enabled": False,
+            "_goal_send_task": None,
+            "_goal_sent_connection_generation": None,
+            "_goal_last_send_projection": None,
+            "_goal_last_send_at": float("-inf"),
+        }
+        for name, value in goal_defaults.items():
+            if not hasattr(self, name):
+                setattr(self, name, value)
 
     def _invalidate_location_transport(self) -> None:
         """Invalidate every send captured for the prior AP connection."""
@@ -1007,9 +1057,15 @@ class Jak3Context(CommonContext):
         if task is not None and not task.done():
             task.cancel()
         self._location_send_task = None
+        goal_task = self._goal_send_task
+        if goal_task is not None and not goal_task.done():
+            goal_task.cancel()
+        self._goal_send_task = None
         self._location_connection_generation += 1
         self._location_authenticated_server = None
         self._location_last_send_projection = None
+        self._goal_sent_connection_generation = None
+        self._goal_last_send_projection = None
 
     def _activate_location_transport(self) -> None:
         """Authorize location sends only after a valid Connected packet."""
@@ -1026,6 +1082,214 @@ class Jak3Context(CommonContext):
             and server is self._location_authenticated_server
             and getattr(self, "authenticated_slot", None) is not None
             and not self._location_read_only
+        )
+
+    def _temporary_goal_state(self, state: PersistentState) -> PersistentState:
+        if (
+            self._temporary_test_goal_enabled
+            and not state.goal_completed
+            and _MILESTONE_10_TEST_GOAL_LOCATIONS <= set(state.checked_location_bits)
+        ):
+            return replace(state, goal_completed=True, goal_status_sent=False)
+        return state
+
+    def _emit_goal_event(
+        self,
+        event_name: str,
+        message: str,
+        *,
+        state: PersistentState,
+        outcome: str,
+        reason: str,
+        connection_generation: int | None = None,
+    ) -> None:
+        if connection_generation is None:
+            connection_generation = self._location_connection_generation
+        self.emit_diagnostic(
+            event_name,
+            message=message,
+            source_component="client",
+            correlation_id="temporary-goal:task16",
+            persistent_state_revision=state.state_revision,
+            context={
+                "connection_generation": connection_generation,
+                "location_ids": sorted(_MILESTONE_10_TEST_GOAL_LOCATIONS),
+                "outcome": outcome,
+                "reason": reason,
+                "revision": state.state_revision,
+                "status": int(APClientStatus.CLIENT_GOAL),
+                "task_id": 16,
+            },
+        )
+
+    def _refresh_temporary_goal_completion(self) -> None:
+        self._ensure_location_runtime()
+        if not self._temporary_test_goal_enabled:
+            return
+        session = self.state_session
+        if session is None or not session.state.is_bound:
+            return
+        replacement = self._temporary_goal_state(session.state)
+        if replacement != session.state:
+            try:
+                session.commit(replacement, category="temporary_goal_completed")
+            except StateError as exc:
+                self._emit_goal_event(
+                    "goal.status.failed",
+                    "Temporary goal completion could not be committed durably.",
+                    state=session.state,
+                    outcome="failed",
+                    reason=type(exc).__name__,
+                )
+                return
+            self._emit_goal_event(
+                "goal.completed",
+                "Milestone 10 temporary task-16 goal committed durably.",
+                state=session.state,
+                outcome="completed",
+                reason="task_and_reward_checked",
+            )
+        self._pump_temporary_goal_status("state_refresh")
+
+    def _temporary_goal_transport_ready(self) -> bool:
+        session = self.state_session
+        return bool(
+            self._temporary_test_goal_enabled
+            and session is not None
+            and session.state.is_bound
+            and session.state.goal_completed
+            and self._location_transport_ready()
+        )
+
+    def _pump_temporary_goal_status(self, reason: str) -> None:
+        self._ensure_location_runtime()
+        if not self._temporary_goal_transport_ready():
+            return
+        if (
+            self._goal_sent_connection_generation
+            == self._location_connection_generation
+        ):
+            return
+        task = self._goal_send_task
+        if task is not None and not task.done():
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        session = self.state_session
+        assert session is not None
+        projection = (
+            session.state.state_instance_id,
+            session.state.state_revision,
+            self._location_connection_generation,
+        )
+        now = monotonic()
+        if (
+            projection == self._goal_last_send_projection
+            and now - self._goal_last_send_at < LOCATION_RETRY_SECONDS
+        ):
+            return
+        self._goal_last_send_projection = projection
+        self._goal_last_send_at = now
+        self._emit_goal_event(
+            "goal.status.queued",
+            "Temporary goal status queued for the authenticated connection.",
+            state=session.state,
+            outcome="queued",
+            reason=reason,
+        )
+        self._goal_send_task = create_logged_task(
+            self._send_temporary_goal_status(projection),
+            "Milestone 10 temporary goal status",
+            getattr(self, "diagnostics", None),
+        )
+
+    async def _send_temporary_goal_status(self, projection: tuple[object, ...]) -> None:
+        session = self.state_session
+        if session is None or not self._temporary_goal_transport_ready():
+            return
+        current = (
+            session.state.state_instance_id,
+            session.state.state_revision,
+            self._location_connection_generation,
+        )
+        if current != projection:
+            return
+        server = getattr(self, "server", None)
+        socket = getattr(server, "socket", None)
+        if (
+            socket is None
+            or getattr(socket, "open", True) is False
+            or bool(getattr(socket, "closed", False))
+        ):
+            self._emit_goal_event(
+                "goal.status.failed",
+                "Temporary goal status send failed; it remains eligible for retry.",
+                state=session.state,
+                outcome="failed",
+                reason="transport_unavailable",
+            )
+            return
+        was_sent = session.state.goal_status_sent
+        sent_generation = projection[2]
+        if type(sent_generation) is not int:
+            return
+        try:
+            await socket.send(
+                encode(
+                    [
+                        {
+                            "cmd": "StatusUpdate",
+                            "status": APClientStatus.CLIENT_GOAL,
+                        }
+                    ]
+                )
+            )
+        except Exception as exc:
+            # WebSocket closures use websockets.exceptions.ConnectionClosed,
+            # which is not an OSError or the built-in ConnectionError. Keep
+            # every send-boundary failure in the structured goal event chain.
+            self._emit_goal_event(
+                "goal.status.failed",
+                "Temporary goal status send failed; it remains eligible for retry.",
+                state=session.state,
+                outcome="failed",
+                reason=type(exc).__name__,
+                connection_generation=sent_generation,
+            )
+            return
+        if (
+            self._location_connection_generation == sent_generation
+            and self._location_authenticated_server is server
+        ):
+            self._goal_sent_connection_generation = sent_generation
+        try:
+            if not session.state.goal_status_sent:
+                session.commit(
+                    replace(session.state, goal_status_sent=True),
+                    category="temporary_goal_status_sent",
+                )
+        except StateError as exc:
+            # The wire send already succeeded. Do not duplicate it on this
+            # authenticated connection merely because its durable audit flag
+            # could not be updated; reconnect/restart remains eligible.
+            self._emit_goal_event(
+                "goal.status.failed",
+                "Temporary goal status sent, but its durable sent flag could not be committed.",
+                state=session.state,
+                outcome="sent_persistence_failed",
+                reason=type(exc).__name__,
+                connection_generation=sent_generation,
+            )
+            return
+        self._emit_goal_event(
+            "goal.status.resent" if was_sent else "goal.status.sent",
+            "Temporary goal status sent for the authenticated connection.",
+            state=session.state,
+            outcome="resent" if was_sent else "sent",
+            reason="authenticated_connection",
+            connection_generation=sent_generation,
         )
 
     def _current_location_projection(
@@ -1133,6 +1397,7 @@ class Jak3Context(CommonContext):
         location_ids: tuple[int, ...] | None = None,
         task_id: int | None = None,
         task_ids: tuple[int, ...] | None = None,
+        reward_node_id: int | None = None,
         source: str,
         outcome: str,
         reason: str | None = None,
@@ -1154,6 +1419,8 @@ class Jak3Context(CommonContext):
             context["task_id"] = task_id
         if task_ids is not None:
             context["task_ids"] = list(task_ids)
+        if reward_node_id is not None:
+            context["reward_node_id"] = reward_node_id
         if batch_id is not None:
             context["batch_id"] = batch_id
         if type(revision) is int:
@@ -1177,9 +1444,13 @@ class Jak3Context(CommonContext):
     ) -> tuple[tuple[int, ...], tuple[int, ...]]:
         normalized = tuple(sorted(set(location_ids)))
         task_ids = tuple(
-            LOCATION_TASK_IDS[location_id]
-            for location_id in normalized
-            if location_id in LOCATION_TASK_IDS
+            sorted(
+                {
+                    LOCATION_TASK_IDS[location_id]
+                    for location_id in normalized
+                    if location_id in LOCATION_TASK_IDS
+                }
+            )
         )
         return normalized, task_ids
 
@@ -1273,14 +1544,17 @@ class Jak3Context(CommonContext):
         location_id = record.correlation_value
         task_id = record.arg0
         source_code = record.arg1
+        native_node_id = record.arg2
         expected_task = LOCATION_TASK_IDS.get(location_id)
-        expected_source_code = 1 if location_id == DEBUG_LOCATION_ID else 0
+        expected_source_code = LOCATION_SOURCE_CODES.get(location_id)
+        expected_native_node_id = LOCATION_NATIVE_NODE_IDS.get(location_id)
         if (
             record.event_code != LOCATION_OBSERVED_GOAL_CODE
             or record.correlation_kind != 3
             or expected_task is None
             or task_id != expected_task
             or source_code != expected_source_code
+            or native_node_id != expected_native_node_id
         ):
             error = LocationPacketError("Malformed GOAL location observation.")
             self._reject_location_update(error, source="goal")
@@ -1294,9 +1568,18 @@ class Jak3Context(CommonContext):
             )
         source = LOCATION_SOURCES[location_id]
         transition = observe_local_location(session.state, location_id)
-        if transition.changed:
+        next_state = self._temporary_goal_state(transition.state)
+        goal_changed = next_state.goal_completed != session.state.goal_completed
+        if next_state != session.state:
             try:
-                session.commit(transition.state, category="location_observed")
+                session.commit(
+                    next_state,
+                    category=(
+                        "location_observed_goal_completed"
+                        if goal_changed
+                        else "location_observed"
+                    ),
+                )
             except StateError as exc:
                 self._location_read_only = True
                 self._location_read_only_failure = str(exc)
@@ -1305,19 +1588,22 @@ class Jak3Context(CommonContext):
                     "Local location observation could not be committed durably.",
                     location_id=location_id,
                     task_id=task_id,
+                    reward_node_id=(native_node_id or None),
                     source=source,
                     outcome="rejected",
                     reason=type(exc).__name__,
                     state=session.state,
                 )
                 raise
-            committed = session.state
-            batch_id = diagnostic_batch_id(committed)
+        committed = session.state
+        batch_id = diagnostic_batch_id(committed)
+        if transition.changed:
             self._emit_location_event(
                 "location.committed_local",
                 "Local location completion was committed durably.",
                 location_id=location_id,
                 task_id=task_id,
+                reward_node_id=(native_node_id or None),
                 source=source,
                 outcome="committed",
                 reason="first_observation",
@@ -1329,41 +1615,110 @@ class Jak3Context(CommonContext):
                 "Durable location check was added to the outgoing outbox.",
                 location_id=location_id,
                 task_id=task_id,
+                reward_node_id=(native_node_id or None),
                 source=source,
                 outcome="pending",
                 reason="awaiting_server_confirmation",
                 state=committed,
                 batch_id=batch_id,
             )
-            self._pump_location_outbox("local_observation")
             outcome = "committed"
             reason = "first_observation"
         else:
-            committed = session.state
-            batch_id = diagnostic_batch_id(committed)
             self._emit_location_event(
                 "location.duplicate_ignored",
                 "Duplicate local location observation was ignored idempotently.",
                 location_id=location_id,
                 task_id=task_id,
+                reward_node_id=(native_node_id or None),
                 source=source,
                 outcome="duplicate",
                 reason="already_checked",
                 state=committed,
                 batch_id=batch_id,
             )
-            self._pump_location_outbox("duplicate_observation")
             outcome = "duplicate"
             reason = "already_checked"
+        if goal_changed:
+            self._emit_goal_event(
+                "goal.completed",
+                "Milestone 10 temporary task-16 goal committed durably.",
+                state=committed,
+                outcome="completed",
+                reason="task_and_reward_checked",
+            )
+        self._pump_location_outbox(
+            "local_observation" if transition.changed else "duplicate_observation"
+        )
+        self._pump_temporary_goal_status("local_observation")
         return {
             "location_id": location_id,
             "task_id": task_id,
+            "reward_node_id": native_node_id or None,
             "batch_id": batch_id,
             "revision": committed.state_revision,
             "source": source,
             "outcome": outcome,
             "reason": reason,
         }
+
+    def _schedule_permanent_item_reconciliation_after_native_rebuild(self) -> None:
+        """Reapply ledger-owned items after native task commands rebuild features."""
+
+        self._ensure_item_runtime()
+        session = self.state_session
+        if session is None or not session.state.is_bound:
+            return
+        self._item_native_rebuild_generation += 1
+        self._item_reconcile_dirty = True
+        self._item_failure_projection = None
+        self._schedule_item_worker()
+
+    def _reset_permanent_item_rebuild_event_dedup(self) -> None:
+        """Forget rebuild observations when their state or GOAL source is replaced."""
+
+        self._ensure_item_runtime()
+        self._item_native_rebuild_event_scope = None
+        self._item_native_rebuild_location_ids.clear()
+        self._item_native_rebuild_reward_sequence = -1
+
+    def _schedule_permanent_item_reconciliation_for_goal_event(
+        self, record: GoalDiagnosticRecord
+    ) -> None:
+        """Invalidate item state once for each native rebuild observation."""
+
+        self._ensure_item_runtime()
+        session = self.state_session
+        if session is None or not session.state.is_bound:
+            return
+        goal_source_state = getattr(self, "_goal_source_state", {})
+        activation_generation = (
+            goal_source_state.get("activation_generation")
+            if isinstance(goal_source_state, dict)
+            else None
+        )
+        scope = (
+            session.state.state_instance_id,
+            id(session),
+            activation_generation,
+        )
+        if scope != self._item_native_rebuild_event_scope:
+            self._item_native_rebuild_event_scope = scope
+            self._item_native_rebuild_location_ids.clear()
+            self._item_native_rebuild_reward_sequence = -1
+
+        if record.event_code == LOCATION_OBSERVED_GOAL_CODE:
+            location_id = record.correlation_value
+            if location_id in self._item_native_rebuild_location_ids:
+                return
+            self._item_native_rebuild_location_ids.add(location_id)
+        else:
+            # Reward-decision records are emitted once per native evaluator
+            # invocation but remain in the GOAL ring until acknowledgement.
+            if record.source_sequence <= self._item_native_rebuild_reward_sequence:
+                return
+            self._item_native_rebuild_reward_sequence = record.source_sequence
+        self._schedule_permanent_item_reconciliation_after_native_rebuild()
 
     def _ingest_goal_events(
         self, records: tuple[GoalDiagnosticRecord, ...], dropped: int
@@ -1379,6 +1734,39 @@ class Jak3Context(CommonContext):
                 except (StateError, ValueError):
                     break
                 enrichments[record.source_sequence] = enrichment
+                # Native task-node closure rebuilds the feature mask before
+                # this durable observation reaches Python. Reconcile the AP
+                # ledger even when the last target was already confirmed.
+                self._schedule_permanent_item_reconciliation_for_goal_event(record)
+            elif record.event_code in {
+                REWARD_NATIVE_PRESERVED_GOAL_CODE,
+                REWARD_PERMANENT_SUPPRESSED_GOAL_CODE,
+                REWARD_SHAPE_MISMATCH_GOAL_CODE,
+            }:
+                decisions = {
+                    REWARD_NATIVE_PRESERVED_GOAL_CODE: "native_preserved",
+                    REWARD_PERMANENT_SUPPRESSED_GOAL_CODE: "armor_suppressed",
+                    REWARD_SHAPE_MISMATCH_GOAL_CODE: "shape_mismatch_native_preserved",
+                }
+                enrichments[record.source_sequence] = {
+                    "task_id": record.arg0,
+                    "reward_node_id": record.arg1,
+                    "decision": decisions[record.event_code],
+                    "outcome": (
+                        "incompatible"
+                        if record.event_code == REWARD_SHAPE_MISMATCH_GOAL_CODE
+                        else "completed"
+                    ),
+                }
+                if record.event_code != REWARD_SHAPE_MISMATCH_GOAL_CODE:
+                    self._schedule_permanent_item_reconciliation_for_goal_event(record)
+            elif record.event_code == REWARD_ITEM_GUARD_GOAL_CODE:
+                enrichments[record.source_sequence] = {
+                    "target_mask": record.arg0,
+                    "ap_applying_item": bool(record.arg1),
+                    "decision": "item_application_guarded",
+                    "outcome": "active",
+                }
             safe_records.append(record)
         ingest = getattr(self.diagnostics, "ingest_goal_events", None)
         if not callable(ingest):
@@ -1543,12 +1931,19 @@ class Jak3Context(CommonContext):
             "_item_failure_projection",
             "_item_rejection_projection",
             "_item_native_load_projection",
-            "_item_diagnostic_drop_projection",
         ):
             if not hasattr(self, name):
                 setattr(self, name, None)
         if not hasattr(self, "_item_reconcile_dirty"):
             self._item_reconcile_dirty = False
+        if not hasattr(self, "_item_native_rebuild_generation"):
+            self._item_native_rebuild_generation = 0
+        if not hasattr(self, "_item_native_rebuild_event_scope"):
+            self._item_native_rebuild_event_scope = None
+        if not hasattr(self, "_item_native_rebuild_location_ids"):
+            self._item_native_rebuild_location_ids = set()
+        if not hasattr(self, "_item_native_rebuild_reward_sequence"):
+            self._item_native_rebuild_reward_sequence = -1
         if not hasattr(self, "_item_recovery_pending"):
             self._item_recovery_pending = False
         if not hasattr(self, "_commonclient_received_item_count"):
@@ -1566,23 +1961,19 @@ class Jak3Context(CommonContext):
         )
         if native_load_projection is not None:
             self._item_native_load_projection = native_load_projection
-        diagnostic_drop_projection = (
-            snapshot.diagnostic_activation_generation,
-            snapshot.diagnostic_dropped_count,
+        # Diagnostic loss is not itself a native reconstruction boundary. A
+        # location awaiting acknowledgement can keep republishing into the
+        # bounded GOAL ring, so treating every dropped-count increment as a
+        # rebuild would issue command 102 forever during a diagnostic outage.
+        # The exported native target below is the authoritative recovery path
+        # when the specific load/reward record was evicted.
+        reconstruction_boundary = native_load_completed
+        target_mask = permanent_item_target_mask(session.state)
+        native_target_mismatch = (
+            session.state.is_bound
+            and snapshot.permanent_item_native_target_mask >= 0
+            and snapshot.permanent_item_native_target_mask != target_mask
         )
-        previous_drop_projection = self._item_diagnostic_drop_projection
-        diagnostic_loss_detected = previous_drop_projection is not None and (
-            (
-                diagnostic_drop_projection[0] == previous_drop_projection[0]
-                and diagnostic_drop_projection[1] > previous_drop_projection[1]
-            )
-            or (
-                diagnostic_drop_projection[0] != previous_drop_projection[0]
-                and diagnostic_drop_projection[1] > 0
-            )
-        )
-        self._item_diagnostic_drop_projection = diagnostic_drop_projection
-        reconstruction_boundary = native_load_completed or diagnostic_loss_detected
         projection = (
             session.state.state_instance_id,
             id(session),
@@ -1598,9 +1989,19 @@ class Jak3Context(CommonContext):
             and not bool(previous[5])
             and snapshot.safe_to_apply_permanent_item
         )
-        if lifecycle_changed or became_safe or reconstruction_boundary:
+        if (
+            lifecycle_changed
+            or became_safe
+            or reconstruction_boundary
+            or native_target_mismatch
+        ):
             self._item_reconcile_dirty = True
             self._item_failure_projection = None
+        if native_target_mismatch:
+            # Native update-task-masks calls can occur entirely between two
+            # one-shot location observations. The exported readback makes each
+            # heartbeat an independent integrity check against the AP ledger.
+            self._item_confirmed_projection = None
         if lifecycle_changed or reconstruction_boundary:
             self._item_confirmed_projection = None
             self._item_queued_projection = None
@@ -1614,7 +2015,7 @@ class Jak3Context(CommonContext):
                     "Permanent-item recovery started from the durable ledger.",
                     snapshot=snapshot,
                     revision=session.state.state_revision,
-                    target_mask=permanent_item_target_mask(session.state),
+                    target_mask=target_mask,
                     outcome="started",
                 )
             if (
@@ -1797,7 +2198,14 @@ class Jak3Context(CommonContext):
                     ):
                         return
                     continue
+                rebuild_generation = self._item_native_rebuild_generation
                 await self._reconcile_permanent_items(session)
+                if rebuild_generation != self._item_native_rebuild_generation:
+                    # A task-mask rebuild raced an older command result. The
+                    # older result cannot confirm the post-rebuild target.
+                    self._item_reconcile_dirty = True
+                    self._item_failure_projection = None
+                    continue
                 return
 
     async def _commit_received_items_packet(
@@ -2074,10 +2482,6 @@ class Jak3Context(CommonContext):
                     },
                 )
             self._item_confirmed_projection = projection
-            self._item_diagnostic_drop_projection = (
-                result_snapshot.diagnostic_activation_generation,
-                result_snapshot.diagnostic_dropped_count,
-            )
             self._item_reconcile_dirty = False
             self._item_failure_projection = None
             self._emit_item_event(
@@ -2343,7 +2747,9 @@ class Jak3Context(CommonContext):
             if self.state_session is not None:
                 self._request_item_sync_once("server_reconnect")
                 self._schedule_item_worker()
+            self._refresh_temporary_goal_completion()
             self._pump_location_outbox("server_reconnect")
+            self._pump_temporary_goal_status("server_reconnect")
         elif cmd == "RoomUpdate":
             self._queue_server_location_update(args)
         elif cmd == "ReceivedItems":
@@ -2518,6 +2924,7 @@ class Jak3Context(CommonContext):
                 except BaseException:
                     return False
             goal_source_state.clear()
+            self._reset_permanent_item_rebuild_event_dedup()
             return True
 
         async def load_runtime_modules(

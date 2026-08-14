@@ -44,6 +44,7 @@
 (defun ap-items-reconcile-native-target! ((command-id int) (target-mask int))
   (let ((before (ap-items-native-target-mask))
         (result AP-RESULT-FAILED))
+    (*ap3-item-application-begin-hook* command-id target-mask)
     (cond
       ((or (< target-mask 0) (> target-mask AP-ITEM-TARGET-MASK))
        (ap-diagnostic-emit! AP-DIAG-EVENT-ITEM-NATIVE-TARGET-FAILED
@@ -68,8 +69,11 @@
                             AP-RESULT-FAILED AP-ERROR-INTERNAL-FAILURE
                             target-mask before
                             (ap-items-native-target-mask))))
+    (*ap3-item-application-end-hook* command-id target-mask)
     result))
 
 (set! *ap3-permanent-items-reconcile-hook* ap-items-reconcile-native-target!)
+(set! *ap3-permanent-items-native-target-hook* ap-items-native-target-mask)
+(set! *ap3-items-module-active* 1)
 (format #t "[JAK3-AP] permanent items initialized target-mask=~D~%"
         (ap-items-native-target-mask))

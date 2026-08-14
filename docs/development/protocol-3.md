@@ -37,13 +37,16 @@ the GOAL ring ignores a delayed acknowledgement for any earlier generation.
 
 Bridge installation, compilation, and load order are declared by
 `mod/opengoal/bridge-modules.json` version 1. The startup overlay loads before
-`mi`; `archipelago.o`, `archipelago-diagnostics.o`, and
-`archipelago-items.o` are registered immediately after `task-control.o` in
+`mi`; `archipelago.o`, `archipelago-diagnostics.o`,
+`archipelago-items.o`, `archipelago-locations.o`, and
+`archipelago-rewards.o` are registered immediately after `task-control.o` in
 that order. The canonical source-set SHA-256 covers the
 raw manifest plus each declared payload digest in manifest order, so changing
 either the manifest bytes or any declared source retains the reload marker
 until the control and diagnostics modules publish new compatible activation
-generations after the complete manifest-ordered load. Packaging rejects
+generations and the items, locations, and reward modules publish their
+individual activation proofs after the complete manifest-ordered load.
+Packaging rejects
 undeclared matching bridge sources recursively,
 not only at the expected asset-directory depth.
 
@@ -125,6 +128,34 @@ state schema, public location tables, or existing command/result/error
 meanings. Location confirmation comes only from authoritative
 `Connected.checked_locations` and `RoomUpdate.checked_locations`; a successful
 `LocationChecks` send is never treated as an acknowledgement.
+
+Bridge runtime version 5 adds the Milestone 10 order-60 reward module, expands
+the existing observer to tasks 10–16 plus persistent reward node 36, and adds
+narrow reward-observation and item-application-guard hooks. Every required
+snapshot includes `items_module_active`, `locations_module_active`, and
+`reward_module_active`; control resets all three to zero and each ordered
+gameplay module sets only its own proof after installing all of its hooks (and
+method 13 for rewards). Python rejects any inactive value both when probing an
+existing bridge and when verifying a live reload, so an nREPL completion
+barrier cannot masquerade as a complete gameplay-module activation. The reward
+wrapper also requires all three proofs in its bound-mode predicate, preserving
+the complete native grant during any partial-load interval. The
+snapshot also exports the actual
+three-bit permanent-item native target, or `-1` until the ordered items module
+installs its readback hook. Python compares
+that value with the bound durable ledger on every heartbeat and schedules safe
+target-state reconciliation on any mismatch; correctness therefore does not
+depend on a task/reward observation remaining available after acknowledgement.
+The same `-1` sentinel is retained while reward node 36 has an incompatible
+native command shape. A reward-owned safety hook also reports permanent-item
+application as unsafe and rejects command 102 at dispatch time, preventing a
+stale or restarted client from clearing the fail-open native Armor grant.
+The exact task-16
+wrapper preserves native behavior unless the save is bound in AP mode and the
+audited command shape is still `add-jakc`, `add-armor-0`; only then does it
+preserve Jak C and omit Armor 1. The development-only task-16 `StatusUpdate`
+gate is Python-owned and does not alter Protocol 3, integration 2, state schema
+1, slot-data version 2, public tables/hashes, or the task-72 goal.
 
 Permanent/test mutation is safe only with a compatible, loaded, bound native
 save during stable on-foot gameplay. Title, load, movie, death, resetter,

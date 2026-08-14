@@ -74,11 +74,14 @@ Useful recovery commands in Jak 3 Client are:
 - `/repl status` — show transport, source, versions, session, and heartbeat.
 - `/repl connect` — retry compilation and bridge attachment.
 
-Protocol 3 does not start missions, report victory, suppress rewards, or show
-item messages. The current runtime applies only the Milestone 8 Jetboard,
-Blaster stage-1, and Armor stage-1 targets, and submits only task 10 plus the
-nREPL-only task-11 debug check through the Milestone 9 durable outbox. Other
-inventory, locations, and additive effects remain disabled.
+Protocol 3 does not start missions, report the ordinary task-72 victory, or
+show item messages. The current runtime applies only Jetboard, Blaster stage
+1, and Armor stage 1; submits task checks 10–16 plus reward `743020036`; and in
+bound AP mode suppresses only task 16's native Armor 1 while preserving Jak C.
+AP-off and unbound play retain the full native reward. Other inventory,
+locations, rewards, and additive effects remain disabled. The internal
+`JAK3_AP_M10_TEST_GOAL=task16` fixture is development-only and its save/sidecar
+must never be reused for an ordinary seed.
 
 ## AP state backups and save copies
 

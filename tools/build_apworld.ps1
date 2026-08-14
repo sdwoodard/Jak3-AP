@@ -79,7 +79,8 @@ $expectedModules = @(
     @{ name = "control"; order = 20; phase = "bridge"; source = "goal_src/jak3/pc/features/archipelago.gc"; resource = "assets/opengoal/archipelago.gc"; destination = "goal_src/jak3/pc/features/archipelago.gc"; object = "archipelago.o" },
     @{ name = "diagnostics"; order = 30; phase = "bridge"; source = "goal_src/jak3/pc/features/archipelago-diagnostics.gc"; resource = "assets/opengoal/archipelago-diagnostics.gc"; destination = "goal_src/jak3/pc/features/archipelago-diagnostics.gc"; object = "archipelago-diagnostics.o" },
     @{ name = "items"; order = 40; phase = "bridge"; source = "goal_src/jak3/pc/features/archipelago-items.gc"; resource = "assets/opengoal/archipelago-items.gc"; destination = "goal_src/jak3/pc/features/archipelago-items.gc"; object = "archipelago-items.o" },
-    @{ name = "locations"; order = 50; phase = "bridge"; source = "goal_src/jak3/pc/features/archipelago-locations.gc"; resource = "assets/opengoal/archipelago-locations.gc"; destination = "goal_src/jak3/pc/features/archipelago-locations.gc"; object = "archipelago-locations.o" }
+    @{ name = "locations"; order = 50; phase = "bridge"; source = "goal_src/jak3/pc/features/archipelago-locations.gc"; resource = "assets/opengoal/archipelago-locations.gc"; destination = "goal_src/jak3/pc/features/archipelago-locations.gc"; object = "archipelago-locations.o" },
+    @{ name = "rewards"; order = 60; phase = "bridge"; source = "goal_src/jak3/pc/features/archipelago-rewards.gc"; resource = "assets/opengoal/archipelago-rewards.gc"; destination = "goal_src/jak3/pc/features/archipelago-rewards.gc"; object = "archipelago-rewards.o" }
 )
 $declaredBridgeModules = @($bridgeManifest.modules)
 foreach ($module in $declaredBridgeModules) {
@@ -306,6 +307,7 @@ try {
         "jak3/assets/opengoal/archipelago-diagnostics.gc",
         "jak3/assets/opengoal/archipelago-items.gc",
         "jak3/assets/opengoal/archipelago-locations.gc",
+        "jak3/assets/opengoal/archipelago-rewards.gc",
         "jak3/icons/jak3-logo.png"
     )
     foreach ($requiredEntry in $requiredEntries) {

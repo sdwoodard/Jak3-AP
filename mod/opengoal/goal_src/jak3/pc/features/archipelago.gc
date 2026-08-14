@@ -4,7 +4,7 @@
 
 (defconstant AP-PROTOCOL-VERSION 3)
 (defconstant AP-GAME-INTEGRATION-VERSION 2)
-(defconstant AP-BRIDGE-RUNTIME-VERSION 4)
+(defconstant AP-BRIDGE-RUNTIME-VERSION 5)
 (defconstant AP-SLOT-DATA-VERSION 2)
 (defconstant AP-STATE-SCHEMA-VERSION 1)
 (defconstant AP-ITEM-TABLE-VERSION 2)
@@ -106,6 +106,10 @@
 (defconstant AP-DIAG-EVENT-ITEM-NATIVE-TARGET-ALREADY-CORRECT 501)
 (defconstant AP-DIAG-EVENT-ITEM-NATIVE-TARGET-FAILED 502)
 (defconstant AP-DIAG-EVENT-LOCATION-OBSERVED 600)
+(defconstant AP-DIAG-EVENT-REWARD-NATIVE-PRESERVED 700)
+(defconstant AP-DIAG-EVENT-REWARD-PERMANENT-SUPPRESSED 701)
+(defconstant AP-DIAG-EVENT-REWARD-SHAPE-MISMATCH 702)
+(defconstant AP-DIAG-EVENT-REWARD-ITEM-GUARD 703)
 (defconstant AP-DIAG-NATIVE-OP-NONE 0)
 (defconstant AP-DIAG-NATIVE-OP-SAVE 1)
 (defconstant AP-DIAG-NATIVE-OP-LOAD 2)
@@ -279,14 +283,41 @@
 (define *ap3-locations-observe-hook* ap3-locations-noop-observe)
 (define *ap3-locations-ack-hook* ap3-locations-noop-ack)
 
+(defun ap3-reward-location-noop-observe ((native-node-id int)) 0)
+(define *ap3-reward-location-observe-hook*
+  ap3-reward-location-noop-observe)
+
+(defun ap3-reward-location-noop-recovery-eligible? ((native-node-id int)) #f)
+(define *ap3-reward-location-recovery-eligible-hook*
+  ap3-reward-location-noop-recovery-eligible?)
+
+(defun ap3-item-application-noop ((command-id int) (target-mask int)) 0)
+(define *ap3-item-application-begin-hook* ap3-item-application-noop)
+(define *ap3-item-application-end-hook* ap3-item-application-noop)
+
+;; Control is loaded before every gameplay sibling. Keep each proof false until
+;; that module has installed all of its hooks from the same ordered source load.
+;; Python requires the complete items/locations/rewards proof before binding.
+(define *ap3-items-module-active* 0)
+(define *ap3-locations-module-active* 0)
+(define *ap3-reward-module-active* 0)
+
 (defun ap3-permanent-items-noop-reconcile ((command-id int)
                                             (target-mask int))
   AP-RESULT-FAILED)
+
+(defun ap3-permanent-items-noop-native-target () -1)
+
+(defun ap3-permanent-items-noop-reconciliation-suspended? () #t)
 
 ;; Reloading control installs a safe failure hook. The manifest-ordered items
 ;; module replaces it only after all native item functions compile and load.
 (define *ap3-permanent-items-reconcile-hook*
   ap3-permanent-items-noop-reconcile)
+(define *ap3-permanent-items-native-target-hook*
+  ap3-permanent-items-noop-native-target)
+(define *ap3-permanent-items-reconciliation-suspended-hook*
+  ap3-permanent-items-noop-reconciliation-suspended?)
 
 (defmacro ap-diagnostic-emit! (event-code severity
                                correlation-kind correlation-value
@@ -879,13 +910,18 @@
   (*ap3-locations-observe-hook*)
   (+! (-> *ap-runtime* snapshot-revision) 1)
   (let ((file (new 'stack 'file-stream *ap3-state-path* 'write))
-        (revision (-> *ap-runtime* snapshot-revision)))
+        (revision (-> *ap-runtime* snapshot-revision))
+        (permanent-reconciliation-suspended
+          (*ap3-permanent-items-reconciliation-suspended-hook*)))
     (format file "snapshot_begin ~D~%" revision)
     (format file "protocol_version ~D~%" AP-PROTOCOL-VERSION)
     (format file "game_integration_version ~D~%" AP-GAME-INTEGRATION-VERSION)
     (format file "bridge_runtime_version ~D~%" AP-BRIDGE-RUNTIME-VERSION)
     (format file "bridge_activation_generation ~D~%"
             *ap3-activation-generation*)
+    (format file "items_module_active ~D~%" *ap3-items-module-active*)
+    (format file "locations_module_active ~D~%" *ap3-locations-module-active*)
+    (format file "reward_module_active ~D~%" *ap3-reward-module-active*)
     (format file "state_schema_version ~D~%" AP-STATE-SCHEMA-VERSION)
     (format file "slot_data_version ~D~%" AP-SLOT-DATA-VERSION)
     (format file "item_table_version ~D~%" AP-ITEM-TABLE-VERSION)
@@ -924,7 +960,13 @@
     (format file "level_transition ~D~%" (-> *ap-runtime* level-transition))
     (format file "in_vehicle ~D~%" (-> *ap-runtime* in-vehicle))
     (format file "safe_to_apply_permanent_item ~D~%"
-            (-> *ap-runtime* safe-permanent))
+            (if permanent-reconciliation-suspended
+                0
+                (-> *ap-runtime* safe-permanent)))
+    (format file "permanent_item_native_target_mask ~D~%"
+            (if permanent-reconciliation-suspended
+                -1
+                (*ap3-permanent-items-native-target-hook*)))
     (format file "safe_to_apply_consumable ~D~%" (-> *ap-runtime* safe-consumable))
     (format file "safe_to_mutate_mission_state ~D~%" (-> *ap-runtime* safe-mission))
     (format file "test_target ~D~%" (-> *ap-runtime* test-target))
@@ -1250,6 +1292,15 @@
        (set! result AP-RESULT-UNSAFE-NOW)
        (set! error AP-ERROR-AP-STATE-NOT-BOUND)
        (set! message "ap-state-not-bound")
+       (ap3-record-receipt! command-id kind payload result error))
+      ((and (= kind AP-COMMAND-RECONCILE-PERMANENT-ITEMS)
+            (*ap3-permanent-items-reconciliation-suspended-hook*))
+       ;; A reward compatibility mismatch is fail-open for the native grant.
+       ;; Reject ledger reconciliation until the audited shape is restored so
+       ;; no stale snapshot or in-flight client can erase that native state.
+       (set! result AP-RESULT-UNSAFE-NOW)
+       (set! error AP-ERROR-UNSAFE-GAME-STATE)
+       (set! message "reward-shape-incompatible")
        (ap3-record-receipt! command-id kind payload result error))
       ((zero? (-> *ap-runtime* safe-permanent))
        (set! result AP-RESULT-UNSAFE-NOW)

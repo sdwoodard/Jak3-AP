@@ -120,11 +120,33 @@ Owners are deliberately role-based until maintainers assign people.
   for Jetboard, Blaster stage 1, and Armor stage 1, and reconstructs those exact
   native targets after receipt/replay/restart boundaries. Both persistence-
   before-application crash windows and native target idempotence are automated.
-  Native reward interception and the remaining permanent item table are still
-  absent, so this risk remains open.
+  Milestone 10 adds one source-audited interception: task-16 node 36 must still
+  contain exactly `add-jakc` then `add-armor-0`. Bound AP mode preserves Jak C,
+  publishes reward location `743020036`, and omits only Armor 1. Unbound/AP-off,
+  item-application guard, and command-shape mismatch paths preserve the complete
+  native evaluator. Compatible durable task or reward observations reschedule
+  ledger reconciliation after the associated native task-mask rebuild, even
+  when the same target projection was previously confirmed. Independently,
+  every bridge heartbeat exports the actual three-bit native target; Python
+  compares it to the bound ledger and repairs any mismatch at the next safe
+  opportunity. This closes event-free death/retry rebuilds after a location
+  observation has already been acknowledged. While the audited reward shape is
+  incompatible, a reward-owned control-plane safety hook exports native target
+  `-1`, marks permanent reconciliation unsafe, and rejects stale or in-flight
+  reconciliation commands before mutation. The native Armor fallback therefore
+  remains intact across client/game restarts until the audited shape is restored.
+  Persistent recovery emits one compatibility diagnostic per bound
+  shape-mismatch episode, including after a pre-bind native replay. The same
+  suspension predicate masks the permanent-item bit in GOAL runtime-safety
+  diagnostics. Exact-source official-v0.3.5 compile and attached ordered load
+  pass, but the
+  live bound reward/save/death/replay matrix has not been completed. The
+  remaining permanent reward table is still absent, so this risk remains open.
 - Mitigation: Intercept only audited permanent grants; leave task, dialogue,
   cutscene, and presentation behavior intact; reconcile native state from the
-  AP ledger after every reconstruction boundary.
+  AP ledger after every compatible reconstruction boundary and every
+  heartbeat-observed native-target mismatch; suspend AP mutation while a native
+  reward shape is incompatible.
 - Exit criteria: Every default item/reward passes first receipt, duplicate,
   cap, save/load, native reconstruction, replay, and closure tests.
 
@@ -154,15 +176,21 @@ Owners are deliberately role-based until maintainers assign people.
   durably commits the approved permanent slice before native application,
   handles exact duplicates/gaps/index-zero replacement, and retries pending
   target reconciliation after client/game/process recovery. Automated tests
-  cover both crash windows. Milestone 9 adds the task-10 durable native observer,
-  the nREPL-only task-11 debug observer, and a Python-owned exact-partitioned
+  cover both crash windows. Milestone 10 observes real persistent completion for
+  tasks 10–16 plus reward node 36 and uses a Python-owned exact-partitioned
   checked/confirmed/pending location state. Local bits and outbox entries commit
   before GOAL drain acknowledgement or `LocationChecks`; successful sends do
   not compact state, while validated `Connected` and `RoomUpdate` checked sets
   do. Offline/restart/replay/reconnect/rollback behavior and failure isolation
-  are automated, but the bound-save native/server live matrix is not yet
-  recorded. The other location families, goal resend, and remaining item
-  domains are still absent, so the full exit criteria remain open.
+  are automated. The gated task-16 goal commits only with both task/reward bits,
+  sends once per authenticated connection, and resends after reconnect/client
+  restart. The current generated two-slot fixture passes Archipelago's real
+  plando/fill pipeline with all items conserved; an earlier helper payload
+  passed a real local-server transport smoke with the intended three runner
+  receipts and five helper-owned placements. The bound-save
+  native/server/live-goal matrix is not yet recorded. Other location families,
+  canonical task-72 goal reporting, and remaining item domains are still absent,
+  so the full exit criteria remain open.
 - Mitigation: Keep the Milestone 6 sidecar authoritative and add idempotent
   game/client acknowledgement and packet-gap handling before gameplay
   acceptance.
@@ -284,9 +312,13 @@ Owners are deliberately role-based until maintainers assign people.
   forcing an activation-attested live reload across client restarts and
   covering same-version bug-fix builds without resetting ordinary reconnects.
   The control and diagnostics modules export independent reload-persistent
-  positive activation generations after successful initialization; Python
-  requires both to differ in a current compatible snapshot before hello or
-  marker removal. A mere nREPL completion response is insufficient. Python and
+  positive activation generations after successful initialization. Control
+  also resets separate items-, locations-, and reward-module activation bits;
+  each ordered gameplay source sets only its own bit after installing its
+  hooks and the reward source additionally installs its wrapper. Python
+  requires both generations to differ and all three gameplay proofs to be
+  active in a current compatible snapshot before hello or marker removal. A
+  mere nREPL completion response is insufficient. Python and
   GOAL reject protocol, integration,
   schema, slot-data,
   item, location, and mission mismatches with distinct stable codes before the
@@ -496,10 +528,12 @@ Owners are deliberately role-based until maintainers assign people.
   version rejects older live code even after source was already installed, and
   a changed packaged source records a durable forced-reload marker before
   replacement and clears it only after a current compatible snapshot proves
-  that its reload-persistent activation generation changed. The proof happens
-  before protocol hello, so an `(ml)` request that merely completes at the
-  transport layer cannot admit the older running object. Same-contract bug
-  fixes therefore cannot remain hidden across client restarts. The active
+  that its reload-persistent activation generations changed and the ordered
+  items, locations, and reward modules installed their activation proofs. The
+  complete proof happens before protocol hello, so an `(ml)` request that
+  merely completes at the transport layer cannot admit a runtime missing any
+  vertical-slice dependency. Same-contract bug fixes therefore cannot remain
+  hidden across client restarts. The active
   OpenGOAL project compiles, and a double-reload runtime smoke passed all
   eight original-versus-installed hook assertions, and a later attached smoke
   preserved the descriptor across repeated reloads while rejecting an expired

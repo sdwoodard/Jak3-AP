@@ -1,0 +1,174 @@
+;; Jak 3 Archipelago single native reward interception for Milestone 10.
+(in-package goal)
+
+(defconstant AP-REWARD-ARMOR-1-LOCATION 743020036)
+(defconstant AP-REWARD-ARMOR-1-TASK 16)
+(defconstant AP-REWARD-ARMOR-1-NODE 36)
+(defconstant AP-REWARD-ARMOR-1-COMMAND-INDEX 12)
+(defconstant AP-REWARD-ARMOR-1-COMMAND-COUNT 2)
+
+(define-extern *ap3-native-eval-game-task-cmd!*
+  (function game-task-node-info none))
+(define-extern *ap3-installed-eval-game-task-cmd-wrapper*
+  (function game-task-node-info none))
+(define *ap-applying-item* 0)
+(define *ap-reward-armor-1-shape-mismatch-reported* 0)
+
+(defun ap-rewards-bound-mode? ()
+  ;; A disconnected but still bound save remains AP-owned. Before binding, the
+  ;; wrapper must preserve native behavior; Python reconciles after binding.
+  ;; Fail open during a partial source reload even before Python observes the
+  ;; final activation snapshot.
+  (and (nonzero? *ap3-items-module-active*)
+       (nonzero? *ap3-locations-module-active*)
+       (nonzero? *ap3-reward-module-active*)
+       *game-info*
+       (nonzero? (-> *ap-runtime* save-loaded))
+       (nonzero? (-> *ap-runtime* ap-state-loaded))
+       (nonzero? (-> *ap-runtime* ap-state-bound))
+       (>= (-> *ap-runtime* native-save-slot) 0)
+       (< (-> *ap-runtime* native-save-slot) 4)
+       (not (string= *ap3-native-save-identity* "-"))))
+
+(defun ap-rewards-armor-1-node-info ()
+  (-> *game-info* sub-task-list
+      (game-task-node desert-artifact-race-1-resolution)))
+
+(defun ap-rewards-armor-1-node? ((this game-task-node-info))
+  (and *game-info*
+       (= this (ap-rewards-armor-1-node-info))))
+
+(defun ap-rewards-armor-1-shape-valid? ((this game-task-node-info))
+  (and (= (-> this command-index) AP-REWARD-ARMOR-1-COMMAND-INDEX)
+       (= (-> this command-count) AP-REWARD-ARMOR-1-COMMAND-COUNT)
+       (= (-> *game-info* task-node-commands
+              AP-REWARD-ARMOR-1-COMMAND-INDEX)
+          (game-task-node-command add-jakc))
+       (= (-> *game-info* task-node-commands
+              (+ AP-REWARD-ARMOR-1-COMMAND-INDEX 1))
+          (game-task-node-command add-armor-0))))
+
+(defun ap-rewards-report-armor-1-shape-mismatch!
+        ((this game-task-node-info))
+  ;; Recovery runs every bridge heartbeat, so report a persistent mismatch
+  ;; once per bound mismatch episode instead of flooding the event ring.
+  (when (zero? *ap-reward-armor-1-shape-mismatch-reported*)
+    (set! *ap-reward-armor-1-shape-mismatch-reported* 1)
+    (ap-diagnostic-emit! AP-DIAG-EVENT-REWARD-SHAPE-MISMATCH
+                         AP-DIAG-SEVERITY-ERROR 3
+                         AP-REWARD-ARMOR-1-LOCATION
+                         AP-RESULT-INCOMPATIBLE AP-ERROR-INTERNAL-FAILURE
+                         AP-REWARD-ARMOR-1-TASK
+                         AP-REWARD-ARMOR-1-NODE
+                         (the-as int (-> this command-index))))
+  0)
+
+(defun ap-rewards-permanent-item-reconciliation-suspended? ()
+  ;; This predicate is consulted both while exporting snapshots and again at
+  ;; command dispatch. Recompute from the live native command table so the
+  ;; fail-open state survives client/game restarts and clears only when the
+  ;; audited reward shape is actually restored.
+  (if (and (ap-rewards-bound-mode?)
+           (not (ap-rewards-armor-1-shape-valid?
+                  (ap-rewards-armor-1-node-info))))
+      (begin
+        (ap-rewards-report-armor-1-shape-mismatch!
+          (ap-rewards-armor-1-node-info))
+        #t)
+      (begin
+        (set! *ap-reward-armor-1-shape-mismatch-reported* 0)
+        #f)))
+
+(defun ap-rewards-location-recovery-eligible? ((native-node-id int))
+  ;; A closed node alone is insufficient evidence after a source mismatch.
+  ;; Recovery is allowed only while the current native node still matches the
+  ;; exact audited interception shape and the save is bound to AP state.
+  (cond
+    ((!= native-node-id AP-REWARD-ARMOR-1-NODE)
+     #f)
+    ((not (ap-rewards-bound-mode?))
+     (set! *ap-reward-armor-1-shape-mismatch-reported* 0)
+     #f)
+    ((ap-rewards-armor-1-shape-valid?
+       (ap-rewards-armor-1-node-info))
+     (set! *ap-reward-armor-1-shape-mismatch-reported* 0)
+     #t)
+    (else
+      ;; A pre-bind native replay deliberately does not inspect/suppress the
+      ;; reward. Once bound, make an incompatible recovery shape visible.
+      (ap-rewards-report-armor-1-shape-mismatch!
+        (ap-rewards-armor-1-node-info))
+      #f)))
+
+(defun ap-rewards-item-application-begin! ((command-id int)
+                                            (target-mask int))
+  (set! *ap-applying-item* 1)
+  (ap-diagnostic-emit! AP-DIAG-EVENT-REWARD-ITEM-GUARD
+                       AP-DIAG-SEVERITY-INFO 2 command-id
+                       AP-RESULT-OK AP-ERROR-NONE target-mask 1 0)
+  0)
+
+(defun ap-rewards-item-application-end! ((command-id int)
+                                          (target-mask int))
+  (set! *ap-applying-item* 0)
+  0)
+
+(defun ap3-eval-game-task-cmd-wrapper ((this game-task-node-info))
+  (cond
+    ((not (ap-rewards-armor-1-node? this))
+     (*ap3-native-eval-game-task-cmd!* this))
+    ((nonzero? *ap-applying-item*)
+     ;; A reused native item path is an AP item application, not a reward.
+     (*ap3-native-eval-game-task-cmd!* this))
+    ((not (ap-rewards-bound-mode?))
+     (*ap3-native-eval-game-task-cmd!* this)
+     (set! *ap-reward-armor-1-shape-mismatch-reported* 0)
+     (ap-diagnostic-emit! AP-DIAG-EVENT-REWARD-NATIVE-PRESERVED
+                          AP-DIAG-SEVERITY-INFO 3
+                          AP-REWARD-ARMOR-1-LOCATION
+                          AP-RESULT-OK AP-ERROR-NONE
+                          AP-REWARD-ARMOR-1-TASK
+                          AP-REWARD-ARMOR-1-NODE 0))
+    ((not (ap-rewards-armor-1-shape-valid? this))
+     ;; Never guess after a source/runtime discrepancy. Preserve the complete
+     ;; native command list and make the incompatibility support-visible.
+     (*ap3-native-eval-game-task-cmd!* this)
+     (ap-rewards-report-armor-1-shape-mismatch! this))
+    (else
+      ;; The audited node contains exactly add-jakc followed by add-armor-0.
+      ;; Preserve the non-shuffled Jak C state and suppress only Armor 1.
+      (set! *ap-reward-armor-1-shape-mismatch-reported* 0)
+      (logior! (-> *game-info* features) (game-feature jakc))
+      (*ap3-reward-location-observe-hook* AP-REWARD-ARMOR-1-NODE)
+      (ap-diagnostic-emit! AP-DIAG-EVENT-REWARD-PERMANENT-SUPPRESSED
+                           AP-DIAG-SEVERITY-INFO 3
+                           AP-REWARD-ARMOR-1-LOCATION
+                           AP-RESULT-OK AP-ERROR-NONE
+                           AP-REWARD-ARMOR-1-TASK
+                           AP-REWARD-ARMOR-1-NODE 1)))
+  (none))
+
+(defun ap3-install-reward-hook! ()
+  (let ((current
+          (the-as (function game-task-node-info none)
+                  (method-of-type game-task-node-info eval-game-task-cmd!))))
+    (when (or (not *ap3-installed-eval-game-task-cmd-wrapper*)
+              (!= current *ap3-installed-eval-game-task-cmd-wrapper*))
+      (set! *ap3-native-eval-game-task-cmd!* current))
+    (set! *ap3-installed-eval-game-task-cmd-wrapper*
+          ap3-eval-game-task-cmd-wrapper)
+    (method-set! game-task-node-info 13 ap3-eval-game-task-cmd-wrapper))
+  0)
+
+(set! *ap3-item-application-begin-hook*
+      ap-rewards-item-application-begin!)
+(set! *ap3-item-application-end-hook*
+      ap-rewards-item-application-end!)
+(set! *ap3-reward-location-recovery-eligible-hook*
+      ap-rewards-location-recovery-eligible?)
+(set! *ap3-permanent-items-reconciliation-suspended-hook*
+      ap-rewards-permanent-item-reconciliation-suspended?)
+(ap3-install-reward-hook!)
+(set! *ap3-reward-module-active* 1)
+(ap-export-state!)
+(format #t "[JAK3-AP] rewards initialized node=36 grant=armor0~%")

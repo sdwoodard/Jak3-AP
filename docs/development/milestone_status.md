@@ -1,6 +1,6 @@
 # Milestone status
 
-Snapshot date: **2026-08-12**
+Snapshot date: **2026-08-14**
 
 The revised roadmap in
 [`Project-Milestones-Revised.md`](Project-Milestones-Revised.md) is the status
@@ -17,8 +17,9 @@ later gameplay work is not credited early.
 | 7.1 — Structured diagnostics and support bundles | **Complete** | The paired logs remain; diagnostic schema 1 JSONL, the stable event registry, 64-record GOAL ring/drain, manifest-driven bridge lifecycle/hash, persistence/protocol instrumentation, exception capture, bounded retention, allowlist redaction, and local support-bundle export are implemented and automated. The cross-component forensic test drives the real launcher, persistence, protocol, and reconnect instrumentation to reconstruct startup/capture, recovery/rejection, harmless command replay/timeout/failure, and reconnect without native-save or sidecar contents. |
 | 7.2 — Live acceptance and Protocol 3 freeze | **Complete — 14/14 supported rows pass** | Protocol 3/game integration 2 and tag 900 semantics are frozen. Both approved full-process recovery observations and ordinary unlocked save/load passed. Original warm-attachment failures and the locked-bank crash remain historical evidence for accepted unsupported workflows. |
 | 8 — Indexed ReceivedItems and permanent-item ledger | **Complete** | The three-item slice, atomic schema-1 ledger, command 102, order-40 native items module, pre-dispatch whole-packet validation, both crash windows, same-descriptor native-load reconstruction including diagnostic-ring overflow, changed index-zero reconciliation, 318-test packaged suite, deterministic twin build, official-v0.3.5 1,167-target compile, corrected Blaster-dependency probe, and the disposable AP-tagged-save receipt/unsafe/replay/full-process recovery matrix pass; see [`milestone-8-acceptance.md`](milestone-8-acceptance.md). |
-| 9 — Persistent location outbox | **Implemented — live completion gate pending** | Task 10 native observation and the nREPL-only task-11 debug check feed an atomic Python-owned local bit/outbox, retry until `Connected`/`RoomUpdate` confirmation, and never clear the durable bit. The 340-test standalone packaged suite, deterministic build, source audit, official-v0.3.5 1,168-target compile, and ordered module-load smoke pass. Post-review tests also prove closed transports report failure, batch/rollback diagnostics retain bounded location/task correlation, stale authenticated generations cannot cross connections, CommonClient gap `Sync` uses only the durable outbox, concurrent send paths share the five-second retry reservation, pre-bind updates collapse into the authoritative accumulated server snapshot, and valid reauthentication releases an earlier compatibility latch. The repository-owned `AGENTS.md` also restores the standalone canonical-source gate in GitHub. The controlled bound-save/native/server matrix has not been rerun; see [`milestone-9-acceptance.md`](milestone-9-acceptance.md). |
-| 10–26 | Not started | Deliberately outside this change. |
+| 9 — Persistent location outbox | **Implemented — live completion gate pending** | The accepted Milestone 9 evidence covers task 10 plus its former task-11 debug check, atomic local commit/outbox, authoritative confirmation, retry, and restart behavior. Milestone 10 replaces that debug entry with real task-11 observation and reuses the same persistence contract. The original controlled bound-save/native/server matrix was not rerun; see [`milestone-9-acceptance.md`](milestone-9-acceptance.md). |
+| 10 — End-to-end vertical slice | **Implementation complete — connected live gameplay gate pending** | Tasks 10–16 and reward node 36 use the durable outbox; the existing three-item ledger drives the approved runner slice and is checked against native target readback every heartbeat; diagnostics overflow alone cannot repeatedly reopen item reconciliation; exactly one reward wrapper preserves Jak C and suppresses only Armor 1 in bound AP mode; required items/location/reward activation proofs prevent a partial gameplay-module load from entering AP play; and the opt-in task-16 goal is durable and reconnect-safe without changing slot data. Automated/package, deterministic build, source audit, current two-slot core plando/fill with complete pool conservation, earlier local-server transport smoke, exact-source official-v0.3.5 compile, and attached ordered six-source/five-object load gates pass. The disposable bound-save mission/death/replay/AP-off matrix still requires operator play; see [`milestone-10-acceptance.md`](milestone-10-acceptance.md). |
+| 11–26 | Not started | Deliberately outside this change. |
 
 ## Milestone 4 completion evidence
 
@@ -336,13 +337,15 @@ later gameplay work is not credited early.
 ## Explicitly deferred
 
 The active generator deliberately exposes one always-open, non-playable region
-until Milestone 12 supplies Standard reachability. Milestone 8 implements
-ReceivedItems only for Jetboard, Blaster stage 1, and Armor stage 1. Milestone 9
-implements only task 10 and the task-11 debug check; its live completion gate is
-still pending. There are still no early placement guarantees, consumable
-handling, other location hooks, mission dispatch, reward interception, or goal
-reporting. Milestones 7/7.2 remain complete for their documented first-release
-scope; these gameplay domains remain assigned to later milestones.
+until Milestone 12 supplies Standard reachability. The received-item slice is
+still limited to Jetboard, Blaster stage 1, and Armor stage 1. Milestone 10
+activates only tasks 10–16 and reward node 36, exactly one permanent reward
+interception, and an environment-gated task-16 test goal; its connected live
+gameplay gate remains pending. There are still no public early placement
+guarantees, consumable handling, other location or reward hooks, mission
+dispatch, or canonical task-72 goal reporting. Milestones 7/7.2 remain complete
+for their documented first-release scope; these gameplay domains remain assigned
+to later milestones.
 
 Open runtime risks remain recorded in [`../JAK3_AP_RISKS.md`](../JAK3_AP_RISKS.md),
 especially permissive generator logic (`R-003`), runtime goal reporting

@@ -6,10 +6,11 @@ records, and the future installer/release packaging.
 
 The repository is currently an **integration scaffold**, not a playable
 release. The active Protocol 3 runtime binds the Python-owned schema-1 sidecar
-to native-save metadata tag 900, applies the Milestone 8 three-item permanent
-slice, and implements the Milestone 9 persistent outbox for task 10 plus one
-nREPL-only task-11 debug check. The other 145 locations, rewards, goals,
-consumables, and mission dispatch remain inactive.
+to native-save metadata tag 900 and applies the three-item permanent slice.
+Milestone 10 drives the persistent outbox through tasks 10–16 and exactly one
+native reward, task 16's Armor 1 node. The other 139
+locations, ordinary task-72 goal reporting, consumables, and mission dispatch
+remain inactive.
 
 ## Repository layout
 
@@ -71,9 +72,14 @@ Starting **Jak 3 Client** from Archipelago Launcher automatically:
 7. exchanges a session hello and live snapshot, then reconciles the supported
    permanent-item and persistent-location slices.
 
-The client requests indexed `ReceivedItems` for the three Milestone 8 items and
-can submit only location IDs `743001010` and `743001011` through the Milestone 9
-outbox. It does not suppress rewards, report victory, or dispatch missions.
+The client requests indexed `ReceivedItems` only for Jetboard, Blaster, and
+Progressive Armor capped at stage 1. It can submit tasks 10–16 plus reward
+`743020036` through the persistent outbox. In a bound AP save the one audited
+reward wrapper preserves Jak C and suppresses only native Armor 1; AP-off and
+unbound play retain the complete native reward. Ordinary task-72 goal behavior
+and mission dispatch remain inactive. The development-only task-16 goal and
+fixture are documented in
+[milestone-10-fixture.md](docs/development/milestone-10-fixture.md).
 
 Every launch also creates a matched `Jak3Client_<session>.txt` and
 `Jak3OpenGOAL_<session>.txt` support pair. The latter combines game and compiler

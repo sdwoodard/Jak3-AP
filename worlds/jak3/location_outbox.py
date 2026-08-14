@@ -1,4 +1,4 @@
-"""Pure persistent transitions for finite Jak 3 location checks."""
+"""Pure persistent transitions for the Milestone 10 Jak 3 location slice."""
 
 from __future__ import annotations
 
@@ -12,18 +12,40 @@ from .slot_data import validate_slot_data
 
 
 ARENA_TRAINING_LOCATION_ID = 743_001_010
-DEBUG_LOCATION_ID = 743_001_011
+FIRST_WAR_AMULET_LOCATION_ID = 743_001_011
+KANGA_RATS_LOCATION_ID = 743_001_012
+SATELLITE_LOCATION_ID = 743_001_013
+VEHICLE_TRAINING_LOCATION_ID = 743_001_014
+KLEIVER_RACE_LOCATION_ID = 743_001_015
+ARTIFACT_RACE_LOCATION_ID = 743_001_016
+FIRST_ARMOR_REWARD_LOCATION_ID = 743_020_036
 LOCATION_OBSERVED_GOAL_CODE = 600
 LOCATION_RETRY_SECONDS = 5.0
 
 LOCATION_TASK_IDS = {
     ARENA_TRAINING_LOCATION_ID: 10,
-    DEBUG_LOCATION_ID: 11,
+    FIRST_WAR_AMULET_LOCATION_ID: 11,
+    KANGA_RATS_LOCATION_ID: 12,
+    SATELLITE_LOCATION_ID: 13,
+    VEHICLE_TRAINING_LOCATION_ID: 14,
+    KLEIVER_RACE_LOCATION_ID: 15,
+    ARTIFACT_RACE_LOCATION_ID: 16,
+    FIRST_ARMOR_REWARD_LOCATION_ID: 16,
 }
 LOCATION_SOURCES = {
     ARENA_TRAINING_LOCATION_ID: "native_task_complete",
-    DEBUG_LOCATION_ID: "debug_nrepl",
+    FIRST_WAR_AMULET_LOCATION_ID: "native_task_complete",
+    KANGA_RATS_LOCATION_ID: "native_task_complete",
+    SATELLITE_LOCATION_ID: "native_task_complete",
+    VEHICLE_TRAINING_LOCATION_ID: "native_task_complete",
+    KLEIVER_RACE_LOCATION_ID: "native_task_complete",
+    ARTIFACT_RACE_LOCATION_ID: "native_task_complete",
+    FIRST_ARMOR_REWARD_LOCATION_ID: "native_reward_intercept",
 }
+LOCATION_SOURCE_CODES = {location_id: 0 for location_id in LOCATION_TASK_IDS}
+LOCATION_SOURCE_CODES[FIRST_ARMOR_REWARD_LOCATION_ID] = 1
+LOCATION_NATIVE_NODE_IDS = {location_id: 0 for location_id in LOCATION_TASK_IDS}
+LOCATION_NATIVE_NODE_IDS[FIRST_ARMOR_REWARD_LOCATION_ID] = 36
 _ACTIVE_LOCATIONS = {record.code: record for record in FIRST_RELEASE_LOCATIONS}
 
 
@@ -91,7 +113,7 @@ def observe_local_location(
     """Durably enqueue one local observation without changing server state."""
 
     if location_id not in LOCATION_TASK_IDS:
-        raise ValueError(f"Location {location_id} is not observable in Milestone 9.")
+        raise ValueError(f"Location {location_id} is not observable in Milestone 10.")
     return _transition(
         state,
         checked=set(state.checked_location_bits) | {location_id},

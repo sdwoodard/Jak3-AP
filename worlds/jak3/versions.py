@@ -12,9 +12,9 @@ DESIGN_VERSION = "0.3"
 PROTOCOL_VERSION = 3
 GAME_INTEGRATION_VERSION = 2
 # This implementation revision is compatibility metadata for the ordered
-# runtime modules. It adds Milestone 9's location-observation hook without
+# runtime modules. It adds Milestone 10's connected gameplay slice without
 # changing Protocol 3 or any table, slot-data, integration, or state schema.
-BRIDGE_RUNTIME_VERSION = 4
+BRIDGE_RUNTIME_VERSION = 5
 
 SLOT_DATA_VERSION = 2
 STATE_SCHEMA_VERSION = 1

@@ -298,26 +298,28 @@ foreach ($module in $declaredModules) {
     }
 }
 $modules = @($manifest.modules | Sort-Object order)
-$expectedNames = @("startup", "control", "diagnostics", "items", "locations")
-$expectedOrders = @(10, 20, 30, 40, 50)
-$expectedPhases = @("pre_mi", "bridge", "bridge", "bridge", "bridge")
+$expectedNames = @("startup", "control", "diagnostics", "items", "locations", "rewards")
+$expectedOrders = @(10, 20, 30, 40, 50, 60)
+$expectedPhases = @("pre_mi", "bridge", "bridge", "bridge", "bridge", "bridge")
 $expectedSources = @(
     "goal_src/jak3/pc/features/archipelago-startup.gc",
     "goal_src/jak3/pc/features/archipelago.gc",
     "goal_src/jak3/pc/features/archipelago-diagnostics.gc",
     "goal_src/jak3/pc/features/archipelago-items.gc",
-    "goal_src/jak3/pc/features/archipelago-locations.gc"
+    "goal_src/jak3/pc/features/archipelago-locations.gc",
+    "goal_src/jak3/pc/features/archipelago-rewards.gc"
 )
 $expectedResources = @(
     "assets/opengoal/archipelago-startup.gc",
     "assets/opengoal/archipelago.gc",
     "assets/opengoal/archipelago-diagnostics.gc",
     "assets/opengoal/archipelago-items.gc",
-    "assets/opengoal/archipelago-locations.gc"
+    "assets/opengoal/archipelago-locations.gc",
+    "assets/opengoal/archipelago-rewards.gc"
 )
-$expectedObjects = @($null, "archipelago.o", "archipelago-diagnostics.o", "archipelago-items.o", "archipelago-locations.o")
-if ($modules.Count -ne 5) {
-    throw "Bridge manifest must declare exactly five modules."
+$expectedObjects = @($null, "archipelago.o", "archipelago-diagnostics.o", "archipelago-items.o", "archipelago-locations.o", "archipelago-rewards.o")
+if ($modules.Count -ne 6) {
+    throw "Bridge manifest must declare exactly six modules."
 }
 for ($index = 0; $index -lt $modules.Count; $index++) {
     $module = $modules[$index]
@@ -373,7 +375,7 @@ $newline = if ($projectText.Contains("`r`n")) { "`r`n" } else { "`n" }
 $indent = [regex]::Match($markerMatches[0].Value, '^[ \t]*').Value
 $projectWithoutObjects = [regex]::Replace(
     $projectText,
-    '(?m)^[ \t]*"(?:archipelago|archipelago-diagnostics|archipelago-items|archipelago-locations)\.o"[ \t]*\r?\n?',
+    '(?m)^[ \t]*"(?:archipelago|archipelago-diagnostics|archipelago-items|archipelago-locations|archipelago-rewards)\.o"[ \t]*\r?\n?',
     ''
 )
 $updatedMarker = [regex]::Match($projectWithoutObjects, $markerPattern)
@@ -511,7 +513,7 @@ finally {
 }
 
 Write-Host "Installed Jak 3 Archipelago bridge source set: $sourceSetHash"
-Write-Host "Registered control, diagnostics, items, and locations bridge objects after task-control.o in: $projectFile"
+Write-Host "Registered control, diagnostics, items, locations, and rewards bridge objects after task-control.o in: $projectFile"
 Write-Host "Bridge installation complete."
 Write-Host "Launching Jak 3 Client now starts Debug gk/goalc, recompiles, and verifies protocol 3."
 }

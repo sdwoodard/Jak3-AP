@@ -233,6 +233,17 @@ class ClientProtocolTest(unittest.TestCase):
                 replace(snapshot, bridge_runtime_version=0)
             )
         )
+        for field in (
+            "items_module_active",
+            "locations_module_active",
+            "reward_module_active",
+        ):
+            with self.subTest(module_attestation=field):
+                self.assertFalse(
+                    _loaded_bridge_matches_current_contract(
+                        replace(snapshot, **{field: False})
+                    )
+                )
 
     def test_steady_heartbeats_do_not_emit_info_noise(self) -> None:
         emitted: list[str] = []
@@ -346,14 +357,23 @@ class ClientProtocolTest(unittest.TestCase):
                 fail_reload: bool = False,
                 activates_reload: bool = True,
                 activates_diagnostics: bool = True,
+                activates_items: bool = True,
+                activates_locations: bool = True,
+                activates_rewards: bool = True,
                 initial_generation: int = 10,
             ) -> None:
                 self.forms: list[str] = []
                 self.fail_reload = fail_reload
                 self.activates_reload = activates_reload
                 self.activates_diagnostics = activates_diagnostics
+                self.activates_items = activates_items
+                self.activates_locations = activates_locations
+                self.activates_rewards = activates_rewards
                 self.activation_generation = initial_generation
                 self.diagnostic_activation_generation = initial_generation
+                self.items_module_active = True
+                self.locations_module_active = True
+                self.reward_module_active = True
 
             async def connect(self) -> None:
                 return None
@@ -369,10 +389,25 @@ class ClientProtocolTest(unittest.TestCase):
                     '(ml "goal_src/jak3/pc/features/archipelago.gc")'
                 ):
                     self.activation_generation += 1
+                    self.items_module_active = False
+                    self.locations_module_active = False
+                    self.reward_module_active = False
                 if self.activates_diagnostics and form == (
                     '(ml "goal_src/jak3/pc/features/archipelago-diagnostics.gc")'
                 ):
                     self.diagnostic_activation_generation += 1
+                if self.activates_items and form == (
+                    '(ml "goal_src/jak3/pc/features/archipelago-items.gc")'
+                ):
+                    self.items_module_active = True
+                if self.activates_locations and form == (
+                    '(ml "goal_src/jak3/pc/features/archipelago-locations.gc")'
+                ):
+                    self.locations_module_active = True
+                if self.activates_rewards and form == (
+                    '(ml "goal_src/jak3/pc/features/archipelago-rewards.gc")'
+                ):
+                    self.reward_module_active = True
                 return "nREPL"
 
             async def close(self) -> None:
@@ -437,6 +472,9 @@ class ClientProtocolTest(unittest.TestCase):
                     return None
                 return BridgeSnapshot(
                     bridge_activation_generation=active_repl.activation_generation,
+                    items_module_active=active_repl.items_module_active,
+                    locations_module_active=active_repl.locations_module_active,
+                    reward_module_active=active_repl.reward_module_active,
                     diagnostic_activation_generation=(
                         active_repl.diagnostic_activation_generation
                     ),
@@ -474,6 +512,32 @@ class ClientProtocolTest(unittest.TestCase):
                 self.assertFalse(connected)
                 self.assertTrue(reload_marker.is_file())
                 self.assertTrue(diagnostic_not_activated.bridge_source_reload_required)
+
+                items_not_activated = make_context(FakeRepl(activates_items=False))
+                connected = asyncio.run(
+                    items_not_activated.connect_repl(report_errors=False)
+                )
+                self.assertFalse(connected)
+                self.assertTrue(reload_marker.is_file())
+                self.assertTrue(items_not_activated.bridge_source_reload_required)
+
+                locations_not_activated = make_context(
+                    FakeRepl(activates_locations=False)
+                )
+                connected = asyncio.run(
+                    locations_not_activated.connect_repl(report_errors=False)
+                )
+                self.assertFalse(connected)
+                self.assertTrue(reload_marker.is_file())
+                self.assertTrue(locations_not_activated.bridge_source_reload_required)
+
+                rewards_not_activated = make_context(FakeRepl(activates_rewards=False))
+                connected = asyncio.run(
+                    rewards_not_activated.connect_repl(report_errors=False)
+                )
+                self.assertFalse(connected)
+                self.assertTrue(reload_marker.is_file())
+                self.assertTrue(rewards_not_activated.bridge_source_reload_required)
 
                 context = make_context(FakeRepl())
                 connected = asyncio.run(context.connect_repl(report_errors=False))
@@ -561,6 +625,9 @@ class ClientProtocolTest(unittest.TestCase):
             context.bridge_source_set_hash = "current"
             context._goal_game_session_nonce = "old-game"
             context._communication_lost = False
+            context._item_native_rebuild_event_scope = ("stale-source",)
+            context._item_native_rebuild_location_ids = {743_001_010}
+            context._item_native_rebuild_reward_sequence = 41
             context.sync_persistence = lambda snapshot: None
             candidate = BridgeSnapshot(
                 session_nonce=candidate_nonce,
@@ -583,8 +650,12 @@ class ClientProtocolTest(unittest.TestCase):
 
         self.assertEqual(restarted_resets, ["reset"])
         self.assertEqual(restarted._goal_game_session_nonce, "new-game")
+        self.assertIsNone(restarted._item_native_rebuild_event_scope)
+        self.assertEqual(restarted._item_native_rebuild_location_ids, set())
+        self.assertEqual(restarted._item_native_rebuild_reward_sequence, -1)
         self.assertEqual(transient_resets, [])
         self.assertEqual(transient._goal_game_session_nonce, "new-game")
+        self.assertEqual(transient._item_native_rebuild_event_scope, ("stale-source",))
         self.assertFalse(any(form.startswith('(ml "') for form in restarted.repl.forms))
         self.assertEqual(diagnostic_resets, [])
         self.assertIn(

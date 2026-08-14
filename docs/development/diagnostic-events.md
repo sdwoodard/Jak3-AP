@@ -131,7 +131,7 @@ when emitted and when an existing segment is validated for export.
 - `item.native_target.already_correct` (GOAL 501)
 - `item.native_target.failed` (GOAL 502)
 
-## Milestone 9 persistent location outbox
+## Milestone 10 vertical slice
 
 - `location.observed` (GOAL 600)
 - `location.duplicate_ignored`
@@ -143,13 +143,25 @@ when emitted and when an existing segment is validated for export.
 - `location.reconciliation.started`
 - `location.reconciliation.completed`
 - `location.reconciliation.rejected`
+- `reward.native_preserved` (GOAL 700)
+- `reward.permanent_suppressed` (GOAL 701)
+- `reward.shape_mismatch` (GOAL 702)
+- `reward.item_application_guarded` (GOAL 703)
+- `goal.completed`
+- `goal.status.queued`
+- `goal.status.sent`
+- `goal.status.resent`
+- `goal.status.failed`
 
-Location events allow only `location_id`, bounded `location_ids`, `task_id`,
-bounded `task_ids`, `batch_id`, `revision`, `source`, `outcome`, and `reason` in
-their context. Batch IDs hash the persistent state-instance ID together with
-the committed revision; raw save/state identity is never logged. GOAL code 600
-uses location correlation kind 3, task ID in `arg0`, and the bounded
-native/debug source code in `arg1`.
+Location events additionally allow reward-node identity. Batch IDs hash the
+persistent state-instance ID together with the committed revision; raw
+save/state identity is never logged. GOAL code 600 uses location correlation
+kind 3, task ID in `arg0`, the bounded native task/reward source code in `arg1`,
+and native node ID in `arg2`. Reward events record the bounded task/node,
+AP/native decision, guard state, result, and correlated location or command.
+Temporary-goal events record durable revision and authenticated connection
+generation so a support bundle distinguishes the first send from a reconnect
+resend.
 
 ## Persistence and recovery
 

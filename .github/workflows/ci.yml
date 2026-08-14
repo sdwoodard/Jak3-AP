@@ -43,7 +43,7 @@ jobs:
       - name: Lint and format check
         shell: pwsh
         run: |
-          ruff check --ignore E402 worlds/jak3 tests
+          ruff check --ignore E402 worlds/jak3 tests tools/generate_milestone_10_fixture.py
           ruff format --check `
             worlds/jak3/canonical.py `
             worlds/jak3/versions.py `
@@ -63,6 +63,7 @@ jobs:
             tests/test_slot_data.py `
             tests/test_persistence.py `
             tests/test_location_outbox.py `
+            tests/test_milestone_10_fixture.py `
             tests/test_bridge_manifest.py `
             tests/test_client.py `
             tests/test_diagnostics.py `
@@ -71,7 +72,8 @@ jobs:
             tests/test_protocol_v3.py `
             tests/test_received_items.py `
             tests/test_tools.py `
-            tests/test_ci.py
+            tests/test_ci.py `
+            tools/generate_milestone_10_fixture.py
 
       - name: Type check compatibility modules
         shell: pwsh

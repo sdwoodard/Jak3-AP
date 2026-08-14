@@ -165,6 +165,9 @@ function Get-SanitizedSnapshot {
         game_integration_version = [int]$Fields["game_integration_version"]
         bridge_runtime_version = if ($Fields.ContainsKey("bridge_runtime_version")) { [int]$Fields["bridge_runtime_version"] } else { $null }
         bridge_activation_generation = if ($Fields.ContainsKey("bridge_activation_generation")) { [int]$Fields["bridge_activation_generation"] } else { $null }
+        items_module_active = if ($Fields.ContainsKey("items_module_active")) { [int]$Fields["items_module_active"] } else { $null }
+        locations_module_active = if ($Fields.ContainsKey("locations_module_active")) { [int]$Fields["locations_module_active"] } else { $null }
+        reward_module_active = if ($Fields.ContainsKey("reward_module_active")) { [int]$Fields["reward_module_active"] } else { $null }
         client_session_hash = ConvertTo-OptionalHash $Fields["client_session_id"]
         game_nonce_hash = ConvertTo-OptionalHash $Fields["session_nonce"]
         client_status = [int]$Fields["client_status"]
@@ -427,18 +430,38 @@ switch ($Action) {
             throw "NreplBridgeLoad requires -OpenGoalProject."
         }
         $manifestPath = Join-Path $OpenGoalProject "goal_src\jak3\pc\features\archipelago-bridge-modules.json"
+        $canonicalManifestPath = Join-Path `
+            $PSScriptRoot "..\mod\opengoal\bridge-modules.json"
         if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
             throw "Installed bridge manifest not found: $manifestPath"
         }
+        if ((Get-Sha256 $manifestPath) -ne (Get-Sha256 $canonicalManifestPath)) {
+            throw "Installed bridge manifest does not match the canonical repository manifest."
+        }
         $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-        $modules = @($manifest.modules | Sort-Object order)
-        $allowed = @(
-            "goal_src/jak3/pc/features/archipelago-startup.gc",
-            "goal_src/jak3/pc/features/archipelago.gc",
-            "goal_src/jak3/pc/features/archipelago-diagnostics.gc"
+        $modules = @(
+            $manifest.modules |
+                Sort-Object order |
+                Where-Object { $null -ne $_.object }
         )
-        if ($modules.Count -ne 3 -or (@($modules | ForEach-Object { $_.destination }) -join "|") -ne ($allowed -join "|")) {
-            throw "Installed bridge manifest is not the frozen version 1 module order."
+        $nonBridgeModules = @($modules | Where-Object { $_.phase -ne "bridge" })
+        if ($modules.Count -eq 0 -or $nonBridgeModules.Count -ne 0) {
+            throw "Canonical bridge manifest has an invalid runtime module set."
+        }
+        $allowed = @($modules | ForEach-Object { [string]$_.destination })
+        foreach ($module in $modules) {
+            $source = [string]$module.destination
+            if ($source -notmatch '^goal_src/jak3/pc/features/archipelago(?:-[a-z0-9-]+)?\.gc$') {
+                throw "Canonical bridge manifest contains an unsafe runtime source: $source"
+            }
+            $repositorySource = Join-Path `
+                (Join-Path $PSScriptRoot "..\mod\opengoal") `
+                ([string]$module.source)
+            $installedSource = Join-Path $OpenGoalProject $source
+            if (-not (Test-Path -LiteralPath $installedSource -PathType Leaf) -or
+                (Get-Sha256 $repositorySource) -ne (Get-Sha256 $installedSource)) {
+                throw "Installed bridge source does not match the canonical repository source: $source"
+            }
         }
         $results = @()
         $total = [Diagnostics.Stopwatch]::StartNew()
@@ -449,6 +472,7 @@ switch ($Action) {
         $data = [ordered]@{
             operation = "manifest_ordered_bridge_load"
             elapsed_ms = [Math]::Round($total.Elapsed.TotalMilliseconds, 3)
+            manifest_sha256 = Get-Sha256 $manifestPath
             modules = $results
         }
         Add-JsonLine $recordPath (New-Record "nrepl.bridge_load_total" $data)
