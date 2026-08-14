@@ -167,3 +167,21 @@ Before reporting completion:
 4. Report files changed.
 5. Report commands run and their results.
 6. Report assumptions and unresolved runtime risks.
+
+## CI and push discipline
+
+Before pushing any change, run the same repository-owned gate that GitHub CI
+uses. The Archipelago path must be a disposable checkout, never either
+read-only reference tree:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_ci_checks.ps1 `
+  -ArchipelagoPath D:\path\to\disposable\archipelago
+```
+
+Targeted tests remain useful during development but do not replace this final
+pre-push gate. Preserve `AGENTS.md` and the canonical LF policy in
+`.gitattributes`; the preflight treats both as repository contract files. If
+the exact GitHub runner environment cannot be reproduced locally, push a
+feature branch and require the `python-apworld` check to pass before merging
+or updating `main`.

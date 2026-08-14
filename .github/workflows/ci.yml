@@ -17,17 +17,17 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out Jak3-AP
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Check out compatible Archipelago core
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ArchipelagoMW/Archipelago
           ref: feab54daec712ffb333b8c73f38eb69e1ed9c508
           path: archipelago
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -40,77 +40,14 @@ jobs:
           jinja2==3.1.6 schema==0.7.8 bsdiff4==1.2.6
           platformdirs==4.9.4 certifi typing_extensions orjson pathspec
 
-      - name: Lint and format check
+      - name: Lint, format, and type checks
         shell: pwsh
-        run: |
-          ruff check --ignore E402 worlds/jak3 tests tools/generate_milestone_10_fixture.py
-          ruff format --check `
-            worlds/jak3/canonical.py `
-            worlds/jak3/versions.py `
-            worlds/jak3/legacy_ids.py `
-            worlds/jak3/registry.py `
-            worlds/jak3/slot_data.py `
-            worlds/jak3/persistence.py `
-            worlds/jak3/location_outbox.py `
-            worlds/jak3/received_items.py `
-            worlds/jak3/client.py `
-            worlds/jak3/agents/bridge_manifest.py `
-            worlds/jak3/agents/diagnostics.py `
-            worlds/jak3/agents/launcher.py `
-            worlds/jak3/agents/protocol.py `
-            worlds/jak3/agents/repl_client.py `
-            tests/test_registry.py `
-            tests/test_slot_data.py `
-            tests/test_persistence.py `
-            tests/test_location_outbox.py `
-            tests/test_milestone_10_fixture.py `
-            tests/test_bridge_manifest.py `
-            tests/test_client.py `
-            tests/test_diagnostics.py `
-            tests/test_launcher.py `
-            tests/test_package.py `
-            tests/test_protocol_v3.py `
-            tests/test_received_items.py `
-            tests/test_tools.py `
-            tests/test_ci.py `
-            tools/generate_milestone_10_fixture.py
-
-      - name: Type check compatibility modules
-        shell: pwsh
-        run: >-
-          mypy
-          --ignore-missing-imports
-          --follow-imports=skip
-          worlds/jak3/canonical.py
-          worlds/jak3/versions.py
-          worlds/jak3/legacy_ids.py
-          worlds/jak3/registry.py
-          worlds/jak3/slot_data.py
-          worlds/jak3/persistence.py
-          worlds/jak3/location_outbox.py
-          worlds/jak3/received_items.py
-          worlds/jak3/client.py
-          worlds/jak3/agents/bridge_manifest.py
-          worlds/jak3/agents/diagnostics.py
-          worlds/jak3/agents/launcher.py
-          worlds/jak3/agents/protocol.py
+        run: .\tools\run_ci_checks.ps1 -Phase Static
 
       - name: Build APWorld package
         shell: pwsh
-        run: .\tools\build_apworld.ps1
+        run: .\tools\run_ci_checks.ps1 -Phase Package
 
       - name: Run unit, import, registry, YAML, and generation checks
         shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path .\archipelago\custom_worlds -Force | Out-Null
-          Copy-Item -LiteralPath .\dist\jak3.apworld -Destination .\archipelago\custom_worlds\jak3.apworld
-          $env:AP_TEST_WORLDS = "jak3"
-          $env:SKIP_REQUIREMENTS_UPDATE = "1"
-          $testRoot = (Resolve-Path .\tests).Path
-          Push-Location .\archipelago
-          try {
-            python -m pytest $testRoot -q
-          }
-          finally {
-            Pop-Location
-          }
+        run: .\tools\run_ci_checks.ps1 -Phase Tests -ArchipelagoPath .\archipelago
