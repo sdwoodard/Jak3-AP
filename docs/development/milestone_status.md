@@ -1,6 +1,6 @@
 # Milestone status
 
-Snapshot date: **2026-08-14**
+Snapshot date: **2026-08-21**
 
 The revised roadmap in
 [`Project-Milestones-Revised.md`](Project-Milestones-Revised.md) is the status
@@ -19,7 +19,8 @@ later gameplay work is not credited early.
 | 8 — Indexed ReceivedItems and permanent-item ledger | **Complete** | The three-item slice, atomic schema-1 ledger, command 102, order-40 native items module, pre-dispatch whole-packet validation, both crash windows, same-descriptor native-load reconstruction including diagnostic-ring overflow, changed index-zero reconciliation, 318-test packaged suite, deterministic twin build, official-v0.3.5 1,167-target compile, corrected Blaster-dependency probe, and the disposable AP-tagged-save receipt/unsafe/replay/full-process recovery matrix pass; see [`milestone-8-acceptance.md`](milestone-8-acceptance.md). |
 | 9 — Persistent location outbox | **Implemented — live completion gate pending** | The accepted Milestone 9 evidence covers task 10 plus its former task-11 debug check, atomic local commit/outbox, authoritative confirmation, retry, and restart behavior. Milestone 10 replaces that debug entry with real task-11 observation and reuses the same persistence contract. The original controlled bound-save/native/server matrix was not rerun; see [`milestone-9-acceptance.md`](milestone-9-acceptance.md). |
 | 10 — End-to-end vertical slice | **Implementation complete — connected live gameplay gate pending** | Tasks 10–16 and reward node 36 use the durable outbox; the existing three-item ledger drives the approved runner slice and is checked against native target readback every heartbeat; diagnostics overflow alone cannot repeatedly reopen item reconciliation; exactly one reward wrapper preserves Jak C and suppresses only Armor 1 in bound AP mode; required items/location/reward activation proofs prevent a partial gameplay-module load from entering AP play; and the opt-in task-16 goal is durable and reconnect-safe without changing slot data. Automated/package, deterministic build, source audit, current two-slot core plando/fill with complete pool conservation, earlier local-server transport smoke, exact-source official-v0.3.5 compile, and attached ordered six-source/five-object load gates pass. The disposable bound-save mission/death/replay/AP-off matrix still requires operator play; see [`milestone-10-acceptance.md`](milestone-10-acceptance.md). |
-| 11–26 | Not started | Deliberately outside this change. |
+| 11 - Focused runtime feasibility spikes | **Investigation complete - release feasibility blocked** | All seven spikes have terminal hashed evidence: Haven `SAFE FALLBACK`; task 30/task 63 `PASS`; Jetboard Launch, native reconstruction, 600 orbs, and the full side matrix `BLOCKED`. Provenance-complete Haven correlation `m11-haven-task-35-fc238cee` accepts only `Haven City Access + DONE(34) + Jetboard + RANGED`. Side correlation `m11-side-challenges-15ecab70` proves zero-cost activation/persistence but ordinary reload reproduces unrelated native/AP expansion, so course rows were not attempted. Milestone 14 owns Launch/reconstruction, Milestones 18/19 Haven production, Milestone 20 task-30/task-63 production, Milestone 22 the post-reconstruction side matrix, and Milestone 23 the 600-orb lifecycle. No production feature, option, ID, or default count changed. |
+| 12–26 | Not started | Deliberately outside this change. |
 
 ## Milestone 4 completion evidence
 

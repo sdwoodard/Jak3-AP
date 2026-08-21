@@ -187,6 +187,49 @@ class StructuredDiagnosticsTest(unittest.TestCase):
             self.assertEqual(event["context"]["location_ids"], location_ids[:64])
             self.assertEqual(event["context"]["task_ids"], [10, 11])
 
+    def test_feasibility_events_are_allowlisted_and_redacted(self) -> None:
+        with TemporaryDirectory() as directory:
+            session = DiagnosticSession.create(Path(directory), "m11-schema")
+            self.assertTrue(
+                session.emit(
+                    "feasibility.spike.checkpoint",
+                    correlation_id="m11-jetboard-deadbeef",
+                    context={
+                        "spike": "jetboard_launch",
+                        "checkpoint": "base_only",
+                        "status": "captured",
+                        "native_features": 1 << 18,
+                        "native_non_ap_feature_mask": 0,
+                        "native_permanent_target_mask": 1,
+                        "native_jetboard_mask": 1,
+                        "native_viewer_item_mask": 0,
+                        "native_task30_item_mask": 0,
+                        "native_task30_node_closed": 1,
+                        "native_portal_present": 1,
+                        "native_portal_open": 1,
+                        "native_hero_mode": 0,
+                        "native_postgame_complete": 1,
+                        "native_course_access": 1,
+                        "native_course_purchase": 0,
+                        "side_previous_cost": 8,
+                        "side_displayed_cost": 0,
+                        "side_activation_flag": 0,
+                        "save_generation": 0,
+                    },
+                )
+            )
+            self.assertFalse(
+                session.emit(
+                    "feasibility.spike.assertion",
+                    context={"password": "must-not-be-accepted"},
+                )
+            )
+
+            rendered = session.events_log.read_text("utf-8")
+            self.assertIn("jetboard_launch", rendered)
+            self.assertNotIn("must-not-be-accepted", rendered)
+            self.assertIn("diagnostics.event.rejected", rendered)
+
     def test_bundle_reader_rejects_undeclared_nested_event_fields(self) -> None:
         with TemporaryDirectory() as directory:
             session = DiagnosticSession.create(Path(directory), "nested-schema")

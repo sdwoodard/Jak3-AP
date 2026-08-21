@@ -1614,6 +1614,25 @@ Each runtime spike must have an experiment/correlation ID and must retain its st
 
 Orb-related runs should also retain bounded, opt-in observations sufficient for Milestone 12 to reconcile source classes and local-earned deltas. Do not turn that telemetry into public locations or normal INFO-level per-pickup logging.
 
+Every live stage/capture must be guarded by a fresh, previously unconsumed
+bridge snapshot whose native slot matches the disposable run; reusing an
+existing target attachment only skips the duplicate attach operation. Record
+the snapshot SHA-256, bridge revision, native slot, and age on each boundary.
+Native task, mission, and reward observations must query independent source
+structures: task-perm completion for the bounded task range, closed mission
+nodes from `sub-task-list`, and the bounded audited reward-node set. Task-30
+and task-63 PASS evidence must show exact-zero values for all three masks at
+every variant. Native reconstruction must type and compare all three masks at
+all five checkpoints, and a blocker review must contain an actual observed
+discrepancy. The 600-orb `at_600` checkpoint must include bounded integral,
+non-negative observations for standalone pickups, containers, mission rewards,
+and challenge rewards whose sum equals the locally earned total, while its AP
+Orb Pack receipt count is derived from checksummed AP state bound to the same
+native save. Side-challenge reload evidence must repeat every cost, resource,
+purchase, activation, suppression, and AP control. `finish` records a proposed
+decision only; no decision becomes terminal evidence until one complete
+sanitized support bundle is exported and hashed.
+
 ## Required deliverable
 
 Create `docs/development/feasibility_decisions.md` with, for each spike:
@@ -1629,7 +1648,7 @@ Create `docs/development/feasibility_decisions.md` with, for each spike:
 
 ## Predefined fallbacks
 
-- **Haven snapshot fails:** recommended fallback is `Haven City Access + DONE(34)` rather than falsifying Act I completion. If even that is unstable, ship vanilla mission order as the supported beta profile.
+- **Haven snapshot fails:** recommended fallback is `Haven City Access + DONE(34) + Jetboard + RANGED` rather than falsifying Act I completion. If even that is unstable, ship vanilla mission order as the supported beta profile.
 - **600 orbs fail:** reserve all IDs but generate thresholds only through the highest proven multiple of 25; recalculate network/filler counts.
 - **Launch is demonstrably inseparable from base Jetboard:** make an explicit design/registry revision, reserve the retired Launch ID, merge the capability into Jetboard, and recalculate pool counts before Milestone 13.
 - **Launch remains uncertain:** mark the assumption BLOCKED. Do not ship either a ghost Launch item or an unverified gate.
@@ -1645,7 +1664,22 @@ Create `docs/development/feasibility_decisions.md` with, for each spike:
 
 ## Completion gate
 
-Every listed assumption has a reproducible PASS or a documented safe fallback. No unresolved high-risk assumption is allowed to remain implicit.
+Every listed assumption has a reproducible terminal `PASS`, `SAFE FALLBACK`, or
+`BLOCKED` decision, with the owning future milestone named for every blocker.
+Completing the investigation does not make a blocked behavior release-feasible;
+the named carry-forward gate must close it before dependent production work or
+release can proceed. No unresolved high-risk assumption is allowed to remain
+implicit.
+
+The final 2026-08-21 evidence refresh closes this investigation gate. Task 30
+and task 63 retain accepted `PASS` successors; provenance-complete Haven
+successor `m11-haven-task-35-fc238cee` accepts the predefined `SAFE FALLBACK`;
+and Jetboard Launch, native reconstruction, 600-orb availability, and the full
+side matrix have terminal `BLOCKED` decisions with future owners below. Side
+successor `m11-side-challenges-15ecab70` proved zero-cost activation and
+persistence, but ordinary load reproduced unrelated native/AP expansion and
+testing stopped before course rows. Offline matrices remain non-accepting.
+Completion of Milestone 11 does not waive any named release gate.
 
 ## Suggested Codex prompt
 
@@ -1928,6 +1962,44 @@ This milestone implements the full permanent default inventory table. It keeps l
 
 Implement table-driven application and reconciliation for all 26 progression instances and all 28 useful instances in the supported default profile.
 
+## Hard carry-forward gate from Milestone 11
+
+Milestone 14 is the primary remediation milestone for the release-blocking
+native-save reconstruction result recorded in
+[`feasibility_decisions.md`](feasibility_decisions.md#native-save-reconstruction---blocked)
+and risk R-006 in [`JAK3_AP_RISKS.md`](../JAK3_AP_RISKS.md#r-006--ap-ledger-and-native-rewards-can-diverge).
+Before expanding the permanent-item table, reproduce the accepted Milestone 11
+leak with a successor correlation ID, then make AP-ledger reconciliation remove
+every native permanent capability not represented by the bounded ledger after
+ordinary save/load, task/reward reconstruction, full game restart, and
+index-zero replay. The unexpected AP check-bit publication observed in the same
+run must also be contained or shown to belong to, and be fixed in, the owning
+location/reward boundary. Milestone 14 must not be marked complete while the
+Milestone 11 native-reconstruction decision remains `BLOCKED`.
+
+The successor must reuse or extend the restricted Milestone 11 runner and
+compare independent native task, sub-task mission, and bounded reward masks as
+well as inventory, non-AP features, permanent target, and AP checks. A
+reconstruction that repairs item bits but retains unexpected task/mission
+completion or reward-node closure is still a failure. Its terminal decision
+requires a complete hashed support bundle.
+
+The same entry gate applies to Jetboard Launch. Milestone 11 proved its
+in-memory bit and behavior independence. An initial complete persistence run
+restored mask `0`; the corrected production-reconciliation successor rebuilt
+the AP-owned base bit as mask `1` after ordinary load but still omitted Launch
+and the charged move. The former semantic-only positive review is superseded.
+Before treating Launch as a supported permanent item, run a successor with
+every Jetboard checkpoint and prove exact mask `3` plus the charged move after
+ordinary save/load, full game/client restart, and AP-ledger replay. Milestone
+14 must not complete while the Jetboard decision remains `BLOCKED`; do not
+merge/retire the ID unless native inseparability is positively demonstrated.
+
+Milestone 17 completes the reward-interception side for all 38 major rewards,
+and Milestone 25 repeats native reconstruction against the full integration.
+Those later gates do not permit Milestone 14 to defer deterministic permanent-
+inventory reconstruction.
+
 ## OpenGOAL implementation boundary
 
 - Extend `archipelago-items.gc`; do not move the item table or native grant/reconciliation functions into `archipelago.gc`.
@@ -2035,7 +2107,7 @@ Add focused tests for:
 
 ## Completion gate
 
-Every non-consumable item in the 54-instance progression/useful default pool has a deterministic ledger mapping, safe application path or intentional ledger-only behavior, full-replay reconstruction, and automated runtime coverage.
+Every non-consumable item in the 54-instance progression/useful default pool has a deterministic ledger mapping, safe application path or intentional ledger-only behavior, full-replay reconstruction, and automated runtime coverage. The Milestone 11 native-reconstruction blocker has a finalized successor run proving that a bounded AP ledger survives ordinary save/load and full restart without native inventory expansion or unexpected AP check publication. The complete Jetboard successor also proves AP-owned base-plus-Launch mask `3` and its charged behavior across those boundaries.
 
 ## Suggested Codex prompt
 
@@ -2460,7 +2532,14 @@ If an authorization item arrives in an unsafe state, queue its native initializa
 
 ## Haven requirements
 
-Use the Milestone 11 PASS or fallback decision. Keep dedicated tests for:
+Use the Milestone 11 fallback decision. The fallback is not a production PASS:
+the supported rule is `Haven City Access + DONE(34) + Jetboard + RANGED`, and
+`DONE(34)` must come from durable player completion rather than a synthesized
+task/node write. Milestone 18 cannot complete until a finalized successor run
+proves the natural convergence does not replay Act I rewards or checks. That
+successor must observe real bridge `current_act=2` from task-derived runtime
+state; loaded `ctygenb`/sewer levels alone are not Act-II proof. Keep
+dedicated tests for:
 
 - Geometry.
 - Passages.
@@ -2542,6 +2621,8 @@ Create reviewed, table-driven bootstrap profiles for all documented default miss
 ### 19C — Haven and Sewers
 
 - Haven vehicles.
+- Task-35 Samos/Keira actors from the naturally completed Act-I convergence;
+  never synthesize task 34 to make the profile load.
 - Missile and Blast Bot sequences.
 - Gun courses.
 - Board Trail.
@@ -2633,6 +2714,22 @@ This milestone creates a subsystem separate from both permanent AP inventory and
 
 Implement isolated shadow-story profiles, first for task 30 and task 63.
 
+## Hard carry-forward gate from Milestone 11
+
+Milestone 11's historical task-30 and task-63 source runs captured useful exact
+item/scene/actor/AP behavior, but their generic mission and reward fields
+aliased task-perm and inventory. Accepted successors
+`m11-task-30-shadow-87b40f81` and `m11-task-63-viewer-7aa9d3b9` now pass the
+corrected independent task-perm, sub-task mission, and bounded reward controls
+at exact zero for masks `0/16/7/23` and `0/1984`, respectively, each with a
+complete hashed bundle and unchanged protected save banks. Milestone 20 may
+consume both feasibility results. They do not replace the required production
+lifecycle proof: profile application, cleanup, failure, death, abort, load,
+restart, and preservation of legitimate native changes must still pass before
+Milestone 20 is complete. Reuse and extend the restricted runner for those
+production checkpoints; never reuse one bridge snapshot revision for multiple
+evidence boundaries.
+
 ## OpenGOAL implementation boundary
 
 - Introduce `archipelago-story-state.gc` for shadow-profile selection, exact allowlisted native props, preservation, cleanup, and AP-relic isolation checks.
@@ -2644,10 +2741,14 @@ Implement isolated shadow-story profiles, first for task 30 and task 63.
 ### Task 30
 
 Supply only the native Seal/amulet/portal presentation state identified by Milestone 11.
+Reproduce exact masks `0/16/7/23` while native task, mission, and reward masks
+remain exactly zero at every profile boundary.
 
 ### Task 63
 
 Supply only the five native Astro-Viewer artifact flags/props identified by Milestone 11.
+Reproduce exact masks `0/1984` with the active viewer scene/actors while native
+task, mission, and reward masks remain exactly zero.
 
 ## Required lifecycle
 
@@ -2821,6 +2922,23 @@ This milestone adds source task IDs 114–137, bypasses grind-based entry costs 
 
 Implement the selected side-challenge location family and default free-entry behavior.
 
+## Carry-forward verification from Milestone 11
+
+Reuse the restricted feasibility runner for a production-hook successor.
+Provenance-complete correlation `m11-side-challenges-15ecab70` proved native
+price `8`, typed free price `0`, zero Skull Gem spend, activation `0 -> 1`, and
+activation persistence through ordinary load. Its clean bounded reward mask is
+`32` because the test deliberately closes the audited parent reward node; the
+active event texture becomes play icon `4` and is not a four-Gem cost.
+
+That ordinary load also changed native items `0 -> 243803`, bounded reward mask
+`32 -> 63`, and AP checked mask `0 -> 255`, so the run stopped before the four
+course rows and is terminal `BLOCKED`. Milestone 22 may not work around or
+normalize that leak. First consume a passing Milestone 14 reconstruction gate;
+then repeat all seven side rows with the production free-entry/course hooks,
+corrected reward-node query, unchanged purchase/AP controls, fresh provenance,
+and a complete hashed bundle. The legacy seven-row run remains diagnostic
+course-access evidence only.
 ## OpenGOAL implementation boundary
 
 - Extend `archipelago-locations.gc` for selected challenge completion observation.
@@ -2907,6 +3025,28 @@ This milestone implements a monotonic local-earned counter, keeps AP Orb Packs s
 ## Technical objective
 
 Implement only the default global orb-threshold location family and its separate accounting model, using the accepted source catalog for reachability and runtime reconciliation.
+
+## Hard carry-forward gate from Milestone 11
+
+Milestone 11 left the legitimate normal-save 600-orb maximum `BLOCKED` rather
+than activating an unproven fallback. Two later operator-supplied,
+checksum-valid normal-mode PS2 saves statically report 100% completion and
+`skill-total=600`; they are preserved as the preferred MAX Drive runtime control
+and an independent CodeBreaker cross-check, but static decoding is not runtime
+acceptance. Milestone 12 must reconcile its finite source catalog with a
+qualifying normal-save maximum. Before Milestone 23 enables its threshold table,
+a finalized successor run must prove that maximum through save/load and full
+restart with AP Orb Packs excluded. The accepted `at_600` checkpoint must
+reuse or extend the restricted Milestone 11 runner and contain bounded,
+integral, non-negative standalone/container/mission/challenge source-family
+observations whose sum equals the locally earned total. The AP Orb Pack receipt
+count must come from checksummed AP state bound to the same native save rather
+than a manual assertion, and the terminal decision requires a complete hashed
+support bundle. If the
+proven maximum is below 600, apply
+the predefined count/version/hash fallback and keep every higher ID reserved.
+Milestone 23 must not be marked complete while neither a 600 proof nor a lower
+proven multiple-of-25 fallback exists.
 
 ## OpenGOAL implementation boundary
 
@@ -3172,7 +3312,13 @@ Record:
 
 ## Runtime verification matrix
 
-Repeat the complete Milestone 7.2 save/binding/restart matrix against the full gameplay integration; do not assume its earlier pass covers later native hooks. In addition:
+Repeat the complete Milestone 7.2 save/binding/restart matrix against the full
+gameplay integration; do not assume its earlier pass covers later native hooks.
+Reuse or extend the restricted Milestone 11 runner for the corresponding
+Jetboard, reconstruction, shadow-state, side-challenge, and orb checkpoints so
+the full integration retains independent masks, per-boundary snapshot
+provenance, automatic contradiction checks, and terminal complete-bundle
+evidence. In addition:
 
 - Fresh save binding.
 - Wrong save/seed rejection.

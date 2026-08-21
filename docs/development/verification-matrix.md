@@ -3,7 +3,7 @@
 This document separates implementation claims from evidence. A green compile
 or unit test is not evidence that a shuffled Jak 3 save is completable.
 
-Snapshot date: **2026-08-14**
+Snapshot date: **2026-08-21**
 
 ## Evidence levels
 
@@ -23,6 +23,8 @@ reachability require runtime acceptance even when their tables have unit tests.
 
 | Evidence | Result | Scope and limit |
 | --- | --- | --- |
+| Milestone 11 source/tooling evidence | The pinned source audit passes with no roots, only `-OpenGoalRoot`, and both roots explicit, covering all six structural groups plus 13 byte-identical feasibility groups. The restricted runner and diagnostic registry cover exact typed masks, contradictory assertions, immutable correlation IDs, one unconsumed snapshot hash/revision/slot/age per live boundary, safe paths, redaction, bundle hashing, and fallback arithmetic. Post-review hardening now queries task-perm, sub-task mission nodes, and a bounded ten-node native reward set independently; rejects duplicate snapshot use; holds decisions in `finalized_pending_bundle` until a complete bundle is hashed; rejects partial bundles as acceptance; requires an actual reconstruction blocker; validates integral/non-negative/summing orb source families; and requires complete side reload resource/AP controls. Terminal finalization now also rejects positive offline matrices and validates a one-to-one checkpoint/preparation provenance ledger; positive reviews preserve and revalidate that ledger. Focused Milestone 11/diagnostics coverage passes `119`; Ruff lint/format and mypy pass; the complete packaged suite passes `434`. Two 246,525-byte APWorld builds are byte-identical at SHA-256 `DDD30507C144D7F94AE09E6C6B4B855E0C03C36266CF634BE29AF4D2660E9723`. | Source and automation verified. No packaged gameplay module, hook, option, registry, default, or public contract was added. |
+| Milestone 11 runtime decision gate | Provenance-complete Haven `m11-haven-task-35-fc238cee` is accepted `SAFE FALLBACK`; task-30 `m11-task-30-shadow-87b40f81` and task-63 `m11-task-63-viewer-7aa9d3b9` are accepted `PASS`. Jetboard Launch and native reconstruction remain `BLOCKED`; 600-orb runtime proof remains `BLOCKED`; side successor `m11-side-challenges-15ecab70` proved free-cost activation/persistence but reload changed native items `0 -> 243803`, bounded rewards `32 -> 63`, and AP checks `0 -> 255`, so it is terminal `BLOCKED` before course rows. | Milestone 11 investigation complete; release blocked. Milestone 14 owns Jetboard/reconstruction, Milestones 18/19 Haven production, Milestone 20 shadow lifecycles, Milestone 22 the post-reconstruction side matrix, and Milestone 23 the 600-orb proof. No production feature, option, ID, or default count changed. |
 | Milestone 10 automated/package evidence | Two final 246,668-byte APWorlds were byte-identical at SHA-256 `9AC9ABD63C870918E8FC1360C0CC45887E55302CB80CD51EC7CB0BF53844EB91`; that exact package passed all 365 tests in a disposable Archipelago environment. Canonical LF checkout attributes preserve every raw manifest/source hash input on Windows, and a reproduced `core.autocrlf=true` checkout built the same artifact hash. Ruff lint/29-file formatting, mypy over 13 compatibility modules, and all six source-table audit groups passed. The final active-project source set `dfc172d0516923dd3d00d5f2e0bf71b2839d8989f537c641868679b00c94eb45` built all 1,169 targets with official OpenGOAL v0.3.5 and no compile/type errors. | Covers the exact eight-ID allowlist, real task-11 replacement, durable commit-before-ack, reward-node recovery gated by the exact audited shape, post-bind mismatch reporting, immediate publication, native task/reward rebuild item reconciliation including an in-flight command race and event-free target loss detected by ordinary heartbeat readback, one-shot native-target repair when a load record was evicted without retriggering command 102 as diagnostic dropped-counts continue to rise, location-republish/reward-record rebuild deduplication across delayed or failed diagnostic acknowledgement with retriggering for new reward invocations and GOAL source activations, mismatch-driven reconciliation suspension across client restart, suspension-aware runtime-safety diagnostics, duplicate/sorted resend/confirmation-only compaction, strict temporary-goal gate and per-connection resend including real WebSocket closure, reward source/match/fail-open/reload/guard boundaries, manifest/package/install order, independent required items/location/reward activation publication and silent-failure rejection, canonical cross-platform raw-byte inputs, real two-world plando/fill with complete pool conservation, and all earlier regressions. This remains automated evidence, not the controlled bound-save gameplay matrix. |
 | Milestone 10 fixture/transport and OpenGOAL smoke | The current canonical-derived seed `10101636` passes Archipelago's real two-world plando/fill pipeline with two 147-location slots, runner-owned Jetboard at task 10, Blaster at task 11, Progressive Armor at reward 36, and guaranteed helper-owned Scatter Gun, Wave Concussor, Plasmite RPG, Beam Reflexor, and Gyro Burster at runner tasks 12–16. Every planned item comes from the pool, every location is filled, and no item is left unplaced. The earlier real local-server smoke used the superseded helper Orb Pack payload, so it proves the same runner-placement/helper-ownership transport boundary but not the current helper-item identities. The separate official-v0.3.5 project installed final source set `dfc172d0516923dd3d00d5f2e0bf71b2839d8989f537c641868679b00c94eb45`; a full `(mi)` invocation built all 1,169 targets in 26.643 seconds. With the runtime listener attached, the exact installed control, diagnostics, items, locations, and rewards sources then loaded in manifest order in 1.215 seconds and exported `items_module_active 1`, `locations_module_active 1`, and `reward_module_active 1`. | Proves current plando validity and pool conservation, the earlier transport ownership boundary, GOAL type/link viability, exact final module-order loading, and all three required runtime gameplay-module activation attestations. It does not prove current helper-payload server delivery, native mission completion, bound reward suppression, save/death replay, AP-off gameplay, or live client goal transmission. |
 | Milestone 9 automated/package evidence | Two 239,546-byte builds were byte-identical at SHA-256 `372CF63B1B8A320D41B9E7F867518BBE0F4FD181EE1E2C8BAC2278DB1EE3FA2E`; that exact package passed all 340 tests from the repository checkout in a disposable Archipelago environment. Ruff lint, the 27-file format check, and mypy over 13 source modules passed. | Covers first/duplicate/debug/native observations, commit-before-ack/send, commit and diagnostic-writer failure, offline/reopen/rebind simulations, sorted duplicate-safe retry, explicit open/closed transport behavior and failures in the normal and item-gap `Sync` paths, authenticated-generation isolation and compatibility-latch recovery, replacement of CommonClient's volatile gap-`Sync` locations with the durable outbox, one shared concurrent five-second reservation, bounded per-batch location/task diagnostic correlation, canonical `Connected`, pre-bind canonical snapshot accumulation, partial/co-op `RoomUpdate`, attributable server rollback-to-pending, confirmation-only compaction, exact checked-set partitioning, malformed/unknown/retired/disabled/table-mismatch rejection before CommonClient mutation, repository-owned canonical instructions, manifest/package/install/hash boundaries, and all earlier regressions. It is automated evidence, not the controlled native/server live matrix. |
@@ -247,6 +249,49 @@ mean real-game runtime acceptance.
 | Switch room/slot | Native save-slot switching and wrong-slot copy rejection are runtime accepted; AP room/team/slot switching was outside this default-only local-room matrix. |
 | Goal-status resend after reconnect | Not runtime tested |
 
+## Milestone 11 feasibility matrix
+
+| Spike | Source conclusion | Automated evidence | Runtime acceptance | Decision |
+| --- | --- | --- | --- | --- |
+| Haven task 35 | Parent/continuations and required actors are source-locked; synthetic parent closure is unsafe. | The fallback validator requires two unique checkpoints, tasks 14-34 incomplete, exact missing-actor evidence, stable AP/native controls, complete bundle, and one-to-one provenance. | `m11-haven-task-35-fc238cee` proved stable zero task/mission/reward/item/AP masks, loaded-level `7`, passage `1`, playable geometry, and actor mask `0`; the operator confirmed Samos/Keira absent. Bundle SHA-256 `9F67499CC22803689EC75EF6E5DB64FEC6188EAA57EEE8C792DE29A182AE7BE3`. | `SAFE FALLBACK`; use `Haven City Access + DONE(34) + Jetboard + RANGED`. Milestones 18/19 own production implementation and must not synthesize Act I completion/rewards. |
+| Jetboard Launch | Separate base/Launch bits and direct charged-launch gate. | Exact masks `0/1/3/2`, both task-30 controls, contradictory-assertion rejection, required persistence masks/assertions, complete-bundle review, and merge arithmetic are enforced. A review cannot narrow a failed complete matrix to a semantic-only `PASS`. | Exact in-memory controls and the mask-`3` saved bank passed. A corrected fresh-room load with production reconciliation restored proved AP-owned base mask `1` and deploy behavior, but Launch/charged jump remained absent. Earlier mask-`0` loads are retained as superseded or suspension-invalid diagnostics. | `BLOCKED`; independence is proven, but Launch has no ledger reconstruction path. Retain the separate ID provisionally and require the complete Milestone 14 successor. |
+| Task 30 portal | Medallion scene opens `tpl-mardoor-4`; no Seal/amulet predicate controls the door. | Exact expected masks `0/16/7/23`, portal/node fields, checksummed AP relic/check stability, compiler-error rejection, complete procedure assertions before mutation, and independent exact-zero task, sub-task mission, and bounded reward isolation. | Accepted successor `m11-task-30-shadow-87b40f81` proved `0/16/7/23` in one stable scene, portal `1/1`, node closed `1`, independent task/mission/reward `0/0/0`, AP relic/check `0/0`, unique snapshots, and unchanged save banks. Historical aliased and incomplete correlations remain superseded evidence. | `PASS`; Milestone 20 may consume the feasibility result but must still implement and verify the production lifecycle. Public closure/reward replay remains forbidden. |
+| Task 63 viewer | Resolution scene owns telescope/time-map actors; no audited five-bit predicate. | Exact masks `0/1984`, actor fields, AP relic/check assertions, exact active-scene gate, capture-only set timing, process-boundary save protection, and independent exact-zero task/mission/reward controls. | Accepted successor `m11-task-63-viewer-7aa9d3b9` used separate clean processes and proved exact `0/1984`, scene `1/1`, actor mask `12`, independent task/mission/reward `0/0/0`, AP relic/check `0/0`, unique snapshots, and unchanged save banks. The historical alias-contaminated run and corrective review remain superseded evidence. | `PASS`; Milestone 20 may consume the feasibility result but must still implement and verify the production lifecycle. |
+| Native reconstruction | Save fields restore directly and closed-node rewards replay; only three AP targets reconcile today. | The hardened schema requires five separately named checkpoints covering pre-save, ordinary reload, full game restart, AP reconciliation, and explicit item replay. Every checkpoint must include independent task-perm, sub-task mission, and bounded reward observations plus the raw/native subset, permanent target, ledger revision/target, and AP checks; a blocker review is rejected if those observations show no actual discrepancy. | Finalized successor `m11-native-reconstruction-e920e187` independently proves items `2015 -> 262143`, task-perm `0 -> 4194303`, non-AP features `396318553924436992 -> 571903997079846336`, and AP checks `128 -> 255` persist through full restart, two target-`1` reconciliations, and bounded replay. Historical reward/item and mission/task duplicates are excluded. | `BLOCKED`; Milestone 11 evidence is complete and remediation is a hard Milestone 14 gate. |
+| 600 orbs | Save counters and native 600 comparison exist; source does not prove legitimate attainability. | Four checkpoints, checksummed save-bound AP-pack receipt isolation, required standalone/container/mission/challenge source-family observations at `at_600`, and `floor(M/25)` fallback arithmetic. | The original 86% save was non-Hero but postgame false with zero local orbs. Later read-only decoding found two checksum-valid normal-mode 100%/`skill-total=600` PS2 candidates; neither has passed the required OpenGOAL lifecycle. | `BLOCKED`; retain all 24 thresholds/current table and use the preserved candidates for the Milestone 23 successor. |
+| Side challenges | Typed event state controls cost/prompt; both courses share one access secret distinct from purchase history. | The runner enforces original price `8`, typed free entry, ordered parent suppression, resource/AP isolation, reload, course hidden/open/reload/cleanup rows, and fresh provenance. It now preserves then immediately rejects contradictory live observations. | `m11-side-challenges-15ecab70` proved zero-cost entry, zero Gems, activation `0 -> 1`, and activation persistence. Ordinary load retained side state but changed native items `0 -> 243803`, reward mask `32 -> 63`, and AP checks `0 -> 255`; testing stopped before course rows. Bundle SHA-256 `DFD55540DA5D08C46D2047305D8A6638050F5B95E4E732FD03D666A98BE9199A`. | `BLOCKED`; Milestone 14 must fix reconstruction before Milestone 22 repeats all seven rows. Retain defaults provisionally; no production hook was added. |
+
+The complete procedures, local experiment IDs, bundle hashes, specification
+discrepancies, and affected future milestones are in
+[`feasibility_decisions.md`](feasibility_decisions.md).
+
+### Runtime feasibility evidence rules
+
+- Keep `jak-project`, `Archipelago`, and `openGOAL-decompile` read-only; install
+  only into a separate active OpenGOAL project or disposable Archipelago copy.
+- Give every attempt a unique correlation ID. Capture a baseline before its
+  fixed preset, then the behavior, save/load, and full restart boundaries
+  required by that spike. Never append to a finalized run.
+- Separate operator observations from machine assertions. Exact negative and
+  positive masks are mandatory; manual PASS cannot override a contradictory
+  counter or mask.
+- Give one short controller checkpoint at a time. State pause/unpause, the
+  exact button, the expected visible result, and the safe stop condition.
+- Treat UI purchase/cost text as an interlock. Never interact while the shown
+  cost and diagnostic value disagree or available currency is insufficient.
+- Distinguish direct native field restoration, reward replay, ordinary
+  save/load, full restart, and AP-ledger reconciliation. Persistence alone does
+  not prove AP ownership.
+- Pause on lava, black screens, vehicles, or unexpected character/scene state.
+  Prefer ordinary bounded recovery; after repeated failure, record `BLOCKED`
+  instead of improvising native state.
+- `PASS` requires the complete reproducible matrix; `SAFE FALLBACK` requires a
+  predefined fallback; `BLOCKED` permits no contract change. Every positive
+  terminal run must carry a one-to-one, unique, slot-matched provenance ledger
+  for all live stage/capture boundaries before it is finalized, sanitized,
+  bundled, and checksummed. Offline validation matrices can never become
+  positive terminal evidence.
+
 ## Source audit coverage and limits
 
 The maintained audit checks:
@@ -255,8 +300,12 @@ The maintained audit checks:
 - story `close-task` coverage, with task 36 as the only omission;
 - all 65 side-task close records;
 - all 51 reward nodes classified 38/8/5;
-- all 24 selected side-task source parents; and
-- candidate milestone existence and owning task.
+- all 24 selected side-task source parents;
+- candidate milestone existence and owning task; and
+- 13 byte-identical Milestone 11 anchor/hash groups covering native task-perm,
+  sub-task mission, and bounded reward-node structures; task 35; Launch; task
+  30; task 63; save/reward reconstruction; continue dispatch; burning-bush
+  cost; and shared R&C course access.
 
 It does not prove:
 

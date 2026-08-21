@@ -6,7 +6,7 @@ normative first-release default in
 and
 [`../../config/templates/Jak3.yaml`](../../config/templates/Jak3.yaml).
 
-Snapshot date: **2026-08-14**
+Snapshot date: **2026-08-16**
 
 ## Status vocabulary
 
@@ -77,7 +77,7 @@ notes must keep that distinction explicit.
 | --- | --- | --- | --- | --- |
 | Mission structure | Tiered open board with eight broad route authorizations. | One always-open Milestone 5 scaffold region; no mission graph yet. | Partial / non-playable | `R-003` |
 | Chain logic | Source order inside audited chains plus documented convergence. | No mission, item, finale, or route rules are applied. | Missing | `R-003` |
-| Sphere-zero route | Local Spargus Field Orders; Haven only under safe Jetboard condition. | No early route guarantee; the obsolete task-12 guarantee was removed. | Missing | `R-013` |
+| Sphere-zero route | Local Spargus Field Orders; Haven converges only after Act I. | No early route guarantee. Milestone 11 rejected the independent task-35 snapshot and applied the predefined `Haven City Access + DONE(34) + Jetboard + RANGED` gate without changing the tiered default order. | Missing implementation / fallback specified | `R-013` |
 | Sphere-zero ranged | Local Blaster or Vulcan Fury. | No reliable-ranged guarantee. | Missing | `R-013` |
 | Mission dispatch | AP-authorized task starts without marking its completion. | Protocol 2 has no mission dispatch. | Missing | `R-011` |
 | Task 36 | No default location because no durable native close node. | Absent from active generation; legacy ID `743001036` remains reserved. | Implemented generator | `R-004` closed |
@@ -93,7 +93,7 @@ notes must keep that distinction explicit.
 | Route authorizations | All eight are present in the generated progression pool; receipt behavior and rules are absent. | Partial | `R-003`, `R-006` |
 | Seven finale relics / 5-of-7 | Seven relic items are generated; no AP relic ledger or `RELICS(5)` predicate exists. | Partial | `R-003`, `R-005` |
 | Individual gun mods | All canonical individual gun-mod items are generated. Runtime application is absent. | Partial | `R-006` |
-| Jetboard Launch and Zap separation | Both distinct items are generated. Runtime application is absent. | Partial | `R-006` |
+| Jetboard Launch and Zap separation | Both distinct items are generated. Source and runtime prove separate feature bits, exact masks `0/1/3/2`, and the direct Launch charge gate, including at task 30. The native save contained mask `3`; with production reconciliation restored, ordinary load rebuilt AP-owned base mask `1` but not Launch. Launch remains outside the implemented receipt slice. | Partial / semantics and base reconstruction passed; Launch application missing | `R-006`, `R-022` |
 | Dark/Light power dependency closure | Canonical named items and classifications are generated; runtime dependency behavior is absent. | Partial | `R-006` |
 | Progressive vehicle licenses | Canonical progressive license instances are generated. Runtime application is absent. | Partial | `R-006` |
 | AP currency versus local-earned counters | Currency packs participate in weighted filler generation and schema 1 reserves separate local-earned Orb/Gem counters; no runtime balance or earning hook exists. | Storage contract / runtime missing | `R-014` |
@@ -109,11 +109,11 @@ notes must keep that distinction explicit.
 | Lesson ability overlays | No scoped lesson grants/cleanup. | Missing | `R-008` |
 | Vehicle/actor bootstrap | No per-mission temporary actor/loadout profiles. | Missing | `R-008` |
 | Bootstrap grants never become AP receipts | No bootstrap subsystem exists. | Missing | `R-008` |
-| Simplified native story shadow state | Separate task-30/task-63 profile identifiers are frozen; native state behavior remains unimplemented. | Contract only | `R-008` |
+| Simplified native story shadow state | Separate task-30/task-63 profile identifiers are frozen; production behavior remains unimplemented. Accepted successors `m11-task-30-shadow-87b40f81` and `m11-task-63-viewer-7aa9d3b9` prove exact `0/16/7/23` portal/node behavior and exact `0/1984` active-scene/actor behavior with independent task/mission/reward masks `0/0/0`, checksummed AP controls, and unchanged save banks. Milestone 20 may consume both feasibility inputs but must implement and verify the complete production lifecycles. | Task 30/task 63 feasibility passed / production lifecycle missing | `R-008`, `R-022` |
 | Shadow state excluded from `RELICS(n)` | No relic ledger/shadow separation exists. | Missing | `R-006`, `R-008` |
 | Major native reward interception | Exactly task-16 reward node 36 is hooked for the Milestone 10 slice; every other audited reward remains deferred. | Implemented single-node slice | `R-006` |
 | Suppress only permanent native grant | The exact-shape bound-AP path preserves Jak C and suppresses only Armor 1. AP-off, unbound, item-application, and mismatch paths invoke the complete native evaluator. The connected native gameplay matrix is pending. | Implemented slice / runtime acceptance pending | `R-006` |
-| Reconcile after reward/load/exit | The permanent three-item receipt ledger reconstructs its target state after reload/restart and removes unowned Armor 1 after binding; broader AP/shadow reconstruction remains deferred. | Implemented item slice / broader work missing | `R-006`, `R-007` |
+| Reconcile after reward/load/exit | The permanent three-item receipt ledger reconstructs its target state after reload/restart and removes unowned Armor 1 after binding. Source proves broader native feature/item restoration and reward replay; the broader leak matrix is BLOCKED. | Implemented item slice / broader feasibility blocked | `R-006`, `R-007` |
 
 ## Location identity and sanity checks
 
@@ -125,8 +125,8 @@ notes must keep that distinction explicit.
 | Major reward checks | Exactly 38 audited registry identities are generated. Reward node 36 is the sole active native reward hook; the other 37 reward hooks remain deferred. | Partial runtime slice | `R-006` |
 | Selected side checks | Exactly the 24 tasks 114–137 are generated. | Implemented generator | `R-003` |
 | Safe challenge exclusions | IDs 127, 129, 130, 131, 132, and 136 are `EXCLUDED` and reject progression/useful placement. | Implemented generator | `R-003` |
-| Free side/purchase costs | No cost bypass or pre-opened Ratchet & Clank course state. | Missing | `R-014` |
-| 25-orb thresholds | All 24 identities through 600 are generated; local-earned tracking and durable bits remain absent. | Implemented generator / runtime missing | `R-014` |
+| Free side/purchase costs | No production hook. Runtime proved typed zero-cost challenge activation with no Skull Gem/reward/AP-check delta, durable kiosk activation, and shared R&C access persistence with purchase history clear. | Missing / runtime feasibility passed | `R-014`, `R-022` |
+| 25-orb thresholds | All 24 identities through 600 are generated; source contains the 600 comparison. Two checksum-valid normal-mode saves statically report 100% and `skill-total=600`, but OpenGOAL lifecycle/source-family/AP-pack isolation remains BLOCKED. | Implemented generator / runtime missing | `R-014`, `R-022` |
 | Orb thresholds above 300 excluded | Thresholds 325–600 are `EXCLUDED` and reject progression/useful placement. | Implemented generator | `R-014` |
 | AP Orb Packs do not advance checks | Neither balance nor local-earned counter exists. | Missing | `R-014` |
 | Milestones/medals/gems/purchases off | No such locations are generated, matching their default disabled state. | Implemented by absence | — |
@@ -141,7 +141,7 @@ notes must keep that distinction explicit.
 | Durable pending-check outbox | Python atomically enqueues local observations, sends sorted pending IDs, retries after five seconds or reconnect, and compacts only from authoritative `Connected`/`RoomUpdate` state. | Implemented slice / live acceptance pending | `R-007` |
 | Offline completion later sends exactly once | Offline persistence, restart reopen, duplicate-safe resend, and server-confirmation compaction are automated. Archipelago intentionally permits duplicate uploads, so “exactly once” means one durable check identity rather than one packet. | Automated slice / live acceptance pending | `R-007` |
 | New-game reconstruction | Absent from the handshake milestone. | Missing | `R-011` |
-| Load-save reconstruction | Absent; protocol 2 has no `/game` command or inventory sync. | Missing | `R-006`, `R-011` |
+| Load-save reconstruction | The three-item ledger is implemented. Finalized Milestone 11 successor `m11-native-reconstruction-e920e187` independently proves native items expand from `2015` to `262143`, task-perm mask from `0` to `4194303`, non-AP features expand, and AP checks rise from `128` to `255`; a full restart, two target-`1` reconciliations, and bounded index-zero replay retain every leak. Historical reward/item and mission/task duplicate fields are excluded from this proof. | Partial / release-blocking leakage | `R-006`, `R-011`, `R-022` |
 | Reconnect/replay idempotence | Duplicate task/reward observations do not advance the revision, pending checks resend after reconnect, only authoritative server checked sets compact the outbox, native Armor is reconstructed from the ledger, and the temporary goal resends once per authenticated connection. | Automated slice; connected live matrix pending | `R-007`, `R-010`, `R-019` |
 | Packet-gap/out-of-order handling | Whole-packet validation rejects gaps, partial overlaps, conflicts, unknown IDs, and valid-but-unsupported Jak 3 items before mutation, then requests canonical sync. | Implemented three-item slice | `R-007` |
 
@@ -155,14 +155,15 @@ notes must keep that distinction explicit.
 | State snapshot on demand | `/diagnostics` and `/diagnostics summary` retain the current snapshot UX without dumping raw identities or forms. | Implemented | — |
 | Sanitized support export | `/diagnostics export` runs off the heartbeat loop and writes a checksummed local ZIP with merged timeline, paired logs, schema-validated summaries, cross-generation storage failover, missing/truncated-artifact declarations, newest-evidence retention, and no native save or sidecar. Startup and export reserve every leased live session's remaining rotation budget under the hard managed cap; remote leases expire after 30 minutes. | Implemented and automated | — |
 | Diagnostic failure isolation | Injected event-sink and writer failures leave persistence revisions, command results, safety decisions, and state mutation unchanged. | Implemented and automated | — |
+| Development feasibility evidence | The restricted runner enforces disposable-slot acknowledgement, fixed presets, exact numeric/semantic controls, fresh unique run-owned-slot snapshot provenance, checksummed AP derivation, immutable finalization, and complete hashed bundles. Contradictory live observations are preserved but now stop capture immediately. Milestone 11 has terminal evidence for all seven spikes: Haven `SAFE FALLBACK`; task 30/task 63 `PASS`; Jetboard Launch, native reconstruction, 600 orbs, and side challenges `BLOCKED`. | Investigation complete / release blocked by named carry-forward gates | `R-006`, `R-011`, `R-019`, `R-022` |
 | Received/sent HUD messages | Deliberately absent from Protocol 3. | Missing | `R-011` |
 | Compile-wait text | Flashing overlay during compile path. | Implemented/Smoke verified | — |
 | Sufficient failure classification | Typed persistence compatibility/binding/corruption/eligibility/lock/stale errors and client contract diagnostics exist; compiler-error detection and live save provenance remain incomplete. | Partial | `R-009`, `R-012`, `R-019` |
 
 ## Verification conflicts versus design corrections
 
-The OpenGOAL source-table audit currently supports the specification rather
-than requiring a specification correction:
+The OpenGOAL source-table audit supports the structural tables and exposes two
+runtime-sensitive specification discrepancies without silently correcting them:
 
 - native task aliases 6–137 match, with the documented task-88 normalization;
 - task 36 is the only story-row omission from native `close-task` coverage;
@@ -170,8 +171,17 @@ than requiring a specification correction:
 - all 51 reward-bearing nodes are accounted for as 38 major, eight
   crystal-only, and five never-valid moments;
 - all 24 selected side-task parents match native source; and
-- every documented candidate milestone node exists on its stated task.
+- every documented candidate milestone node exists on its stated task;
+- task 30's medallion scene opens `tpl-mardoor-4` without a Seal/amulet
+  predicate; and
+- task 63's viewer scene owns the telescope/time-map actors without reading the
+  five artifact item bits.
 
-No design change was made during this documentation milestone. Runtime route
-requirements and persistence behavior remain evidence gaps, not reasons to
-weaken the specification.
+The canonical design applies only the predefined Haven convergence fallback.
+Task 30 and task 63 retain their existing contracts after accepted feasibility
+matrices. Side defaults remain provisional: free entry passed through ordinary
+load, but unrelated reconstruction leakage stopped the complete matrix before
+course controls. Launch retains its ID but remains release-blocked because
+persistence did not pass. The 600-orb table remains unchanged; qualifying
+static normal-mode candidates exist, but the required OpenGOAL runtime
+lifecycle has not been performed.

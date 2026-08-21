@@ -64,7 +64,7 @@ Jak 3:
   early_route_item: guaranteed_local # [SUPPORTED DEFAULT]
                                      # guaranteed_local: place Spargus Field Orders locally in sphere zero
                                      # for an immediately actionable route (recommended first release).
-                                     # Haven may substitute only if Jetboard is also already sphere-zero.
+                                     # Haven cannot substitute: the fallback also requires DONE(34), Jetboard, and RANGED.
                                      # sphere_zero: any route item in sphere zero, not necessarily local.
                                      # none: no guarantee; may create a directionless opening.
 

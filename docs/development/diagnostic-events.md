@@ -163,6 +163,75 @@ Temporary-goal events record durable revision and authenticated connection
 generation so a support bundle distinguishes the first send from a reconnect
 resend.
 
+## Milestone 11 feasibility spikes
+
+- `feasibility.spike.started`
+- `feasibility.spike.checkpoint`
+- `feasibility.spike.assertion`
+- `feasibility.spike.completed`
+- `feasibility.spike.blocked`
+
+These development-only Python events correlate one disposable-save run without
+recording the native save identity or AP credentials. Context is restricted to
+the named spike/checkpoint/assertion, bounded native masks and counters,
+save/reload generation, sanitized AP counters, snapshot SHA-256/revision/native
+slot/age provenance, decision, and bundle name/hash.
+
+The recorder validates exact typed observations for portal state, task-30 item
+mask, task-63 artifact mask, Jetboard/Launch mask, Hero Mode, postgame state,
+side cost/course access, AP relic count, and native/AP check masks. Each
+checkpoint records `automatic_validation`. A contradictory live observation is
+saved as immutable failure evidence and then raises immediately, preventing a
+manual PASS or later operator step from hiding it. A procedure can complete
+while its feasibility decision is `BLOCKED`; offline/manual matrices may
+exercise validation but cannot become terminal `pass` or `safe_fallback`.
+Positive finalization requires a one-to-one provenance ledger for every recorded
+stage/capture boundary; missing, duplicate, stale, wrong-slot, mismatched, or
+unexpected entries block the decision. Positive reviews preserve and revalidate
+the source ledger. Accepted runs are immutable and bundled under unique
+correlation IDs. `finish` records `finalized_pending_bundle` plus the proposed
+decision; only a complete, hashed support bundle promotes that run to terminal
+`pass`, `safe_fallback`, or `blocked`. A partial bundle becomes
+`bundle_incomplete` and cannot be acceptance evidence. Live reuse of an AP
+client-owned target skips the duplicate `(lt)` attachment operation, but reuse
+does not relax validation: every live stage/capture requires a fresh internally
+consistent, previously unconsumed snapshot matching the run-owned native slot.
+Each stage/capture stores its snapshot hash, bridge revision, native slot, and
+age; a hash/revision pair may be consumed only once in a run. A checkpoint name
+may be captured only once, bundle export may occur only once, and both live capture and
+read-only probe paths retain a bounded post-response settle window so delayed
+compiler/pointer failures cannot trail an accepted observation.
+
+Task-30 and task-63 checkpoints additionally require exact-zero native task,
+sub-task mission, and bounded native reward-node masks queried from independent
+source structures. A 600-orb `at_600` checkpoint requires bounded, integral,
+non-negative standalone/container/mission/challenge source-family observations,
+derives the AP Orb Pack receipt count from checksummed AP state bound to the same
+native save, and requires those four counts to sum to the locally earned total.
+Side-challenge reload acceptance repeats cost, gems, items, purchase history,
+AP checks/relics, marker/event/suppression, and activation controls. A reviewed
+Jetboard `PASS` requires every semantic and persistence
+assertion plus exact mask `3` after load and restart. A reviewed native-
+reconstruction blocker requires all five lifecycle checkpoints and every typed
+native/AP comparison field, including independent task, mission, and reward
+masks, and is rejected when those observations contain no actual blocker. An
+early decisive leak may close its spike as terminal `BLOCKED` evidence and may
+complete the investigation when every spike is terminal, but it can never
+support positive runtime acceptance or waive its future release gate.
+
+Native-reconstruction events distinguish the raw native feature mask, the
+non-AP feature subset, and the current three-item native target. The repaired
+target is compared with the bounded AP-ledger projection after full restart,
+reconciliation, and item replay; it is never validated merely by matching a
+possibly contaminated pre-save native snapshot.
+
+Server provenance is verified from the session-matched client log rather than
+the operator-visible player name. When multiple local listeners exist, the
+decision record must name the connected endpoint and immutable seed/archive
+hash; an existing server history cannot support a fresh-ledger claim. This
+metadata stays in the sanitized feasibility decision and does not add raw save
+identity or credentials to the event schema.
+
 ## Persistence and recovery
 
 - `persistence.writer_lock.acquired`

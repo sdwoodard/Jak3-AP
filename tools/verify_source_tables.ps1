@@ -1,10 +1,18 @@
 [CmdletBinding()]
 param(
-    [string] $OpenGoalRoot = (Join-Path $PSScriptRoot "..\..\jak-project")
+    [string] $OpenGoalRoot,
+
+    [string] $DecompileRoot
 )
 
 $ErrorActionPreference = "Stop"
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+if (-not $OpenGoalRoot) {
+    $OpenGoalRoot = Join-Path $repositoryRoot "..\jak-project"
+}
+if (-not $DecompileRoot) {
+    $DecompileRoot = Join-Path $repositoryRoot "..\openGOAL-decompile"
+}
 $designPath = Join-Path $repositoryRoot "docs\design\progression-and-logic.md"
 $resolvedRoot = (Resolve-Path -LiteralPath $OpenGoalRoot).Path
 $sourceCandidates = @(
@@ -17,6 +25,10 @@ $taskRoot = $sourceCandidates | Where-Object {
 if (-not $taskRoot) {
     throw "Could not find goal_src/jak3/engine/game/task below $resolvedRoot"
 }
+$goalSourceRoot = (Resolve-Path -LiteralPath (Join-Path $taskRoot "..\..\..")).Path
+$snapshotGoalRoot = (Resolve-Path -LiteralPath (
+    Join-Path $DecompileRoot "jak3\data\goal_src\jak3"
+)).Path
 
 $header = Get-Content -Raw -LiteralPath (Join-Path $taskRoot "game-task-h.gc")
 $source = Get-Content -Raw -LiteralPath (Join-Path $taskRoot "game-task.gc")
@@ -202,6 +214,106 @@ if ($majorCount -ne 38) { Fail "Expected 38 Major reward rows; found $majorCount
 if ($crystalCount -ne 8) { Fail "Expected 8 crystal-only reward rows; found $crystalCount." }
 if ($neverCount -ne 5) { Fail "Expected 5 never-valid reward rows; found $neverCount." }
 
+# Milestone 11 feasibility anchors. These lock the exact native mechanisms that
+# the operator-assisted runtime matrix is intended to distinguish. The supplied
+# primary and decompile snapshots must also remain byte-identical for each file.
+$feasibilityAnchors = [ordered]@{
+    "engine\game\game-info-h.gc" = @(
+        '(amulet0 0)', '(seal-of-mar 4)', '(artifact-holocube 6)',
+        '(artifact-av-map 10)', '(task-perm-list          entity-perm-array)',
+        '(sub-task-list           (array game-task-node-info))',
+        '(mission-list            (array game-task-node-info))'
+    )
+    "engine\game\game-info.gc" = @(
+        '(defmethod task-complete?',
+        '(-> this task-perm-list data task status)',
+        '(game-task-node-flag close-task)'
+    )
+    "engine\game\settings-h.gc" = @(
+        '(hero-mode 0)', '(gungame-ratchet 22)',
+        '(board 18)', '(board-launch 37)'
+    )
+    "engine\game\task\game-task.gc" = @(
+        ':name "sewer-met-hum-introduction"',
+        '(game-task-node mine-boss-resolution)',
+        ':play-continue "sewl-elevator"',
+        ':pre-play-continue "ctygenb-samos"',
+        ':name "temple-tests-introduction"',
+        '(game-task-node-command add-board-launch)',
+        ':name "arena-fight-1-throne"',
+        ':name "desert-artifact-race-1-resolution"',
+        ':name "arena-fight-2-resolution"',
+        ':name "desert-oasis-defense-resolution"',
+        ':name "desert-artifact-race-2-race"',
+        ':name "desert-beast-battle-resolution"',
+        ':name "desert-jump-mission-resolution"',
+        ':name "desert-chase-marauders-resolution"',
+        ':name "temple-defend-resolution"',
+        ':name "wascity-defend-resolution"'
+    )
+    "engine\game\task\task-control.gc" = @(
+        '(game-task-node-command add-board-launch)',
+        '(game-items seal-of-mar)',
+        '(game-items artifact-av-map)',
+        '(eval-game-task-cmd! s1-0)', '(defun task-node-close!',
+        '(defmethod game-task-node-info-method-11'
+    )
+    "engine\util\script.gc" = @(
+        '(set-continue! *game-info* (the-as basic (-> arg0 param 1)) #f)',
+        '(send-event *target* ''want-continue (-> arg0 param 1))'
+    )
+    "engine\target\board\target-board.gc" = @(
+        '(game-feature board-launch)', '(cpad-pressed?', '(cpad-hold?'
+    )
+    "engine\target\target-handler.gc" = @(
+        '(go target-continue (the-as continue-point (-> arg3 param 0)))'
+    )
+    "engine\game\game-save.gc" = @(
+        'skill-high-watermark', 'purchase-secrets',
+        '(game-save-elt items)', '(game-save-elt features)',
+        '(game-save-elt task-node-list)'
+    )
+    "levels\temple\temple-scenes.gc" = @(
+        '"group-fma-medallion-charge"', '"tpl-mardoor-4"',
+        '(task-close! "temple-tests-introduction")',
+        ':load-point "templea-mardoor"'
+    )
+    "levels\forest\forest-tasks.gc" = @(
+        ':name "forest-turn-on-machine-res"',
+        ':name "for-telescope-fma"', ':name "time-map"'
+    )
+    "levels\desert\des-burning-bush.gc" = @(
+        '(get-current-task-event', '(-> gp-0 tex)', '(-> *target* game gem)'
+    )
+    "levels\gungame\gungame-manager.gc" = @(
+        '(game-secrets gungame-ratchet)',
+        '(set! gp-0 (logior gp-0 4))', '(set! gp-0 (logior gp-0 8))'
+    )
+}
+foreach ($relativePath in $feasibilityAnchors.Keys) {
+    $primaryPath = Join-Path $goalSourceRoot $relativePath
+    $snapshotPath = Join-Path $snapshotGoalRoot $relativePath
+    if (-not (Test-Path -LiteralPath $primaryPath -PathType Leaf)) {
+        Fail "Milestone 11 primary source is missing: $relativePath"
+        continue
+    }
+    if (-not (Test-Path -LiteralPath $snapshotPath -PathType Leaf)) {
+        Fail "Milestone 11 decompile source is missing: $relativePath"
+        continue
+    }
+    $feasibilitySource = Get-Content -Raw -LiteralPath $primaryPath
+    foreach ($anchor in $feasibilityAnchors[$relativePath]) {
+        if (-not $feasibilitySource.Contains($anchor)) {
+            Fail "Milestone 11 source anchor is missing from ${relativePath}: $anchor"
+        }
+    }
+    $primaryHash = (Get-FileHash -LiteralPath $primaryPath -Algorithm SHA256).Hash
+    $snapshotHash = (Get-FileHash -LiteralPath $snapshotPath -Algorithm SHA256).Hash
+    if ($primaryHash -ne $snapshotHash) {
+        Fail "Milestone 11 primary/decompile source mismatch: $relativePath"
+    }
+}
+
 if ($failures.Count) {
     Write-Error ("Jak 3 source-table audit failed:`n- " + ($failures -join "`n- "))
     exit 1
@@ -213,4 +325,5 @@ Write-Output "PASS: all 65 side tasks have close-task records."
 Write-Output "PASS: all 51 reward nodes are accounted for (38 major, 8 crystal-only, 5 never)."
 Write-Output "PASS: all 24 selected side-task source parents match."
 Write-Output "PASS: every candidate milestone node exists on its documented task."
+Write-Output "PASS: all 13 Milestone 11 source groups retain their required anchors and match the decompile snapshot."
 Write-Output "Audited source: $taskRoot"

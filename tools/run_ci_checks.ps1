@@ -56,7 +56,8 @@ function Invoke-StaticChecks {
         "-m", "ruff", "check", "--ignore", "E402",
         "worlds/jak3",
         "tests",
-        "tools/generate_milestone_10_fixture.py"
+        "tools/generate_milestone_10_fixture.py",
+        "tools/run_milestone_11_spikes.py"
     )
     Invoke-PythonCommand -Label "Ruff lint" -Arguments $lintArguments
 
@@ -80,6 +81,7 @@ function Invoke-StaticChecks {
         "tests/test_persistence.py",
         "tests/test_location_outbox.py",
         "tests/test_milestone_10_fixture.py",
+        "tests/test_milestone_11_spikes.py",
         "tests/test_bridge_manifest.py",
         "tests/test_client.py",
         "tests/test_diagnostics.py",
@@ -89,7 +91,8 @@ function Invoke-StaticChecks {
         "tests/test_received_items.py",
         "tests/test_tools.py",
         "tests/test_ci.py",
-        "tools/generate_milestone_10_fixture.py"
+        "tools/generate_milestone_10_fixture.py",
+        "tools/run_milestone_11_spikes.py"
     )
     $formatArguments = @("-m", "ruff", "format", "--check") + $formatTargets
     Invoke-PythonCommand -Label "Ruff format" -Arguments $formatArguments
@@ -107,7 +110,8 @@ function Invoke-StaticChecks {
         "worlds/jak3/agents/bridge_manifest.py",
         "worlds/jak3/agents/diagnostics.py",
         "worlds/jak3/agents/launcher.py",
-        "worlds/jak3/agents/protocol.py"
+        "worlds/jak3/agents/protocol.py",
+        "tools/run_milestone_11_spikes.py"
     )
     $mypyArguments = @(
         "-m", "mypy",

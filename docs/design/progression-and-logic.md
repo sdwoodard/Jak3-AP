@@ -170,7 +170,14 @@ RELICS(n) = count_group("Finale Relics") >= n
 DONE(task_id) = has(f"Mission Complete Event {task_id}")
 ```
 
-`RANGED` deliberately excludes Scatter Gun and Peace Maker in Standard logic. `BOARD_BOOST` is separate from base-board access because task 30 explicitly uses the charged L1+X launch. `TEMPLE_ORACLE` models the intended, non-skip route. `DONE()` is a hidden locked event used by the generator. At runtime, the mission board uses the corresponding durable local task/AP-completion flag.
+`RANGED` deliberately excludes Scatter Gun and Peace Maker in Standard logic.
+`BOARD_BOOST` expresses the intended separate capability because task 30 uses
+the charged L1+X launch, but Milestone 11 has not yet passed its persistence/
+application matrix. The reserved Launch item and this predicate are not
+release-ready until the Milestone 14 successor closes that blocker.
+`TEMPLE_ORACLE` models the intended, non-skip route. `DONE()` is a hidden locked
+event used by the generator. At runtime, the mission board uses the corresponding
+durable local task/AP-completion flag.
 
 ---
 ## 6. Exact progression items
@@ -181,7 +188,7 @@ DONE(task_id) = has(f"Mission Complete Event {task_id}")
 | --- | --- | --- | --- | --- |
 | Spargus Field Orders | 1 | progression | Tasks 14–24 and related Wasteland checks | Large early branch; required by the Temple convergence. |
 | Temple Expedition Orders | 1 | progression | Tasks 25–34 | Separates Temple/Mines from general Spargus content. |
-| Haven City Access | 1 | progression | Tasks 35–44 and Haven free roam | Creates the second early branch; runtime adapter initializes safe Act II world state. |
+| Haven City Access | 1 | progression | Tasks 35–44 and Haven free roam after task 34 | Retained as a route authorization, but the Milestone 11 fallback converges Haven after Act I instead of synthesizing an early Act II snapshot. |
 | Freedom League Orders | 1 | progression | Tasks 45–51 | Opens the mid-Haven branch after task 44. |
 | Wasteland Artifact Intel | 1 | progression | Tasks 52–57 | Runs in parallel with Freedom League after task 44. |
 | War Factory Coordinates | 1 | progression | Tasks 58–60 | Convergence gate after both midgame branches. |
@@ -430,14 +437,17 @@ Consumables MUST be safe to receive during missions, cutscenes, vehicle use, dea
 ## 8. Default route graph
 
 
-The default `tiered_open_board` graph preserves source order within each mission chain and source branch convergence, while allowing two early branches and two midgame branches.
+The default `tiered_open_board` graph preserves source order within each mission
+chain and source branch convergence. The Milestone 11 fallback leaves one
+immediately actionable early branch and two midgame branches; Haven remains a
+distinct authorization but converges only after Act I.
 
 ```text
 Prologue / Spargus initiation (6–13)
    ├─ Spargus Field Orders → 14–24
    │      └─ Temple Expedition Orders + DONE(20) → 25–28
    │             └─ DONE(24) + DONE(28) → 29–34
-   └─ Haven City Access → 35–44
+   └─ Haven City Access + DONE(34) + Jetboard + RANGED → 35–44
                          ├─ Freedom League Orders → 45–51
                          └─ Wasteland Artifact Intel → 52–57
 
@@ -447,9 +457,21 @@ Dark Maker Targeting Data + DONE(63) → 64–70
 DONE(70) + any 5 of 7 relics → 71 → 72 Victory
 ```
 
-`Haven City Access` is the only major deliberate break from the native global story parent chain: the mission-board adapter initializes a safe Act II Haven snapshot without falsely completing tasks 14–34. This snapshot must be verified for level geometry, actors, passages, cutscenes, task masks, and return-to-hub state. Until that adapter passes integration tests, a fallback preset `mission_order: vanilla` should remain available.
+Milestone 11 rejected the independent early-Haven snapshot because the minimal
+task-35 state did not provide the required Haven actors. The supported fallback
+therefore requires `Haven City Access`, `DONE(34)`, `Jetboard`, and `RANGED`.
+The runtime adapter must not synthesize task 14–34 completion or replay their
+rewards; it opens task 35 only after the player has actually completed Act I
+and owns the audited traversal/target capabilities. The rest of the tiered
+mission-board design remains unchanged, so this fallback does not switch the
+entire beta to `mission_order: vanilla`.
 
-The generator forces an **immediately actionable** route item to a local sphere-zero location and forces one of Blaster/Vulcan Fury locally in sphere zero. For the first implementation, `early_route_item: guaranteed_local` places **Spargus Field Orders**; Haven City Access may substitute only when Jetboard is already precollected or independently guaranteed in sphere zero. This avoids presenting Haven access as the player's only direction while its first mission is still blocked by Jetboard.
+The generator forces an **immediately actionable** route item to a local
+sphere-zero location and forces one of Blaster/Vulcan Fury locally in sphere
+zero. For the first implementation, `early_route_item: guaranteed_local` places
+**Spargus Field Orders**. Under the Milestone 11 fallback, Haven City Access
+cannot substitute because task 35 also requires `DONE(34)`, `Jetboard`, and
+`RANGED`.
 
 ---
 
@@ -488,7 +510,7 @@ The generator forces an **immediately actionable** route item to a local sphere-
 | 32 | Explore Eco Mine | `mine-explore` | Temple / Mines | DONE(31) | Mine rail/elevator state supplied; armor is never logic. | S/B | Network location |
 | 33 | Escort Bomb Train | `mine-blow` | Temple / Mines | DONE(32) + RANGED | Bomb train supplied. Red bridge targets are out of Scatter Gun range on the intended route, so reliable ranged fire is a hard gate. | S/W/B | Network location |
 | 34 | Defeat Veger's Precursor Robot | `mine-boss` | Temple / Mines | DONE(33) | Precursor robot encounter and exact boss vehicle/loadout supplied. | S/B | Network location |
-| 35 | Reach Port via Sewer | `sewer-met-hum` | Haven Recon | Haven City Access + Jetboard + RANGED | Verified forced Jetboard traversal and distant fans/targets that a short-range Scatter Gun cannot reliably hit. | S/W | Network location |
+| 35 | Reach Port via Sewer | `sewer-met-hum` | Haven Recon | Haven City Access + DONE(34) + Jetboard + RANGED | Milestone 11 applied the converged Haven fallback after the independent snapshot lacked required actors. Forced Jetboard traversal and distant fans/targets still require reliable ranged fire. | S/W | Network location |
 | 36 | Haven Hover-Zone Tutorial | `city-vehicle-training` | Haven Recon | DONE(35) | Source task does not expose a durable close-task node; tutorial event only, never a default network location. | S/B | No default check |
 | 37 | Destroy Incoming Blast Bots | `city-port-fight` | Haven Recon | DONE(35) | Blast Bot/fixed mission state supplied. | S/B | Network location |
 | 38 | Destroy Barrier with Missile | `city-port-attack` | Haven Recon | DONE(37) | Missile vehicle supplied. | S/B | Network location |
@@ -1063,7 +1085,7 @@ Recommended generation order:
    collectible locations increase filler/trap capacity; they do not duplicate
    mandatory progression/useful items.
 10. Replace the configured percentage of filler with traps.
-11. Force one immediately actionable early route item and one reliable ranged gun locally when configured; do not choose Haven City Access as the sole early route unless Jetboard is also sphere-zero/precollected.
+11. Force Spargus Field Orders as the immediately actionable early route item and one reliable ranged gun locally when configured. Haven City Access cannot satisfy this guarantee because its fallback route also requires `DONE(34)`, `Jetboard`, and `RANGED`.
 12. Apply all rules.
 13. Assert item-pool count equals unfilled network-location count.
 14. Run generation-time all-state reachability checks in debug/tests.
@@ -1189,7 +1211,7 @@ Generation MUST reject or normalize:
 - Cumulative Skull Gem milestones without a finite milestone cap, or with a
   progression cap greater than that finite cap.
 - A progression cap outside the collectible maximum.
-- `early_route_item: guaranteed_local` choosing Haven City Access without Jetboard already precollected or guaranteed sphere zero; normalize to Spargus Field Orders.
+- `early_route_item: guaranteed_local` choosing Haven City Access; normalize to Spargus Field Orders because the Haven fallback also requires `DONE(34)`, `Jetboard`, and `RANGED`.
 - Trap replacement greater than the number of filler slots; clamp after mandatory items, never before.
 - `start_inventory_from_pool` counts exceeding pool counts.
 - Mutually incompatible `local_items` and `non_local_items` declarations.
@@ -1522,16 +1544,17 @@ Equivalent official test helpers should be used where available.
 
 ## 23. Known audit risks
 
-1. **Haven early-branch snapshot:** must prove that task 35 can start safely without falsely closing Act I tasks.
+1. **Haven early-branch snapshot:** Milestone 11 rejected the independent snapshot and accepted the predefined `Haven City Access + DONE(34) + Jetboard + RANGED` `SAFE FALLBACK` in provenance-complete correlation `m11-haven-task-35-fc238cee`. Milestones 18/19 may consume that logic decision but must still prove the production convergence/bootstrap does not synthesize Act I completion or replay rewards.
 2. **Task 36:** no durable source close-task; requires a custom AP flag or remains excluded.
 3. **Task 88 alias mismatch:** the task enum is `desert-bbush-get-to-19`, its node aliases are `wascity-bbush-get-to-19-*`, and its source parent is confirmed as task 52. Normalize the runtime name without losing the native task ID.
-4. **Jetboard Launch semantics:** the intended walkthrough explicitly requires the L1+X boost jump in task 30 and the source exposes a separate Launch command; runtime must verify that the flag controls that move. Standard remains conservatively gated until proven otherwise.
-5. **Shadow story state:** verify Seal/amulet portal, Cipher use, all five Astro-Viewer props, and every route pass without leaking AP relic ownership.
-6. **Exact native reward dispatcher coverage:** verify secret commands and Star Map behavior in the compiled/runtime path.
-7. **Individual collectibles:** stable source IDs must be extracted before individual sanity.
-8. **OpenGOAL Jak 3 project maturity:** integration should pin a compatible OpenGOAL commit/table hash.
-9. **Mission bootstrap cleanup:** especially final-boss board mutations, Daxter transitions, and death during scripted vehicles.
-10. **Native save reconstruction:** ensure shuffled rewards cannot leak back into permanent inventory.
+4. **Jetboard Launch semantics:** the intended walkthrough explicitly requires the L1+X boost jump in task 30 and the source exposes a separate Launch command. Milestone 11 proved exact in-memory masks `0/1/3/2`: only base-plus-Launch enabled the held-L1 charged jump, including at the task-30 tutorial, while Launch-only could not deploy a board. The ordinary native save contained mask `3`; after production reconciliation was restored, ordinary load rebuilt the AP-owned base as mask `1` but did not restore Launch or charged behavior. The complete spike is therefore `BLOCKED`: retain the separate ID/predicate provisionally, do not merge without proof of inseparability, and do not ship it until Milestone 14 reproduces mask `3` after ordinary load and full restart from the AP ledger.
+5. **Shadow story state:** Milestone 11 accepted corrected task-30 and task-63 successors. Task 30 held exact Seal/amulet masks `0/16/7/23` beside its scene-owned open portal and one direct introduction-node presentation flag. Task 63 held exact artifact masks `0/1984` during the active Astro-Viewer scene with both viewer actors; audited source shows those actors do not themselves read the five bits. Both successors proved independent task/mission/reward masks `0/0/0`, checksummed AP relic/check controls `0/0`, and unchanged protected save banks. The historical generic observations remain invalid aliases. Milestone 20 may consume these feasibility inputs but must implement and verify the complete production lifecycle. Cipher use and every route pass still require equivalent isolation proof.
+6. **Default side-challenge semantics:** Provenance-complete Milestone 11 correlation `m11-side-challenges-15ecab70` proved original price `8`, typed free entry, zero Gem spend, activation, and activation persistence. Ordinary load then reproduced the native-reconstruction leak (`native_items 0 -> 243803`, bounded rewards `32 -> 63`, AP checks `0 -> 255`), so testing stopped before course rows and the complete spike is `BLOCKED`. Retain defaults provisionally. Milestone 14 must fix reconstruction before Milestone 22 repeats the full seven-row production matrix; legacy course evidence is diagnostic only.
+7. **Exact native reward dispatcher coverage:** verify secret commands and Star Map behavior in the compiled/runtime path.
+8. **Individual collectibles:** stable source IDs must be extracted before individual sanity.
+9. **OpenGOAL Jak 3 project maturity:** integration should pin a compatible OpenGOAL commit/table hash.
+10. **Mission bootstrap cleanup:** especially final-boss board mutations, Daxter transitions, and death during scripted vehicles.
+11. **Native save reconstruction:** ensure shuffled rewards cannot leak back into permanent inventory.
 
 ---
 
